@@ -565,13 +565,33 @@ async function crearUsuarioPanel(){
 
   if(!usuario_nuevo||!nombre||!telefono){setBox("jugCrearMsg",`<div class="err-box">Completá usuario, nombre y teléfono.</div>`);return}
 
+  // 1. Crear en Supabase
   const {error}=await supabaseClient.from("usuarios").insert({usuario:usuario_nuevo,nombre,telefono,pc_codigo:pc,clave});
   if(error){
-    setBox("jugCrearMsg",`<div class="err-box">${error.code==="23505"?"Ese usuario ya existe.":error.message}</div>`);
+    setBox("jugCrearMsg",`<div class="err-box">${error.code==="23505"?"Ese usuario ya existe en el panel.":error.message}</div>`);
     return;
   }
 
-  setBox("jugCrearMsg",`<div class="ok-box">Usuario <b>${usuario_nuevo}</b> creado. Clave: <b>${clave}</b></div>`);
+  setBox("jugCrearMsg",`<div class="ok-box">✅ Usuario <b>${usuario_nuevo}</b> guardado. Clave: <b>${clave}</b><br><span class="small">Registrando en el casino...</span></div>`);
+
+  // 2. Crear en el backoffice del casino (si estamos en Electron)
+  if(enElectron){
+    try{
+      await window.ctrlElectron.openAgentWindow();
+      const r = await callDrex("crearUsuario", usuario_nuevo, clave);
+      if(r && r.ok){
+        setBox("jugCrearMsg",`<div class="ok-box">✅ Usuario <b>${usuario_nuevo}</b> creado en el panel y en el casino.<br>Clave: <b>${clave}</b></div>`);
+      } else if(r && r.error==="duplicado"){
+        setBox("jugCrearMsg",`<div class="alert-box">⚠ Guardado en el panel, pero el alias <b>${usuario_nuevo}</b> ya existía en el casino (puede usarlo igual).<br>Clave: <b>${clave}</b></div>`);
+      } else {
+        setBox("jugCrearMsg",`<div class="alert-box">⚠ Guardado en el panel, pero no se pudo crear en el casino: ${r?.message||"error desconocido"}.<br>Clave: <b>${clave}</b></div>`);
+      }
+      await window.ctrlElectron.navigateAgent();
+    }catch(e){
+      setBox("jugCrearMsg",`<div class="alert-box">⚠ Guardado en el panel, pero falló la creación en el casino: ${e.message}.<br>Clave: <b>${clave}</b></div>`);
+    }
+  }
+
   ["jugNuevoUsuario","jugNuevoNombre","jugNuevoTelefono","jugNuevoClave"].forEach(id=>{const el=document.getElementById(id);if(el)el.value=""});
   toast("Usuario creado","green");
   await cargarJugadores();
@@ -662,9 +682,11 @@ async function importarCSV(){
     if(/^\d{4}-\d{2}-\d{2}t/i.test(usuario)) continue;
     if(/^\d+$/.test(usuario) && usuario.length>=10) continue;
 
+    const alias = String(getCol(r,"alias")||"").trim();
     const reg={
       usuario:          usuario.toLowerCase(),
-      alias:            String(getCol(r,"alias")||"").trim()||null,
+      nombre:           alias || usuario.toLowerCase(), // fallback si nombre es NOT NULL
+      alias:            alias||null,
       estado_revision:  String(getCol(r,"estado de revision")||"").trim()||null,
       estado_actual:    String(getCol(r,"estado actual")||"").trim()||null,
       cargas_hist:      parseIntCsv(getCol(r,"cargas")),
