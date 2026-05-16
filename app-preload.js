@@ -6,7 +6,9 @@ const ALLOWED_AUTOMATION_METHODS = new Set([
   'buscarUsuario',
   'cargarSaldo',
   'retirarSaldo',
-  'cambiarClave'
+  'cambiarClave',
+  'crearUsuario',
+  'obtenerSaldoAgente'
 ]);
 
 contextBridge.exposeInMainWorld('ctrlElectron', {

@@ -1,7 +1,8 @@
 const path    = require('node:path');
 const { app, BrowserWindow, ipcMain } = require('electron');
 
-const AGENT_URL = 'https://bo.casinodrex.com/agents/user_search';
+const AGENT_URL    = 'https://bo.casinodrex.com/agents/user_search';
+const NEW_USER_URL = 'https://bo.casinodrex.com/agents/new_user';
 
 let mainWindow  = null;
 let agentWindow = null;
@@ -68,8 +69,12 @@ async function navigateAgentTo(url = AGENT_URL) {
 
 function sendAutomation(method, ...args) {
   const win = getAgentWindow();
-  // Siempre navega a la URL de búsqueda antes de buscarUsuario → página limpia
-  const preNav = method === 'buscarUsuario' ? navigateAgentTo() : whenAgentReady(win);
+  // Algunos métodos requieren estar en una URL específica → navegamos primero
+  let preNav;
+  if      (method === 'buscarUsuario')       preNav = navigateAgentTo(AGENT_URL);
+  else if (method === 'crearUsuario')        preNav = navigateAgentTo(NEW_USER_URL);
+  else if (method === 'obtenerSaldoAgente')  preNav = navigateAgentTo(AGENT_URL);
+  else                                       preNav = whenAgentReady(win);
   return preNav.then(() => {
     const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     return new Promise((resolve, reject) => {

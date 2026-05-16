@@ -303,7 +303,26 @@ input::placeholder{color:#484f58}
 
       <div id="editMsg"></div>
       <button class="btn btn-primary" onclick="guardarPerfil()">Guardar cambios</button>
-      <button class="btn btn-ghost" onclick="cerrarSesion()" style="margin-top:10px;color:var(--red);border-color:rgba(218,54,51,.4)">Cerrar sesión</button>
+    </div>
+
+    <!-- Card de cambio de clave -->
+    <div class="card">
+      <div class="card-title">🔑 Reiniciar clave de juego</div>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.5">
+        Si olvidaste tu clave o querés cambiarla, podés solicitar un reseteo. Tu clave del casino será reemplazada por la que ingreses (o por la default <b>12345a</b> si la dejás vacía).
+      </p>
+      <div class="field">
+        <label>Nueva clave <span class="optional-tag">opcional</span></label>
+        <input id="resetClaveNueva" type="text" placeholder="Mínimo 6 caracteres · letras y números" minlength="6">
+        <div class="field-hint">Si la dejás vacía, se resetea a <b>12345a</b>.</div>
+      </div>
+      <div id="resetClaveMsg"></div>
+      <button class="btn btn-primary" onclick="solicitarResetClave()">Solicitar reseteo de clave</button>
+    </div>
+
+    <!-- Cerrar sesión -->
+    <div class="card">
+      <button class="btn btn-ghost" onclick="cerrarSesion()" style="margin:0;color:var(--red);border-color:rgba(218,54,51,.4)">Cerrar sesión</button>
     </div>
   </div>
 
@@ -521,6 +540,32 @@ async function guardarPerfil(){
   renderResumenPerfil();
   msg('editMsg','Perfil actualizado correctamente.','ok');
   setTimeout(()=>msg('editMsg',''), 3000);
+}
+
+async function solicitarResetClave(){
+  const claveInput = (document.getElementById('resetClaveNueva')?.value || '').trim();
+  const claveNueva = claveInput || '12345a';
+
+  if(claveNueva.length < 6){ msg('resetClaveMsg','La clave debe tener al menos 6 caracteres.','err'); return; }
+  if(!/^[a-zA-Z0-9]+$/.test(claveNueva)){ msg('resetClaveMsg','Solo letras y números, sin espacios ni símbolos.','err'); return; }
+
+  msg('resetClaveMsg','<span class="spinner"></span>Enviando solicitud...','info');
+
+  const { error } = await sb.from('solicitudes').insert({
+    tipo:            'CAMBIO_CLAVE',
+    usuario:         usuario.usuario,
+    nombre_completo: usuario.nombre,
+    telefono:        usuario.telefono,
+    pc_codigo:       PC,
+    estado:          'PENDIENTE',
+    password_nuevo:  claveNueva
+  });
+
+  if(error){ msg('resetClaveMsg','Error al enviar. Intentá de nuevo.','err'); return; }
+
+  msg('resetClaveMsg','✅ Solicitud enviada. Un operador procesará tu cambio en breve.','ok');
+  document.getElementById('resetClaveNueva').value = '';
+  setTimeout(()=>msg('resetClaveMsg',''), 8000);
 }
 
 function cerrarSesion(){

@@ -104,6 +104,14 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
       <img src="NODO%20%C2%B7%20OPERATIVO%20LITE_files/logo-nodo.png" class="logo" alt="NODO">
       <div class="card"><div id="operadorInfo"></div></div>
 
+      <div id="agentBalanceCard" class="card hidden" style="background:linear-gradient(135deg,#0d3321,#11371f);border-color:rgba(63,185,80,.3)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span class="small" style="color:#3fb950;font-weight:700">💰 Saldo agente</span>
+          <button class="mini-btn gray" style="padding:4px 8px;font-size:11px" onclick="refrescarSaldoAgente()" title="Actualizar">🔄</button>
+        </div>
+        <div id="agentBalanceVal" style="font-size:18px;font-weight:900;color:#3fb950">—</div>
+      </div>
+
       <button id="navInicio" class="nav-btn active" onclick="mostrarVista('inicio')">🏠 Inicio</button>
       <button id="navSolicitudes" class="nav-btn" onclick="mostrarVista('solicitudes')">📋 Solicitudes <span id="badgeSolicitudes" class="badge-alert hidden">0</span></button>
       <button id="navBilleteras" class="nav-btn" onclick="mostrarVista('billeteras')">💳 Billeteras</button>
@@ -152,6 +160,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
               <option value="" selected="selected">Todos los tipos</option>
               <option value="CARGA">Carga</option>
               <option value="RETIRO">Retiro</option>
+              <option value="CAMBIO_CLAVE">Cambio de clave</option>
             </select>
             <input id="filtroTexto" placeholder="Buscar usuario / nombre / billetera" oninput="renderSolicitudes()">
           </div>
@@ -190,6 +199,11 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
               <div>
                 <b id="chatTitulo">Seleccioná un chat</b>
                 <div id="chatSubtitulo" class="small">Sin conversación abierta</div>
+              </div>
+              <div id="chatAccionesRapidas" class="hidden" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+                <input id="chatCargarMonto" type="number" placeholder="Monto" style="width:90px;margin:0;padding:6px 10px;font-size:12px">
+                <button class="mini-btn green" onclick="chatAccionCargar()" title="Cargar saldo al usuario del chat">⚡ Cargar</button>
+                <button class="mini-btn yellow" onclick="chatAccionResetClave()" title="Resetear clave a 12345a">🔑 Reset</button>
               </div>
               <span id="chatEstado" class="badge badge-muted">-</span>
             </div>
@@ -726,7 +740,8 @@ function mapSolicitudSupabase(s){
     BILLETERA_NOMBRE: s.billetera_nombre || "",
     ID_BILLETERA: s.billetera_id || "",
     CHAT_ID: s.chat_id || "",
-    OPERADOR: s.operador_usuario || ""
+    OPERADOR: s.operador_usuario || "",
+    PASSWORD_NUEVO: s.password_nuevo || ""
   };
 }
 
@@ -1036,13 +1051,16 @@ function tablaSolicitudesHTML(lista){
       <td>${money(s.MONTO_REAL||s.MONTO_DECLARADO||s.MONTO||0)}</td>
       <td>${estadoBadge(s.ESTADO)}</td>
       <td>
-        ${esPendiente(s)?`
-          <button class="mini-btn blue" onclick="tomarSolicitud('${id}')">Tomar</button>
-          ${tipo==="RETIRO"?`<button class="mini-btn green" onclick="abrirCerrarRetiro('${id}')">Cerrar retiro</button>`:`<button class="mini-btn green" onclick="abrirAprobarSolicitud('${id}')">Aprobar</button>`}
-          <button class="mini-btn red" onclick="abrirRechazarSolicitud('${id}')">Rechazar</button>
-        `:normalizar(s.ESTADO)==="APROBADA_MANUAL"&&tipo==="CARGA"&&window.ctrlElectron?`
-          <button class="mini-btn purple" onclick="ejecutarAutoCarga('${id}')">▶ Auto</button>
-        `:"-"}
+        ${esPendiente(s)?
+          tipo==="CAMBIO_CLAVE"
+            ? `${window.ctrlElectron?`<button class="mini-btn purple" onclick="ejecutarAutoClave('${id}')">▶ Auto</button>`:""}
+               <button class="mini-btn red" onclick="abrirRechazarSolicitud('${id}')">Rechazar</button>`
+            : `<button class="mini-btn blue" onclick="tomarSolicitud('${id}')">Tomar</button>
+               ${tipo==="RETIRO"?`<button class="mini-btn green" onclick="abrirCerrarRetiro('${id}')">Cerrar retiro</button>`:`<button class="mini-btn green" onclick="abrirAprobarSolicitud('${id}')">Aprobar</button>`}
+               <button class="mini-btn red" onclick="abrirRechazarSolicitud('${id}')">Rechazar</button>`
+          :normalizar(s.ESTADO)==="APROBADA_MANUAL"&&tipo==="CARGA"&&window.ctrlElectron?`
+            <button class="mini-btn purple" onclick="ejecutarAutoCarga('${id}')">▶ Auto</button>
+          `:"-"}
       </td>
     </tr>`;
   });
@@ -1219,6 +1237,7 @@ function renderChatList(){
 async function abrirChat(id){
   chatActualId=id;
   renderChatList();
+  if(enElectron) document.getElementById("chatAccionesRapidas")?.classList.remove("hidden");
   await cargarChatActual(false);
 }
 async function cargarChatActual(silencioso=false){
@@ -1427,6 +1446,50 @@ const enElectron = !!window.ctrlElectron;
 
 if(enElectron){
   document.getElementById("navAuto")?.classList.remove("hidden");
+  document.getElementById("agentBalanceCard")?.classList.remove("hidden");
+}
+
+// ── Saldo del agente (widget del sidebar) ─────────────────────────────────────
+async function refrescarSaldoAgente(){
+  if(!enElectron) return;
+  const el = document.getElementById("agentBalanceVal");
+  if(el) el.textContent = "Cargando...";
+  try{
+    await window.ctrlElectron.openAgentWindow();
+    const r = await callDrex("obtenerSaldoAgente");
+    if(r && r.balance && r.balance.raw){ if(el) el.textContent = r.balance.raw.trim(); }
+    else if(r && r.needsLogin){ if(el) el.textContent = "🔐 Login"; }
+    else { if(el) el.textContent = "—"; }
+  }catch(e){
+    if(el) el.textContent = "⚠ Error";
+  }
+}
+if(enElectron){
+  // Refresca el saldo del agente cada 60 segundos
+  setInterval(refrescarSaldoAgente, 60000);
+  setTimeout(refrescarSaldoAgente, 4000); // 4s después del load inicial
+}
+
+// ── Acciones rápidas desde el chat ────────────────────────────────────────────
+function chatUsuarioActivo(){
+  const c = chats.find(x=>String(x.ID_CHAT)===String(chatActualId));
+  return c?.USUARIO || "";
+}
+
+async function chatAccionCargar(){
+  const usuario = chatUsuarioActivo();
+  const monto = Number(document.getElementById("chatCargarMonto")?.value||0);
+  if(!usuario){ toast("Sin chat activo","red"); return; }
+  if(!monto){ toast("Ingresá un monto","red"); return; }
+  document.getElementById("chatCargarMonto").value = "";
+  await cargarSaldoRapido(usuario, monto);
+}
+
+async function chatAccionResetClave(){
+  const usuario = chatUsuarioActivo();
+  if(!usuario){ toast("Sin chat activo","red"); return; }
+  if(!confirm(`Resetear clave de "${usuario}" a 12345a?`)) return;
+  await resetClaveRapido(usuario, "12345a");
 }
 
 async function callDrex(method, ...args){
@@ -1524,6 +1587,81 @@ async function testRetirar(){
     autoResBox("autoRetirarRes", true, `✅ ${r.message || "Retiro realizado."}`);
     await window.ctrlElectron.navigateAgent();
   }catch(err){ autoResBox("autoRetirarRes", false, "Error: " + err.message); }
+}
+
+async function ejecutarAutoClave(id){
+  if(!window.ctrlElectron){ alert("La automatización solo funciona en la app de escritorio."); return; }
+  const s = solicitudes.find(x=>String(x.ID||x.SOLICITUD_ID)===String(id));
+  if(!s){ alert("Solicitud no encontrada."); return; }
+
+  const usuario     = s.USUARIO || s.USUARIO_JUGADOR || "";
+  const claveNueva  = s.PASSWORD_NUEVO || "12345a";
+
+  if(!usuario){ alert("La solicitud no tiene usuario."); return; }
+
+  toast("Abriendo backoffice...","blue");
+  await window.ctrlElectron.openAgentWindow();
+
+  const estado = await callDrex("estadoPagina");
+  if(estado.needsLogin){ toast("Iniciá sesión en el backoffice primero.","red"); return; }
+
+  toast(`Buscando ${usuario}...`,"blue");
+  const b = await callDrex("buscarUsuario", usuario);
+  if(!b.exists){ toast(`Usuario "${usuario}" no encontrado.`,"red"); return; }
+
+  toast(`Cambiando clave a "${claveNueva}"...`,"blue");
+  const r = await callDrex("cambiarClave", claveNueva);
+  if(r && r.ok === false){ toast("Error: "+(r.message||"falló el cambio"),"red"); return; }
+
+  await actualizarSolicitudSupabase(id, {
+    estado: "APROBADA",
+    operador_usuario: operador.usuario || operador.nombre || ""
+  });
+
+  toast(`Clave cambiada · ${usuario} → ${claveNueva}`, "green");
+  await window.ctrlElectron.navigateAgent();
+  await refrescarTodo(false);
+}
+
+async function resetClaveRapido(usuario, claveNueva="12345a"){
+  if(!window.ctrlElectron){ alert("Solo en la app de escritorio."); return; }
+  if(!usuario){ alert("Sin usuario."); return; }
+
+  toast(`Reseteando clave de ${usuario}...`,"blue");
+  await window.ctrlElectron.openAgentWindow();
+
+  const estado = await callDrex("estadoPagina");
+  if(estado.needsLogin){ toast("Iniciá sesión en el backoffice.","red"); return; }
+
+  const b = await callDrex("buscarUsuario", usuario);
+  if(!b.exists){ toast(`Usuario "${usuario}" no encontrado.`,"red"); return; }
+
+  const r = await callDrex("cambiarClave", claveNueva);
+  if(r && r.ok === false){ toast("Error: "+(r.message||"falló"),"red"); return; }
+
+  toast(`Clave reseteada a "${claveNueva}"`, "green");
+  await window.ctrlElectron.navigateAgent();
+}
+
+async function cargarSaldoRapido(usuario, monto){
+  if(!window.ctrlElectron){ alert("Solo en la app de escritorio."); return; }
+  monto = Number(monto);
+  if(!usuario || !monto || monto<=0){ alert("Usuario y monto requeridos."); return; }
+
+  toast(`Cargando $${monto} a ${usuario}...`,"blue");
+  await window.ctrlElectron.openAgentWindow();
+
+  const estado = await callDrex("estadoPagina");
+  if(estado.needsLogin){ toast("Iniciá sesión en el backoffice.","red"); return; }
+
+  const b = await callDrex("buscarUsuario", usuario);
+  if(!b.exists){ toast(`Usuario "${usuario}" no encontrado.`,"red"); return; }
+
+  const r = await callDrex("cargarSaldo", monto);
+  if(r && r.ok === false){ toast("Error: "+(r.message||"falló"),"red"); return; }
+
+  toast(`Carga completada · ${usuario} · $${monto.toLocaleString("es-AR")}`,"green");
+  await window.ctrlElectron.navigateAgent();
 }
 
 async function ejecutarAutoCarga(id){

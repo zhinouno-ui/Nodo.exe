@@ -104,17 +104,34 @@ function parseMoney(value) {
   return Number.isFinite(number) ? number : 0;
 }
 
-function readVisibleBalance() {
-  // Selector específico del backoffice: input MUI deshabilitado con el saldo
-  const specific = firstVisible('input.MuiInputBase-input.Mui-disabled[disabled], input.Mui-disabled[disabled][type="text"]');
-  if (specific && /ARS|^\$|\d{1,}/.test(specific.value || '')) {
-    return { raw: specific.value, value: parseMoney(specific.value) };
-  }
-  // Fallback genérico
+function findActiveModal() {
+  const sels = '.ReactModal__Content, .MuiDialog-root, .MuiModal-root, [role="dialog"]';
+  return firstVisible(sels);
+}
+
+// Saldo del USUARIO buscado — sólo válido dentro del modal de carga/retiro
+function readUserBalance() {
+  const modal = findActiveModal();
+  if (!modal) return null;
+  const inputs = Array.from(modal.querySelectorAll('input.Mui-disabled[disabled], input:disabled, input[readonly]')).filter(isVisible);
+  const bal = inputs.find(el => /ARS|^\$|\d/.test(el.value || ''));
+  if (bal) return { raw: bal.value, value: parseMoney(bal.value) };
+  return null;
+}
+
+// Saldo del AGENTE (operador) — visible en la página, fuera de modales
+function readAgentBalance() {
+  const modal = findActiveModal();
   const candidates = visibleElements('input:disabled, input[readonly], input[aria-disabled="true"]');
-  const balanceInput = candidates.find(el => /ARS|\$/.test(el.value || ''));
-  const raw = balanceInput ? balanceInput.value : '';
-  return { raw, value: parseMoney(raw) };
+  const outside = modal ? candidates.filter(el => !modal.contains(el)) : candidates;
+  const bal = outside.find(el => /ARS|\$/.test(el.value || ''));
+  if (bal) return { raw: bal.value, value: parseMoney(bal.value) };
+  return { raw: '', value: 0 };
+}
+
+// Mantengo readVisibleBalance como alias para compatibilidad — devuelve user balance
+function readVisibleBalance() {
+  return readUserBalance() || { raw: '', value: 0 };
 }
 
 function readBalanceFromPlayerRow(playerEl) {
@@ -428,11 +445,65 @@ function irABusquedaUsuarios() {
   return { ok: true, url: USER_SEARCH_URL };
 }
 
+// Crear usuario en el backoffice (URL: /agents/new_user)
+async function crearUsuario(alias, password, options = {}) {
+  if (!alias || String(alias).trim().length < 3) {
+    throw new Error('El alias debe tener al menos 3 caracteres.');
+  }
+  if (!password || String(password).length < 6) {
+    throw new Error('La contraseña debe tener al menos 6 caracteres.');
+  }
+  if (!/^[a-zA-Z0-9]+$/.test(String(password))) {
+    throw new Error('La contraseña sólo puede tener letras y números.');
+  }
+
+  await cerrarModalSesionInvalida();
+  if (pageNeedsLogin()) return status();
+
+  const aliasInput = await waitFor(() => firstVisible('input[name="alias"]'), options.timeout || DEFAULT_TIMEOUT);
+  setReactInputValue(aliasInput, String(alias).trim());
+  await delay();
+
+  const passInput = await waitFor(() => firstVisible('input[name="password"][type="password"]'), options.timeout || DEFAULT_TIMEOUT);
+  setReactInputValue(passInput, String(password));
+  await delay();
+
+  const registrarBtn = findActionButton(/^registrar$/i);
+  if (!registrarBtn) throw new Error('No se encontró el botón "Registrar".');
+  clickElement(registrarBtn);
+
+  // Espera resultado: éxito o error
+  await waitFor(() => /se ha registrado correctamente|duplicated alias/i.test(document.body.textContent || ''),
+                options.timeout || DEFAULT_TIMEOUT);
+
+  if (/duplicated alias/i.test(document.body.textContent || '')) {
+    return { ok: false, alias, error: 'duplicado', message: 'El alias ya existe en el backoffice.' };
+  }
+
+  // Éxito → click "Guardar" para confirmar
+  await delay(500);
+  const guardarBtn = findActionButton(/^guardar$/i);
+  if (guardarBtn) clickElement(guardarBtn);
+  await delay(500);
+
+  return { ok: true, alias, password, message: 'Usuario creado correctamente en el backoffice.' };
+}
+
+// Devuelve el saldo del AGENTE (operador) sin tocar nada del usuario
+async function obtenerSaldoAgente(options = {}) {
+  await cerrarModalSesionInvalida();
+  if (pageNeedsLogin()) return { ok: false, needsLogin: true };
+  await waitFor(() => readAgentBalance().raw, options.timeout || 6000).catch(()=>{});
+  return { ok: true, balance: readAgentBalance() };
+}
+
 const api = {
   buscarUsuario,
   cargarSaldo,
   retirarSaldo,
   cambiarClave,
+  crearUsuario,
+  obtenerSaldoAgente,
   irABusquedaUsuarios,
   estadoPagina: status
 };
