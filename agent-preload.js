@@ -120,8 +120,14 @@ function readUserBalance() {
   return null;
 }
 
-// Saldo del AGENTE (operador) — visible en la página, fuera de modales
+// Saldo del AGENTE (operador) — span.hideUserBalance siempre visible en el backoffice
 function readAgentBalance() {
+  const span = firstVisible('span.hideUserBalance');
+  if (span) {
+    const raw = span.textContent || span.innerText || '';
+    return { raw: raw.trim(), value: parseMoney(raw) };
+  }
+  // Fallback: input deshabilitado fuera de modales
   const modal = findActiveModal();
   const candidates = visibleElements('input:disabled, input[readonly], input[aria-disabled="true"]');
   const outside = modal ? candidates.filter(el => !modal.contains(el)) : candidates;
