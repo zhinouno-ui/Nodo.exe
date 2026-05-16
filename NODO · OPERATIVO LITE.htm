@@ -716,8 +716,9 @@ async function importarCSV(){
     const batch=registros.slice(i,i+BATCH);
     const {error}=await supabaseClient.from("usuarios").upsert(batch,{onConflict:"usuario"});
     if(error){
-      console.error("Batch error:", error);
+      console.error("Batch error:", error.message || error.details || JSON.stringify(error));
       err+=batch.length;
+      if(i===0) setBox("csvMsg",`<div class="err-box">Error: ${error.message||error.details||JSON.stringify(error)}</div>`);
     } else {
       ok+=batch.length;
     }
@@ -1266,7 +1267,10 @@ async function cargarBilleteras(render=true){
     TIPO:b.tipo||"",
     PC:b.pc_codigo,
     ACTIVA:b.activa?"SI":"NO",
-    SELECCIONADA_MANUAL:b.seleccionada_manual?"SI":"NO"
+    SELECCIONADA_MANUAL:b.seleccionada_manual?"SI":"NO",
+    SALDO:Number(b.saldo||0),
+    CBU_ALIAS:b.cbu_alias||"",
+    TITULAR:b.titular||""
   }));
 
   if(render)renderBilleteras();
@@ -1358,27 +1362,110 @@ function tablaSolicitudesHTML(lista){
   return html;
 }
 
+function getBilleraLanding(){
+  return billeteras.find(b=>normalizar(b.SELECCIONADA_MANUAL)==="SI") || billeteras.find(b=>normalizar(b.ACTIVA)==="SI");
+}
+
+async function ajustarSaldoBilletera(id, delta){
+  if(!id || !delta) return;
+  const b = billeteras.find(x=>x.ID_BILLETERA===id);
+  const saldoActual = b ? Number(b.SALDO||0) : 0;
+  const nuevoSaldo  = Math.max(0, saldoActual + delta);
+  await supabaseClient.from("billeteras").update({saldo: nuevoSaldo}).eq("id", id);
+  if(b) b.SALDO = nuevoSaldo;
+}
+
 function renderBilleteras(){
-  if(!billeteras.length){setBox("walletsGrid",`<div class="alert-box">No hay billeteras configuradas.</div>`);return}
-  let html="";
+  let html=`<div style="margin-bottom:14px"><button class="mini-btn blue" onclick="abrirNuevaBilletera()">+ Nueva billetera</button></div>`;
+  if(!billeteras.length){html+=`<div class="alert-box">No hay billeteras configuradas para esta PC.</div>`;setBox("walletsGrid",html);return}
   billeteras.forEach(b=>{
     const activa=normalizar(b.ACTIVA)==="SI";
     const seleccionada=normalizar(b.SELECCIONADA_MANUAL)==="SI";
     html+=`<div class="wallet-card ${activa?"ok":"paused"} ${seleccionada?"selected":""}">
-      <div class="wallet-name">💳 ${b.NOMBRE_VISIBLE||b.BILLETERA_NOMBRE||b.ID_BILLETERA}</div>
+      <div class="wallet-name">💳 ${b.NOMBRE_VISIBLE||b.ID_BILLETERA}</div>
       <div class="wallet-type">${b.TIPO||""} · ${b.PC||pcOperativa}</div>
-      <div style="margin-top:12px">
+      ${b.CBU_ALIAS?`<div class="small" style="margin-top:4px;color:var(--muted);font-family:monospace">${b.CBU_ALIAS}</div>`:""}
+      ${b.TITULAR?`<div class="small" style="color:var(--muted)">${b.TITULAR}</div>`:""}
+      <div style="margin-top:10px;font-size:22px;font-weight:900">${money(b.SALDO||0)}</div>
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
         ${activa?'<span class="badge badge-ok">ACTIVA</span>':'<span class="badge badge-danger">PAUSADA</span>'}
         ${seleccionada?'<span class="badge badge-blue">EN LANDING</span>':''}
       </div>
       <div class="wallet-actions">
-        <button class="mini-btn blue" onclick="seleccionarBilletera('${b.ID_BILLETERA}')">Poner en landing</button>
-        <button class="mini-btn green" onclick="cambiarEstadoBilletera('${b.ID_BILLETERA}','SI')">Activar</button>
-        <button class="mini-btn red" onclick="cambiarEstadoBilletera('${b.ID_BILLETERA}','NO')">Pausar</button>
+        <button class="mini-btn blue" onclick="seleccionarBilletera('${b.ID_BILLETERA}')">En landing</button>
+        <button class="mini-btn" style="background:#2e3444" onclick="abrirEditarBilletera('${b.ID_BILLETERA}')">✏️ Editar</button>
+        ${activa
+          ?`<button class="mini-btn red" onclick="cambiarEstadoBilletera('${b.ID_BILLETERA}','NO')">Pausar</button>`
+          :`<button class="mini-btn green" onclick="cambiarEstadoBilletera('${b.ID_BILLETERA}','SI')">Activar</button>`}
       </div>
     </div>`;
   });
   setBox("walletsGrid",html);
+}
+
+function abrirEditarBilletera(id){
+  const b=billeteras.find(x=>x.ID_BILLETERA===id);
+  if(!b) return;
+  abrirModal("Editar billetera",`
+    <label>Nombre visible</label>
+    <input id="ebNombre" value="${escapeHtml(b.NOMBRE_VISIBLE||"")}">
+    <label>Tipo</label>
+    <select id="ebTipo">
+      ${["CBU","CVU","ALIAS","MP","OTRO"].map(t=>`<option value="${t}"${b.TIPO===t?" selected":""}>${t}</option>`).join("")}
+    </select>
+    <label>CBU / Alias / Número</label>
+    <input id="ebCbu" value="${escapeHtml(b.CBU_ALIAS||"")}" placeholder="Ej: 0000003100...">
+    <label>Titular</label>
+    <input id="ebTitular" value="${escapeHtml(b.TITULAR||"")}" placeholder="Ej: Juan García">
+    <label>Saldo actual (ajuste manual)</label>
+    <input id="ebSaldo" type="number" value="${b.SALDO||0}">
+  `,async()=>{
+    const {error}=await supabaseClient.from("billeteras").update({
+      nombre_visible:val("ebNombre"),
+      tipo:val("ebTipo"),
+      cbu_alias:val("ebCbu"),
+      titular:val("ebTitular"),
+      saldo:Number(val("ebSaldo")||0)
+    }).eq("id",id);
+    if(error){alert(error.message);return}
+    cerrarModal();
+    toast("Billetera actualizada","green");
+    await cargarBilleteras();
+  },"Guardar");
+}
+
+function abrirNuevaBilletera(){
+  abrirModal("Nueva billetera",`
+    <label>Nombre visible</label>
+    <input id="nbNombre" placeholder="Ej: Mercado Pago CHINO">
+    <label>Tipo</label>
+    <select id="nbTipo">
+      ${["CBU","CVU","ALIAS","MP","OTRO"].map(t=>`<option value="${t}">${t}</option>`).join("")}
+    </select>
+    <label>CBU / Alias / Número</label>
+    <input id="nbCbu" placeholder="Ej: 0000003100...">
+    <label>Titular</label>
+    <input id="nbTitular" placeholder="Ej: Juan García">
+    <label>Saldo inicial</label>
+    <input id="nbSaldo" type="number" value="0">
+  `,async()=>{
+    const nombre=val("nbNombre");
+    if(!nombre){alert("El nombre es obligatorio.");return}
+    const {error}=await supabaseClient.from("billeteras").insert({
+      nombre_visible:nombre,
+      tipo:val("nbTipo"),
+      cbu_alias:val("nbCbu"),
+      titular:val("nbTitular"),
+      saldo:Number(val("nbSaldo")||0),
+      pc_codigo:pcOperativa,
+      activa:true,
+      seleccionada_manual:false
+    });
+    if(error){alert(error.message);return}
+    cerrarModal();
+    toast("Billetera creada","green");
+    await cargarBilleteras();
+  },"Crear");
 }
 
 async function tomarSolicitud(id){
@@ -1449,23 +1536,40 @@ async function abrirCerrarRetiro(id){
     }
   }
 
+  await cargarBilleteras(false);
+  const montoSol = Number(s.MONTO_REAL||s.MONTO_DECLARADO||0);
+  const bilOpts = billeteras.map(b=>{
+    const saldoOk = Number(b.SALDO||0) >= montoSol;
+    const sel = normalizar(b.SELECCIONADA_MANUAL)==="SI" ? " selected" : "";
+    return `<option value="${b.ID_BILLETERA}"${sel}>${b.NOMBRE_VISIBLE} — ${money(b.SALDO||0)}${saldoOk?"":" ⚠️"}</option>`;
+  }).join("");
+
   abrirModal("Cerrar retiro",`
-    <div class="ok-box"><b>${s.USUARIO||""}</b> · ${money(s.MONTO_DECLARADO||s.MONTO_REAL||0)}</div>
+    <div class="ok-box"><b>${s.USUARIO||""}</b> · ${money(montoSol)}</div>
+    <label>Billetera desde donde se paga</label>
+    <select id="retBilletera"${!bilOpts?' disabled':''}>
+      ${bilOpts||'<option value="">Sin billeteras</option>'}
+    </select>
+    <div id="retSaldoInfo" class="small" style="margin-top:-8px;margin-bottom:12px"></div>
     <label>Monto final</label>
-    <input id="retMonto" type="number" value="${s.MONTO_REAL||s.MONTO_DECLARADO||""}">
+    <input id="retMonto" type="number" value="${montoSol||""}">
     <label>Observaciones (opcional, se envían al usuario)</label>
     <textarea id="retObs" placeholder="Ej: transferimos a tu CBU/CVU"></textarea>
   `,async()=>{
     const montoFinal = Number(val("retMonto") || s.MONTO_DECLARADO || 0);
     const obs = val("retObs");
+    const bilId = val("retBilletera");
 
     const r = await actualizarSolicitudSupabase(id, {
       estado:"PAGADA",
       monto: montoFinal,
-      operador_usuario:operador.usuario || operador.nombre || ""
+      operador_usuario:operador.usuario || operador.nombre || "",
+      billetera_id: bilId || null
     });
 
     if(!r.ok){ alert(r.error || "Error"); return; }
+
+    if(bilId) await ajustarSaldoBilletera(bilId, -montoFinal);
 
     const usuario = s.USUARIO || s.USUARIO_JUGADOR || "";
     if(usuario){
@@ -1476,7 +1580,26 @@ async function abrirCerrarRetiro(id){
     cerrarModal();
     toast("Retiro cerrado","green");
     await refrescarTodo(false);
-  },"Cerrar retiro");
+  },"Pagar retiro");
+
+  // actualiza el indicador de saldo al cambiar billetera o monto
+  setTimeout(()=>{
+    const sel  = document.getElementById("retBilletera");
+    const info = document.getElementById("retSaldoInfo");
+    const montoInput = document.getElementById("retMonto");
+    const update = ()=>{
+      if(!sel||!info) return;
+      const b = billeteras.find(x=>x.ID_BILLETERA===sel.value);
+      const saldo  = b ? Number(b.SALDO||0) : 0;
+      const monto  = Number(montoInput?.value||montoSol||0);
+      const ok     = saldo >= monto;
+      info.textContent = b ? `Saldo disponible: ${money(saldo)} ${ok?"✅":"⚠️ insuficiente"}` : "";
+      info.style.color = ok ? "var(--green)" : "var(--red)";
+    };
+    sel?.addEventListener("change", update);
+    montoInput?.addEventListener("input", update);
+    update();
+  }, 80);
 }
 function abrirRechazarSolicitud(id){
   const s = solicitudes.find(x=>String(x.ID||x.SOLICITUD_ID)===String(id));
@@ -2149,6 +2272,15 @@ async function ejecutarAutoRetiro(id){
     return;
   }
 
+  // Confirmación mostrando billetera y saldo antes de ejecutar
+  await cargarBilleteras(false);
+  const bilConf = getBilleraLanding();
+  if(bilConf){
+    const saldoBil = Number(bilConf.SALDO||0);
+    const confirmMsg = `Retiro automático: $${monto.toLocaleString("es-AR")} para ${usuario}\n\nBilletera: ${bilConf.NOMBRE_VISIBLE}\nSaldo disponible: $${saldoBil.toLocaleString("es-AR")}${saldoBil<monto?" ⚠️ (insuficiente)":""}\n\n¿Confirmar?`;
+    if(!confirm(confirmMsg)) return;
+  }
+
   toast(`Retirando $${monto.toLocaleString("es-AR")}...`,"blue");
   const r = await callDrex("retirarSaldo", monto);
 
@@ -2168,6 +2300,9 @@ async function ejecutarAutoRetiro(id){
     estado: "PAGADA",
     operador_usuario: operador.usuario || operador.nombre || ""
   });
+
+  const bilRetiro = getBilleraLanding();
+  if(bilRetiro) await ajustarSaldoBilletera(bilRetiro.ID_BILLETERA, -monto);
 
   await notificarUsuarioEnChat(usuario,
     `✅ Tu retiro de $${monto.toLocaleString("es-AR")} fue procesado. Lo transferimos a tu CBU/CVU.`);
@@ -2231,6 +2366,9 @@ async function ejecutarAutoCarga(id){
     estado: "ACREDITADA",
     operador_usuario: operador.usuario || operador.nombre || ""
   });
+
+  const bilLanding = getBilleraLanding();
+  if(bilLanding) await ajustarSaldoBilletera(bilLanding.ID_BILLETERA, monto);
 
   await notificarUsuarioEnChat(usuario,
     `✅ Tu carga fue acreditada: $${monto.toLocaleString("es-AR")}. ¡Ya podés jugar!`);
