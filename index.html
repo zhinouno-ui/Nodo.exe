@@ -215,6 +215,15 @@ input::placeholder{color:#484f58}
       <div style="font-size:12px;opacity:.9">¿No sabés cuál es tu usuario? <span style="text-decoration:underline;cursor:pointer" onclick="mostrarSeccion('chat')">Preguntanos en el chat 💬</span></div>
     </div>
 
+    <!-- Mis solicitudes recientes -->
+    <div id="misSolicitudesCard" class="card hidden" style="padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <b style="font-size:14px">📑 Mis últimas solicitudes</b>
+        <button onclick="cargarMisSolicitudes()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">🔄</button>
+      </div>
+      <div id="misSolicitudesList"></div>
+    </div>
+
     <!-- Formulario pre-llenado -->
     <div class="card">
       <div class="field">
@@ -475,10 +484,64 @@ async function entrarApp(){
   cargarBilletera();
   await obtenerOCrearChat();
   cargarMensajes(false);
+  cargarMisSolicitudes();
   mostrarSeccion('inicio');
 
   clearInterval(chatPolling);
-  chatPolling = setInterval(()=>cargarMensajes(true), 4000);
+  chatPolling = setInterval(()=>{ cargarMensajes(true); cargarMisSolicitudes(); }, 4000);
+}
+
+// ── Mis solicitudes (estado en vivo) ──────────────────────────────────────────
+async function cargarMisSolicitudes(){
+  if(!usuario?.usuario) return;
+  const { data } = await sb.from('solicitudes').select('*')
+    .eq('usuario', usuario.usuario).eq('pc_codigo', PC)
+    .order('created_at',{ascending:false}).limit(6);
+
+  if(!data || !data.length){
+    document.getElementById('misSolicitudesCard')?.classList.add('hidden');
+    return;
+  }
+
+  document.getElementById('misSolicitudesCard')?.classList.remove('hidden');
+
+  const estadoStyle = (estado)=>{
+    const e = String(estado||'').toUpperCase();
+    if(e==='PENDIENTE' || e==='NUEVA' || e==='EN_REVISION')
+      return {label:'⏳ Pendiente',bg:'#3d2d00',fg:'#d29922'};
+    if(['APROBADA','APROBADA_MANUAL','APROBADA_MANUAL_OK','ACREDITADA','PAGADA'].includes(e))
+      return {label:'✅ Aprobada',bg:'#0d3321',fg:'#3fb950'};
+    if(e==='RECHAZADA')
+      return {label:'❌ Rechazada',bg:'#3a1515',fg:'#f85149'};
+    return {label:e||'-',bg:'#2a2f3b',fg:'#98a2b3'};
+  };
+
+  const tipoIcon = (t)=>{
+    const x = String(t||'').toUpperCase();
+    if(x==='CARGA') return '💸';
+    if(x==='RETIRO') return '🏧';
+    if(x==='CAMBIO_CLAVE') return '🔑';
+    return '📄';
+  };
+
+  const html = data.map(s=>{
+    const e = estadoStyle(s.estado);
+    const fecha = new Date(s.created_at).toLocaleString('es-AR',{
+      timeZone:'America/Argentina/Buenos_Aires',
+      day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false
+    });
+    const monto = s.monto ? `$${Number(s.monto).toLocaleString('es-AR')}` : '';
+    const tipo = s.tipo==='CAMBIO_CLAVE'?'Cambio de clave':(s.tipo||'');
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px">
+      <div>
+        <div><b>${tipoIcon(s.tipo)} ${tipo}</b> ${monto?`<span style="color:var(--muted)">· ${monto}</span>`:''}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${fecha}</div>
+      </div>
+      <span style="padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;background:${e.bg};color:${e.fg};white-space:nowrap">${e.label}</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('misSolicitudesList').innerHTML = html;
 }
 
 function mostrarSeccion(sec){

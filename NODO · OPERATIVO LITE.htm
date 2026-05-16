@@ -1288,7 +1288,11 @@ function tablaSolicitudesHTML(lista){
             ? `${window.ctrlElectron?`<button class="mini-btn purple" onclick="ejecutarAutoClave('${id}')">▶ Auto</button>`:""}
                <button class="mini-btn red" onclick="abrirRechazarSolicitud('${id}')">Rechazar</button>`
             : `<button class="mini-btn blue" onclick="tomarSolicitud('${id}')">Tomar</button>
-               ${tipo==="RETIRO"?`<button class="mini-btn green" onclick="abrirCerrarRetiro('${id}')">Cerrar retiro</button>`:`<button class="mini-btn green" onclick="abrirAprobarSolicitud('${id}')">Aprobar</button>`}
+               ${tipo==="RETIRO"
+                  ? `${window.ctrlElectron?`<button class="mini-btn purple" onclick="ejecutarAutoRetiro('${id}')">▶ Auto</button>`:""}
+                     <button class="mini-btn green" onclick="abrirCerrarRetiro('${id}')">Cerrar retiro</button>`
+                  : `${window.ctrlElectron?`<button class="mini-btn purple" onclick="ejecutarAutoCarga('${id}')">▶ Auto</button>`:""}
+                     <button class="mini-btn green" onclick="abrirAprobarSolicitud('${id}')">Aprobar</button>`}
                <button class="mini-btn red" onclick="abrirRechazarSolicitud('${id}')">Rechazar</button>`
           :normalizar(s.ESTADO)==="APROBADA_MANUAL"&&tipo==="CARGA"&&window.ctrlElectron?`
             <button class="mini-btn purple" onclick="ejecutarAutoCarga('${id}')">▶ Auto</button>
@@ -1346,26 +1350,29 @@ function abrirAprobarSolicitud(id){
     <div class="ok-box"><b>${s.USUARIO||""}</b> · ${money(s.MONTO_DECLARADO||s.MONTO_REAL||0)}</div>
     <label>Monto real</label>
     <input id="apMonto" type="number" value="${s.MONTO_REAL||s.MONTO_DECLARADO||""}">
-    <label>Observaciones</label>
-    <textarea id="apObs"></textarea>
-    <div class="alert-box">Este paso deja la solicitud como APROBADA_MANUAL en Supabase. Después conectamos la cola de Playwright.</div>
+    <label>Observaciones (opcional, se envían al usuario)</label>
+    <textarea id="apObs" placeholder="Ej: tu transferencia llegó correctamente"></textarea>
   `,async()=>{
+    const montoFinal = Number(val("apMonto") || s.MONTO_DECLARADO || 0);
+    const obs = val("apObs");
 
     const r = await actualizarSolicitudSupabase(id, {
       estado:"APROBADA_MANUAL",
-      monto:Number(val("apMonto") || s.MONTO_DECLARADO || 0),
+      monto: montoFinal,
       operador_usuario:operador.usuario || operador.nombre || ""
     });
 
-    if(!r.ok){
-      alert(r.error || "Error");
-      return;
+    if(!r.ok){ alert(r.error || "Error"); return; }
+
+    const usuario = s.USUARIO || s.USUARIO_JUGADOR || "";
+    if(usuario){
+      await notificarUsuarioEnChat(usuario,
+        `✅ Tu carga de $${montoFinal.toLocaleString("es-AR")} fue aprobada. Estamos procesándola en el sistema de juego.${obs?`\n📝 ${obs}`:""}`);
     }
 
     cerrarModal();
     toast("Carga aprobada","green");
     await refrescarTodo(false);
-
   },"Aprobar");
 }
 async function abrirCerrarRetiro(id){
@@ -1392,47 +1399,57 @@ async function abrirCerrarRetiro(id){
     <div class="ok-box"><b>${s.USUARIO||""}</b> · ${money(s.MONTO_DECLARADO||s.MONTO_REAL||0)}</div>
     <label>Monto final</label>
     <input id="retMonto" type="number" value="${s.MONTO_REAL||s.MONTO_DECLARADO||""}">
-    <label>Observaciones</label>
-    <textarea id="retObs"></textarea>
+    <label>Observaciones (opcional, se envían al usuario)</label>
+    <textarea id="retObs" placeholder="Ej: transferimos a tu CBU/CVU"></textarea>
   `,async()=>{
+    const montoFinal = Number(val("retMonto") || s.MONTO_DECLARADO || 0);
+    const obs = val("retObs");
 
     const r = await actualizarSolicitudSupabase(id, {
       estado:"PAGADA",
-      monto:Number(val("retMonto") || s.MONTO_DECLARADO || 0),
+      monto: montoFinal,
       operador_usuario:operador.usuario || operador.nombre || ""
     });
 
-    if(!r.ok){
-      alert(r.error || "Error");
-      return;
+    if(!r.ok){ alert(r.error || "Error"); return; }
+
+    const usuario = s.USUARIO || s.USUARIO_JUGADOR || "";
+    if(usuario){
+      await notificarUsuarioEnChat(usuario,
+        `✅ Tu retiro de $${montoFinal.toLocaleString("es-AR")} fue pagado.${obs?`\n📝 ${obs}`:""}`);
     }
 
     cerrarModal();
     toast("Retiro cerrado","green");
     await refrescarTodo(false);
-
   },"Cerrar retiro");
 }
 function abrirRechazarSolicitud(id){
+  const s = solicitudes.find(x=>String(x.ID||x.SOLICITUD_ID)===String(id));
+
   abrirModal("Rechazar solicitud",`
-    <label>Motivo</label>
-    <textarea id="rechObs"></textarea>
+    <label>Motivo (se le envía al usuario)</label>
+    <textarea id="rechObs" placeholder="Ej: no nos llegó tu transferencia / comprobante repetido"></textarea>
   `,async()=>{
+    const motivo = val("rechObs") || "Rechazada por el operador";
 
     const r = await actualizarSolicitudSupabase(id, {
       estado:"RECHAZADA",
       operador_usuario:operador.usuario || operador.nombre || ""
     });
 
-    if(!r.ok){
-      alert(r.error || "Error");
-      return;
+    if(!r.ok){ alert(r.error || "Error"); return; }
+
+    const usuario = s?.USUARIO || s?.USUARIO_JUGADOR || "";
+    const tipoEs = s ? normalizar(s.TIPO_SOLICITUD||s.TIPO) : "";
+    if(usuario){
+      const accion = tipoEs==="RETIRO"?"retiro":tipoEs==="CARGA"?"carga":tipoEs==="CAMBIO_CLAVE"?"cambio de clave":"solicitud";
+      await notificarUsuarioEnChat(usuario, `❌ Tu ${accion} fue rechazada.\n📝 Motivo: ${motivo}`);
     }
 
     cerrarModal();
     toast("Solicitud rechazada","red");
     await refrescarTodo(false);
-
   },"Rechazar");
 }
 
@@ -1821,6 +1838,62 @@ async function testRetirar(){
   }catch(err){ autoResBox("autoRetirarRes", false, "Error: " + err.message); }
 }
 
+// ── Notificación al usuario por chat ──────────────────────────────────────────
+// Le manda un mensaje al chat del usuario para que sepa el resultado de su solicitud.
+async function notificarUsuarioEnChat(usuarioNombre, mensaje){
+  if(!usuarioNombre || !mensaje) return;
+
+  // 1° busca un chat existente para ese usuario en esta PC
+  let chatId = null;
+  const chatLocal = chats.find(c=>normalizar(c.USUARIO)===normalizar(usuarioNombre));
+  if(chatLocal) chatId = chatLocal.ID_CHAT;
+
+  if(!chatId){
+    const {data} = await supabaseClient.from("chats")
+      .select("id")
+      .eq("usuario", usuarioNombre)
+      .eq("pc_codigo", pcOperativa)
+      .order("created_at",{ascending:false})
+      .limit(1);
+    if(data && data.length) chatId = data[0].id;
+  }
+
+  // 2° si no existe, crea uno (incluyendo datos del usuario si están)
+  if(!chatId){
+    const {data: usrData} = await supabaseClient.from("usuarios")
+      .select("nombre, telefono")
+      .eq("usuario", usuarioNombre).maybeSingle();
+
+    const {data: nuevo} = await supabaseClient.from("chats").insert({
+      usuario: usuarioNombre,
+      nombre_completo: usrData?.nombre || "",
+      telefono: usrData?.telefono || "",
+      pc_codigo: pcOperativa,
+      sin_leer: 1
+    }).select().single();
+    chatId = nuevo?.id;
+  }
+
+  if(!chatId) return;
+
+  // 3° envía el mensaje como OPERADOR/Sistema
+  await supabaseClient.from("mensajes_chat").insert({
+    chat_id: chatId,
+    mensaje,
+    tipo_emisor: "OPERADOR",
+    emisor: "Sistema",
+    pc_codigo: pcOperativa,
+    leido: false
+  });
+
+  // 4° actualiza el último mensaje del chat e incrementa sin_leer
+  await supabaseClient.from("chats").update({
+    ultimo_mensaje: mensaje,
+    fecha_ultimo: new Date().toISOString(),
+    sin_leer: (chatLocal?.SIN_LEER||0) + 1
+  }).eq("id", chatId);
+}
+
 async function ejecutarAutoClave(id){
   if(!window.ctrlElectron){ alert("La automatización solo funciona en la app de escritorio."); return; }
   const s = solicitudes.find(x=>String(x.ID||x.SOLICITUD_ID)===String(id));
@@ -1839,16 +1912,42 @@ async function ejecutarAutoClave(id){
 
   toast(`Buscando ${usuario}...`,"blue");
   const b = await callDrex("buscarUsuario", usuario);
-  if(!b.exists){ toast(`Usuario "${usuario}" no encontrado.`,"red"); return; }
+
+  if(!b.exists){
+    await actualizarSolicitudSupabase(id, {
+      estado: "RECHAZADA",
+      operador_usuario: operador.usuario || operador.nombre || ""
+    });
+    await notificarUsuarioEnChat(usuario,
+      `❌ Tu solicitud de cambio de clave fue rechazada: el alias "${usuario}" no se encontró en el sistema de juego. ` +
+      `Verificá que sea correcto o contactanos por acá.`);
+    toast(`Usuario "${usuario}" no encontrado · rechazada`,"red");
+    await refrescarTodo(false);
+    return;
+  }
 
   toast(`Cambiando clave a "${claveNueva}"...`,"blue");
   const r = await callDrex("cambiarClave", claveNueva);
-  if(r && r.ok === false){ toast("Error: "+(r.message||"falló el cambio"),"red"); return; }
+
+  if(r && r.ok === false){
+    await actualizarSolicitudSupabase(id, {
+      estado: "RECHAZADA",
+      operador_usuario: operador.usuario || operador.nombre || ""
+    });
+    await notificarUsuarioEnChat(usuario,
+      `❌ No pudimos cambiar tu clave: ${r.message || "error al ejecutar"}. Contactanos para revisarlo.`);
+    toast("Error: "+(r.message||"falló el cambio"),"red");
+    await refrescarTodo(false);
+    return;
+  }
 
   await actualizarSolicitudSupabase(id, {
     estado: "APROBADA",
     operador_usuario: operador.usuario || operador.nombre || ""
   });
+
+  await notificarUsuarioEnChat(usuario,
+    `✅ Tu clave fue actualizada correctamente.\n🔑 Nueva clave: *${claveNueva}*\nIngresá al casino con tu usuario y esta clave.`);
 
   toast(`Clave cambiada · ${usuario} → ${claveNueva}`, "green");
   await window.ctrlElectron.navigateAgent();
@@ -1896,6 +1995,93 @@ async function cargarSaldoRapido(usuario, monto){
   await window.ctrlElectron.navigateAgent();
 }
 
+async function ejecutarAutoRetiro(id){
+  if(!window.ctrlElectron){ alert("La automatización solo funciona en la app de escritorio."); return; }
+
+  const s = solicitudes.find(x=>String(x.ID||x.SOLICITUD_ID)===String(id));
+  if(!s){ alert("Solicitud no encontrada."); return; }
+
+  const usuario = s.USUARIO || s.USUARIO_JUGADOR || "";
+  const monto   = Number(s.MONTO_REAL || s.MONTO_DECLARADO || s.MONTO || 0);
+
+  if(!usuario){ alert("La solicitud no tiene usuario asociado."); return; }
+  if(!monto)  { alert("La solicitud no tiene monto válido."); return; }
+
+  // Política de 24hs
+  const check = await verificarRetiro24h(usuario);
+  if(check.bloqueado){
+    await notificarUsuarioEnChat(usuario, `⛔ Tu solicitud de retiro fue rechazada: ${check.mensaje}`);
+    await actualizarSolicitudSupabase(id, {
+      estado: "RECHAZADA",
+      operador_usuario: operador.usuario || operador.nombre || ""
+    });
+    toast(check.mensaje,"red");
+    await refrescarTodo(false);
+    return;
+  }
+
+  toast("Abriendo backoffice...","blue");
+  await window.ctrlElectron.openAgentWindow();
+
+  const estado = await callDrex("estadoPagina");
+  if(estado.needsLogin){ toast("Iniciá sesión en el backoffice primero.","red"); return; }
+
+  toast(`Buscando ${usuario}...`,"blue");
+  const b = await callDrex("buscarUsuario", usuario);
+  if(!b.exists){
+    await actualizarSolicitudSupabase(id, {
+      estado: "RECHAZADA",
+      operador_usuario: operador.usuario || operador.nombre || ""
+    });
+    await notificarUsuarioEnChat(usuario,
+      `❌ Tu retiro fue rechazado: el alias "${usuario}" no se encontró en el sistema de juego.`);
+    toast(`Usuario "${usuario}" no encontrado · rechazada`,"red");
+    await refrescarTodo(false);
+    return;
+  }
+
+  const saldo = b.balance?.value ?? -1;
+  if(saldo >= 0 && saldo < monto){
+    await actualizarSolicitudSupabase(id, {
+      estado: "RECHAZADA",
+      operador_usuario: operador.usuario || operador.nombre || ""
+    });
+    await notificarUsuarioEnChat(usuario,
+      `❌ Tu retiro de $${monto.toLocaleString("es-AR")} fue rechazado: saldo insuficiente (${b.balance.raw.trim()} disponible).`);
+    toast(`Saldo insuficiente: ${b.balance.raw.trim()}`,"red");
+    await window.ctrlElectron.navigateAgent();
+    await refrescarTodo(false);
+    return;
+  }
+
+  toast(`Retirando $${monto.toLocaleString("es-AR")}...`,"blue");
+  const r = await callDrex("retirarSaldo", monto);
+
+  if(r && r.ok === false){
+    await actualizarSolicitudSupabase(id, {
+      estado: "RECHAZADA",
+      operador_usuario: operador.usuario || operador.nombre || ""
+    });
+    await notificarUsuarioEnChat(usuario,
+      `❌ No pudimos procesar tu retiro: ${r.message||"falló"}. Contactanos.`);
+    toast("Error: "+(r.message||"falló"),"red");
+    await refrescarTodo(false);
+    return;
+  }
+
+  await actualizarSolicitudSupabase(id, {
+    estado: "PAGADA",
+    operador_usuario: operador.usuario || operador.nombre || ""
+  });
+
+  await notificarUsuarioEnChat(usuario,
+    `✅ Tu retiro de $${monto.toLocaleString("es-AR")} fue procesado. Lo transferimos a tu CBU/CVU.`);
+
+  toast(`Retiro automático completado · ${usuario} · $${monto.toLocaleString("es-AR")}`, "green");
+  await window.ctrlElectron.navigateAgent();
+  await refrescarTodo(false);
+}
+
 async function ejecutarAutoCarga(id){
   if(!window.ctrlElectron){ alert("La automatización solo funciona en la app de escritorio."); return; }
 
@@ -1920,7 +2106,14 @@ async function ejecutarAutoCarga(id){
   toast(`Buscando usuario ${usuario}...`,"blue");
   const busqueda = await callDrex("buscarUsuario", usuario);
   if(!busqueda.exists){
-    toast(`Usuario "${usuario}" no encontrado en el backoffice.`,"red");
+    await actualizarSolicitudSupabase(id, {
+      estado: "RECHAZADA",
+      operador_usuario: operador.usuario || operador.nombre || ""
+    });
+    await notificarUsuarioEnChat(usuario,
+      `❌ Tu carga de $${monto.toLocaleString("es-AR")} fue rechazada: el alias "${usuario}" no se encontró en el sistema de juego. Verificá tu usuario o contactanos.`);
+    toast(`Usuario "${usuario}" no encontrado · rechazada`,"red");
+    await refrescarTodo(false);
     return;
   }
 
@@ -1928,7 +2121,14 @@ async function ejecutarAutoCarga(id){
   const resultado = await callDrex("cargarSaldo", monto);
 
   if(!resultado.ok && resultado.ok !== undefined){
+    await actualizarSolicitudSupabase(id, {
+      estado: "RECHAZADA",
+      operador_usuario: operador.usuario || operador.nombre || ""
+    });
+    await notificarUsuarioEnChat(usuario,
+      `❌ Error al cargar tus $${monto.toLocaleString("es-AR")}: ${resultado.message || "sin detalle"}. Contactanos para revisarlo.`);
     toast("Error al cargar saldo: " + (resultado.message || "sin detalle"), "red");
+    await refrescarTodo(false);
     return;
   }
 
@@ -1936,6 +2136,9 @@ async function ejecutarAutoCarga(id){
     estado: "ACREDITADA",
     operador_usuario: operador.usuario || operador.nombre || ""
   });
+
+  await notificarUsuarioEnChat(usuario,
+    `✅ Tu carga fue acreditada: $${monto.toLocaleString("es-AR")}. ¡Ya podés jugar!`);
 
   toast(`Carga automática completada · ${usuario} · $${monto.toLocaleString("es-AR")}`, "green");
   await window.ctrlElectron.navigateAgent();
