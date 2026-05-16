@@ -114,7 +114,8 @@ function readUserBalance() {
   const modal = findActiveModal();
   if (!modal) return null;
   const inputs = Array.from(modal.querySelectorAll('input.Mui-disabled[disabled], input:disabled, input[readonly]')).filter(isVisible);
-  const bal = inputs.find(el => /ARS|^\$|\d/.test(el.value || ''));
+  // Sólo strings con "ARS" o "$" — no matchea el campo de monto (sólo dígitos)
+  const bal = inputs.find(el => /ARS|^\$/.test(el.value || ''));
   if (bal) return { raw: bal.value, value: parseMoney(bal.value) };
   return null;
 }
@@ -376,36 +377,51 @@ async function applyAmount(iconName, amount, actionName, options = {}) {
   const opened = await openMovementModal(iconName, options);
   if (opened.needsLogin) return opened;
 
-  // Para retiros: verificar saldo suficiente antes de confirmar
-  if (actionName === 'retiro' && opened.balance && opened.balance.value > 0) {
-    if (opened.balance.value < numericAmount) {
+  // Espera a que el modal termine de renderizar (React necesita tiempo)
+  await delay(500);
+
+  // Re-lee el balance directamente del modal (más confiable que el de openMovementModal)
+  const balance = readUserBalance() || opened.balance || { raw:'', value:0 };
+
+  // Para retiros: verifica saldo suficiente (sólo si hay un balance válido conocido)
+  if (actionName === 'retiro' && balance && balance.value > 0) {
+    if (balance.value < numericAmount) {
       await cerrarModalActual();
       return {
         ok: false,
         saldoInsuficiente: true,
-        balance: opened.balance,
-        message: `Saldo insuficiente: ${opened.balance.raw.trim()} disponible, se solicitaron $${numericAmount.toLocaleString('es-AR')}.`
+        balance,
+        message: `Saldo insuficiente: ${balance.raw.trim()} disponible, se solicitaron $${numericAmount.toLocaleString('es-AR')}.`
       };
     }
   }
 
-  setReactInputValue(opened.amountInput, String(amount));
-  await delay();
+  // Re-busca el input de monto (por si React reescribió el DOM al abrir el modal)
+  const amountInput = firstVisible(SELECTORS.amountInput) || opened.amountInput;
+  if (!amountInput) throw new Error('No se encontró el campo de monto.');
+  setReactInputValue(amountInput, String(amount));
+  await delay(400);
 
-  const applyButton = findActionButton(/aplicar/i) || firstVisible('button#btn_deposit, button.btn.btn-primary');
+  // Busca el botón Aplicar — id específico primero, luego texto, luego clase
+  const applyButton =
+    firstVisible('button#btn_deposit') ||
+    findActionButton(/^\s*aplicar\s*$/i) ||
+    firstVisible('button.btn.btn-primary');
+  if (!applyButton) throw new Error('No se encontró el botón "Aplicar".');
+  if (applyButton.disabled) throw new Error('El botón "Aplicar" está deshabilitado (¿monto inválido?).');
   clickElement(applyButton);
 
-  // Espera a que el modal cierre y lee el saldo resultante
-  await delay(800);
-  const newBalance = readVisibleBalance();
+  // Espera al resultado y lee el saldo nuevo
+  await delay(900);
+  const newBalance = readUserBalance() || readVisibleBalance();
 
   return {
     ok: true,
     action: actionName,
     amount: numericAmount,
-    previousBalance: opened.balance,
+    previousBalance: balance,
     newBalance,
-    message: `${actionName} enviado. Saldo anterior: ${opened.balance.raw.trim()}${newBalance.raw ? ' → ' + newBalance.raw.trim() : ''}.`
+    message: `${actionName} enviado. Saldo anterior: ${balance.raw?.trim() || '—'}${newBalance?.raw ? ' → ' + newBalance.raw.trim() : ''}.`
   };
 }
 
