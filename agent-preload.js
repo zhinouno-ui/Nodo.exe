@@ -94,16 +94,72 @@ function normalizeText(text) {
 }
 
 function parseMoney(value) {
-  const cleaned = String(value || '').replace(/[^\d,.-]/g, '').replace(/,/g, '');
-  const number = Number.parseFloat(cleaned);
+  // Formato argentino: "ARS 1.000,50" → 1000.50
+  let s = String(value || '').replace(/ /g, ' ').replace(/[^\d,.]/g, '');
+  if (s.includes(',')) {
+    // punto = separador de miles, coma = decimal
+    s = s.replace(/\./g, '').replace(',', '.');
+  }
+  const number = Number.parseFloat(s);
   return Number.isFinite(number) ? number : 0;
 }
 
 function readVisibleBalance() {
+  // Selector específico del backoffice: input MUI deshabilitado con el saldo
+  const specific = firstVisible('input.MuiInputBase-input.Mui-disabled[disabled], input.Mui-disabled[disabled][type="text"]');
+  if (specific && /ARS|^\$|\d{1,}/.test(specific.value || '')) {
+    return { raw: specific.value, value: parseMoney(specific.value) };
+  }
+  // Fallback genérico
   const candidates = visibleElements('input:disabled, input[readonly], input[aria-disabled="true"]');
-  const balanceInput = candidates.find(input => /ARS|\$|\d/.test(input.value || ''));
+  const balanceInput = candidates.find(el => /ARS|\$/.test(el.value || ''));
   const raw = balanceInput ? balanceInput.value : '';
   return { raw, value: parseMoney(raw) };
+}
+
+function readBalanceFromPlayerRow(playerEl) {
+  // Sube por el DOM hasta encontrar la fila (tr, li, o rol=row)
+  let row = playerEl;
+  for (let i = 0; i < 8; i++) {
+    const tag  = (row.tagName || '').toLowerCase();
+    const role = row.getAttribute?.('role') || '';
+    if (tag === 'tr' || role === 'row' || tag === 'li') break;
+    if (!row.parentElement) break;
+    row = row.parentElement;
+  }
+
+  // Intenta inputs deshabilitados dentro de la fila (columna Cantidad)
+  const inputs = Array.from(row.querySelectorAll('input:disabled, input[readonly], input[aria-disabled="true"]'));
+  const balInput = inputs.find(el => /ARS|^\$|\d{2,}/.test(el.value || ''));
+  if (balInput) return { raw: balInput.value, value: parseMoney(balInput.value) };
+
+  // Intenta celdas de texto con formato de dinero
+  const cells = Array.from(row.querySelectorAll('td, [role="cell"]'));
+  for (const cell of cells) {
+    const text = (cell.textContent || '').trim();
+    if (/ARS\s*[\d.,]/.test(text) || /^\$\s*[\d.,]/.test(text)) {
+      return { raw: text, value: parseMoney(text) };
+    }
+  }
+  return null;
+}
+
+async function leerSaldoViaModal() {
+  // Abre el modal de depósito, lee el saldo mostrado, cierra el modal
+  try {
+    clickButtonByIcon('circle-plus');
+    await delay(600);
+    const balance = readVisibleBalance();
+    // Cierra el modal con Escape
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true, cancelable: true }));
+    await delay(400);
+    // Fallback: busca botón de cancelar en el modal
+    const cancelBtn = Array.from(visibleElements('button')).find(b => /cancelar|cancel|cerrar|close/i.test(b.textContent || ''));
+    if (cancelBtn) { clickElement(cancelBtn); await delay(300); }
+    return balance;
+  } catch (_) {
+    return { raw: '', value: 0 };
+  }
 }
 
 function findSearchInput() {
@@ -155,11 +211,35 @@ function findSearchInput() {
 }
 
 function pageNeedsLogin() {
-  const hasSearch = document.querySelector(SELECTORS.searchButton) || document.querySelector(SELECTORS.playerAlias);
+  // Modal de sesión inválida (aparece cuando la sesión expira abruptamente)
+  const modal = document.querySelector('.ReactModal__Content');
+  if (modal && /session is invalid/i.test(modal.textContent || '')) return true;
+
+  // Pantalla de login — h4 con clase loginTitle o texto "login agente"
+  const allH4 = Array.from(document.querySelectorAll('h4'));
+  const loginH4 = allH4.find(h => /login agente/i.test(h.textContent || ''));
+  if (loginH4) return true;
+
+  // URL apunta a una ruta de login
+  if (/login|signin|sign-in/i.test(window.location.href)) return true;
+
+  // Botón "ENTRAR" visible sin botón de búsqueda = pantalla de login
+  const hasSearch = document.querySelector(SELECTORS.searchButton) || firstVisible(SELECTORS.playerAlias);
   if (hasSearch) return false;
-  const password = document.querySelector('input[type="password"]');
-  const loginButton = Array.from(document.querySelectorAll('button')).find(btn => /ingresar|login|iniciar|sign in/i.test(btn.textContent || ''));
-  return Boolean(password || loginButton);
+
+  const entrarBtn = Array.from(document.querySelectorAll('button')).find(btn => /entrar|ingresar|login|iniciar|sign in/i.test(btn.textContent || ''));
+  const password  = document.querySelector('input[type="password"]');
+  return Boolean(entrarBtn || password);
+}
+
+// Cierra el modal de sesión inválida si está presente y retorna true si lo hizo
+async function cerrarModalSesionInvalida() {
+  const modal = document.querySelector('.ReactModal__Content');
+  if (!modal) return false;
+  if (!/session is invalid/i.test(modal.textContent || '')) return false;
+  const acceptBtn = Array.from(modal.querySelectorAll('button')).find(b => /accept|aceptar/i.test(b.textContent || ''));
+  if (acceptBtn) { clickElement(acceptBtn); await delay(600); }
+  return true;
 }
 
 function status(extra = {}) {
@@ -176,8 +256,16 @@ function status(extra = {}) {
 }
 
 async function ensureUserSearchReady() {
+  // Cierra el modal de sesión inválida antes de evaluar el estado
+  await cerrarModalSesionInvalida();
   if (pageNeedsLogin()) return status();
-  await waitFor(() => document.querySelector(SELECTORS.searchButton) || document.querySelector(SELECTORS.playerAlias));
+  try {
+    await waitFor(() => document.querySelector(SELECTORS.searchButton) || firstVisible(SELECTORS.playerAlias));
+  } catch (_) {
+    // Si agotó el timeout, re-chequea login (puede haber redirigido)
+    await cerrarModalSesionInvalida();
+    return status();
+  }
   return status();
 }
 
@@ -195,26 +283,50 @@ async function buscarUsuario(usuario, options = {}) {
 
   clickElement(await waitFor(() => firstVisible(SELECTORS.searchButton), options.timeout || DEFAULT_TIMEOUT));
 
-  const wanted = String(usuario).trim().toLowerCase();
+  const wanted = String(usuario).trim();
+
   await waitFor(() => {
     const noData = firstVisible(SELECTORS.noResults);
     const player = firstVisible(SELECTORS.playerAlias);
-    const playerText = normalizeText(player ? player.textContent : '').toLowerCase();
-    return noData || (player && (!playerText || playerText.includes(wanted) || wanted.includes(playerText)));
+    return noData || player;
   }, options.timeout || DEFAULT_TIMEOUT);
+
+  // Re-chequea login por si el timeout ocultó una redirección
+  await cerrarModalSesionInvalida();
+  if (pageNeedsLogin()) return status();
 
   const noResults = firstVisible(SELECTORS.noResults);
   if (noResults) {
-    return { ok: true, exists: false, user: String(usuario).trim(), message: normalizeText(noResults.textContent) };
+    return { ok: true, exists: false, user: wanted, message: normalizeText(noResults.textContent) };
   }
 
   const player = firstVisible(SELECTORS.playerAlias);
-  return {
-    ok: true,
-    exists: Boolean(player),
-    user: normalizeText(player ? player.textContent : usuario),
-    balance: readVisibleBalance()
-  };
+  const playerAlias = normalizeText(player ? player.textContent : '');
+
+  // Match exacto: normaliza quitando acentos, espacios y comparando en minúsculas
+  function normAlias(s) {
+    return s.toLowerCase().replace(/[\s ]+/g, '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+  }
+  const exactMatch = normAlias(playerAlias) === normAlias(wanted);
+
+  if (!exactMatch) {
+    return {
+      ok: true,
+      exists: false,
+      user: playerAlias,
+      message: `El alias encontrado "${playerAlias}" no coincide exactamente con "${wanted}".`
+    };
+  }
+
+  // 1 intenta leer el saldo directo de la fila (columna Cantidad)
+  let balance = player ? readBalanceFromPlayerRow(player) : null;
+
+  // 2 si no hay nada, abre el modal de deposito, lee y lo cierra
+  if (!balance || (!balance.raw && balance.value === 0)) {
+    balance = await leerSaldoViaModal();
+  }
+
+  return { ok: true, exists: true, user: playerAlias, balance };
 }
 
 async function openMovementModal(iconName, options = {}) {
@@ -231,6 +343,13 @@ function findActionButton(textPattern, root = document) {
   return buttons.find(btn => textPattern.test(btn.textContent || '')) || null;
 }
 
+async function cerrarModalActual() {
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true, cancelable: true }));
+  await delay(400);
+  const cancelBtn = Array.from(visibleElements('button')).find(b => /cancelar|cancel|cerrar|close/i.test(b.textContent || ''));
+  if (cancelBtn) { clickElement(cancelBtn); await delay(300); }
+}
+
 async function applyAmount(iconName, amount, actionName, options = {}) {
   const numericAmount = Number(String(amount).replace(',', '.'));
   if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
@@ -240,18 +359,36 @@ async function applyAmount(iconName, amount, actionName, options = {}) {
   const opened = await openMovementModal(iconName, options);
   if (opened.needsLogin) return opened;
 
+  // Para retiros: verificar saldo suficiente antes de confirmar
+  if (actionName === 'retiro' && opened.balance && opened.balance.value > 0) {
+    if (opened.balance.value < numericAmount) {
+      await cerrarModalActual();
+      return {
+        ok: false,
+        saldoInsuficiente: true,
+        balance: opened.balance,
+        message: `Saldo insuficiente: ${opened.balance.raw.trim()} disponible, se solicitaron $${numericAmount.toLocaleString('es-AR')}.`
+      };
+    }
+  }
+
   setReactInputValue(opened.amountInput, String(amount));
   await delay();
 
   const applyButton = findActionButton(/aplicar/i) || firstVisible('button#btn_deposit, button.btn.btn-primary');
   clickElement(applyButton);
 
+  // Espera a que el modal cierre y lee el saldo resultante
+  await delay(800);
+  const newBalance = readVisibleBalance();
+
   return {
     ok: true,
     action: actionName,
     amount: numericAmount,
     previousBalance: opened.balance,
-    message: `${actionName} enviado. Confirmá el resultado en la página externa.`
+    newBalance,
+    message: `${actionName} enviado. Saldo anterior: ${opened.balance.raw.trim()}${newBalance.raw ? ' → ' + newBalance.raw.trim() : ''}.`
   };
 }
 

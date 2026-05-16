@@ -1,0 +1,16 @@
+{
+  "name": "nodo-operativo",
+  "version": "1.0.0",
+  "description": "NODO · OPERATIVO — Panel de operaciones",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.105.4"
+  },
+  "devDependencies": {
+    "electron": "^32.3.3"
+  }
+}

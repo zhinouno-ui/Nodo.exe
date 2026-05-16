@@ -108,6 +108,8 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
       <button id="navSolicitudes" class="nav-btn" onclick="mostrarVista('solicitudes')">📋 Solicitudes <span id="badgeSolicitudes" class="badge-alert hidden">0</span></button>
       <button id="navBilleteras" class="nav-btn" onclick="mostrarVista('billeteras')">💳 Billeteras</button>
       <button id="navChat" class="nav-btn" onclick="mostrarVista('chat')">💬 Chat <span id="badgeChat" class="badge-alert badge-chat hidden">0</span></button>
+      <button id="navJugadores" class="nav-btn" onclick="mostrarVista('jugadores')">🏅 Jugadores</button>
+      <button id="navAuto" class="nav-btn hidden" onclick="mostrarVista('auto')" style="border:1px solid rgba(124,58,237,.5)">⚡ Automatización</button>
 
       <button class="nav-btn" onclick="cerrarSesion()">🚪 Cerrar sesión</button>
     </aside>
@@ -216,6 +218,124 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
           </div>
         </div>
       </section>
+
+      <section id="viewJugadores" class="hidden">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+          <div>
+            <h1 style="font-size:26px">🏅 Jugadores</h1>
+            <div class="small">Usuarios registrados · score · distribución de cargas por turno (TM/TT/TN).</div>
+          </div>
+          <button class="mini-btn blue" onclick="cargarJugadores()">🔄 Actualizar</button>
+        </div>
+
+        <!-- Stats resumen -->
+        <div class="card" style="margin-bottom:12px;padding:14px">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">
+            <div class="stat-card" style="padding:12px"><div class="stat-title">Total</div><div class="stat-value" id="jugTotalCount" style="font-size:22px">—</div></div>
+            <div class="stat-card" style="padding:12px"><div class="stat-title" style="color:#fdb022">VIP/Pref.</div><div class="stat-value" id="jugVipCount" style="font-size:22px;color:#fdb022">—</div></div>
+            <div class="stat-card" style="padding:12px"><div class="stat-title" style="color:#12b76a">Confiables</div><div class="stat-value" id="jugConfiableCount" style="font-size:22px;color:#12b76a">—</div></div>
+            <div class="stat-card" style="padding:12px"><div class="stat-title">Nuevos</div><div class="stat-value" id="jugNuevoCount" style="font-size:22px">—</div></div>
+          </div>
+        </div>
+
+        <!-- Crear usuario -->
+        <div class="card" style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <b>➕ Crear usuario</b>
+            <button class="mini-btn gray" onclick="toggleCrear()" id="btnToggleCrear">Mostrar</button>
+          </div>
+          <div id="formCrearUsuario" class="hidden">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:10px">
+              <div><label class="small">Usuario</label><input id="jugNuevoUsuario" placeholder="sin espacios" autocapitalize="none" style="margin-top:4px"></div>
+              <div><label class="small">Nombre completo</label><input id="jugNuevoNombre" placeholder="Nombre" style="margin-top:4px"></div>
+              <div><label class="small">Teléfono</label><input id="jugNuevoTelefono" placeholder="5491123..." style="margin-top:4px"></div>
+              <div><label class="small">PC</label><input id="jugNuevoPc" placeholder="SANCHEZ" style="margin-top:4px"></div>
+              <div><label class="small">Clave (default: 12345a)</label><input id="jugNuevoClave" placeholder="12345a" style="margin-top:4px"></div>
+            </div>
+            <div id="jugCrearMsg"></div>
+            <button class="btn btn-green" style="max-width:220px" onclick="crearUsuarioPanel()">Crear usuario</button>
+          </div>
+        </div>
+
+        <!-- Filtros + tabla -->
+        <div class="card">
+          <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+            <input id="jugFiltroTexto" placeholder="Buscar usuario / nombre..." oninput="filtrarJugadores()" style="max-width:220px">
+            <select id="jugFiltroNivel" onchange="filtrarJugadores()">
+              <option value="">Todos los niveles</option>
+              <option value="VIP">VIP</option>
+              <option value="Preferencial">Preferencial</option>
+              <option value="Confiable">Confiable</option>
+              <option value="Regular">Regular</option>
+              <option value="Nuevo">Nuevo</option>
+            </select>
+            <select id="jugFiltroPc" onchange="filtrarJugadores()">
+              <option value="">Todas las PCs</option>
+            </select>
+            <select id="jugFiltroTurno" onchange="filtrarJugadores()">
+              <option value="">Todos los turnos</option>
+              <option value="TM">TM (06-14)</option>
+              <option value="TT">TT (14-22)</option>
+              <option value="TN">TN (22-06)</option>
+            </select>
+          </div>
+          <div id="tablaJugadores"></div>
+        </div>
+      </section>
+
+      <section id="viewAuto" class="hidden">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+          <div>
+            <h1 style="font-size:26px">⚡ Automatización</h1>
+            <div class="small">Panel de prueba — cargas y retiros automáticos en el backoffice del casino.</div>
+          </div>
+          <button class="mini-btn purple" onclick="abrirBackoffice()">🖥 Abrir backoffice</button>
+        </div>
+
+        <div class="top-grid" style="margin-bottom:18px">
+          <div class="stat-card">
+            <div class="stat-title">Estado backoffice</div>
+            <div class="stat-value" id="autoEstadoVal" style="font-size:16px;margin-top:6px">—</div>
+            <div class="stat-sub" id="autoEstadoMsg">Sin verificar</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">Último resultado</div>
+            <div class="stat-value" id="autoResultVal" style="font-size:15px;margin-top:6px;word-break:break-all">—</div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px">
+
+          <div class="card">
+            <div class="card-title">🔍 Buscar usuario</div>
+            <label>Usuario (alias del jugador)</label>
+            <input id="autoUsuario" type="text" placeholder="Ej: aaal67" style="margin-bottom:12px">
+            <button class="btn btn-primary" onclick="testBuscar()">Buscar</button>
+            <div id="autoBuscarRes" style="margin-top:10px"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">➕ Cargar saldo</div>
+            <label>Usuario</label>
+            <input id="autoCargarUsuario" type="text" placeholder="Ej: aaal67" style="margin-bottom:12px">
+            <label>Monto (ARS)</label>
+            <input id="autoCargarMonto" type="number" min="1" placeholder="Ej: 1000" style="margin-bottom:12px">
+            <button class="btn btn-green" onclick="testCargar()">Cargar saldo</button>
+            <div id="autoCargarRes" style="margin-top:10px"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">➖ Retirar saldo</div>
+            <label>Usuario</label>
+            <input id="autoRetirarUsuario" type="text" placeholder="Ej: aaal67" style="margin-bottom:12px">
+            <label>Monto (ARS)</label>
+            <input id="autoRetirarMonto" type="number" min="1" placeholder="Ej: 500" style="margin-bottom:12px">
+            <button class="btn btn-red" onclick="testRetirar()">Retirar saldo</button>
+            <div id="autoRetirarRes" style="margin-top:10px"></div>
+          </div>
+
+        </div>
+      </section>
     </main>
   </div>
 </div>
@@ -241,13 +361,13 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
   </div>
 </div>
 
-<script src="NODO%20%C2%B7%20OPERATIVO%20LITE_files/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
 <script>
 const API_URL = "https://script.google.com/macros/s/AKfycbwvZGRAOxBLNIQ52mlED6ZlsOkpAd2PicOvmlZFBTKptXR5lnC_n87w-awDvowmktI8/exec";
 
-const SUPABASE_URL = "https://pjvvyvfcwjoocjqvdror.supabase.co";
-const SUPABASE_KEY = "sb_publishable_NYqRoKptTgcL90VAVF2kqA_Gl06mEUF";
+const SUPABASE_URL = "https://gxedxuctwlkjllmayxaa.supabase.co";
+const SUPABASE_KEY = "sb_publishable_UlAN1ifdqpTj9pDIwFU0vg_S7AIU5Sg";
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let operador=null, pcOperativa=null;
@@ -323,7 +443,256 @@ function formatearHoraChat(fechaRaw){
 }
 
 
+// ── Jugadores ─────────────────────────────────────────────────────────────────
+let todosLosJugadores = [];
+
+function getTurno(fechaISO){
+  if(!fechaISO) return "TN";
+  // Hora en Argentina (UTC-3)
+  const h = new Date(new Date(fechaISO).getTime() - 3*60*60*1000).getUTCHours();
+  if(h>=6  && h<14) return "TM";
+  if(h>=14 && h<22) return "TT";
+  return "TN";
+}
+
+function calcularTurnos(usuarioNombre){
+  const cargas = solicitudes.filter(s=>
+    normalizar(s.USUARIO||s.USUARIO_JUGADOR||"")===normalizar(usuarioNombre) &&
+    normalizar(s.TIPO_SOLICITUD||s.TIPO||"")==="CARGA" && esRealizada(s)
+  );
+  const cnt={TM:0,TT:0,TN:0};
+  cargas.forEach(s=>cnt[getTurno(s.FECHA_CREACION||s.FECHA)]++);
+  const total=cnt.TM+cnt.TT+cnt.TN;
+  if(!total) return {TM:0,TT:0,TN:0,total:0,dominante:""};
+  const pct={
+    TM:Math.round(cnt.TM/total*100),
+    TT:Math.round(cnt.TT/total*100),
+    TN:Math.round(cnt.TN/total*100),
+    total
+  };
+  pct.dominante=pct.TM>=pct.TT&&pct.TM>=pct.TN?"TM":pct.TT>=pct.TN?"TT":"TN";
+  return pct;
+}
+
+function turnoBar(pct, turno, color){
+  if(!pct.total) return `<span style="color:#667085">—</span>`;
+  const v=pct[turno]||0;
+  return `<div title="${turno}: ${v}%" style="display:flex;align-items:center;gap:4px;font-size:12px">
+    <div style="width:48px;height:6px;background:#2a2f3b;border-radius:3px;overflow:hidden">
+      <div style="width:${v}%;height:100%;background:${color};border-radius:3px"></div>
+    </div>
+    <span style="min-width:28px">${v}%</span>
+  </div>`;
+}
+
+function toggleCrear(){
+  const el=document.getElementById("formCrearUsuario");
+  const btn=document.getElementById("btnToggleCrear");
+  const oculto=el.classList.contains("hidden");
+  el.classList.toggle("hidden",!oculto);
+  btn.innerText=oculto?"Ocultar":"Mostrar";
+}
+
+async function crearUsuarioPanel(){
+  const usuario_nuevo = document.getElementById("jugNuevoUsuario")?.value?.trim().toLowerCase().replace(/\s+/g,"");
+  const nombre        = document.getElementById("jugNuevoNombre")?.value?.trim();
+  const telefono      = document.getElementById("jugNuevoTelefono")?.value?.replace(/\D/g,"")||"";
+  const pc            = document.getElementById("jugNuevoPc")?.value?.trim().toUpperCase()||pcOperativa;
+  const clave         = document.getElementById("jugNuevoClave")?.value?.trim()||"12345a";
+
+  if(!usuario_nuevo||!nombre||!telefono){setBox("jugCrearMsg",`<div class="err-box">Completá usuario, nombre y teléfono.</div>`);return}
+
+  const {error}=await supabaseClient.from("usuarios").insert({usuario:usuario_nuevo,nombre,telefono,pc_codigo:pc,clave});
+  if(error){
+    setBox("jugCrearMsg",`<div class="err-box">${error.code==="23505"?"Ese usuario ya existe.":error.message}</div>`);
+    return;
+  }
+
+  setBox("jugCrearMsg",`<div class="ok-box">Usuario <b>${usuario_nuevo}</b> creado. Clave: <b>${clave}</b></div>`);
+  ["jugNuevoUsuario","jugNuevoNombre","jugNuevoTelefono","jugNuevoClave"].forEach(id=>{const el=document.getElementById(id);if(el)el.value=""});
+  toast("Usuario creado","green");
+  await cargarJugadores();
+}
+
+function copiarDatosUsuario(u){
+  const txt=`Usuario: ${u.usuario}\nNombre: ${u.nombre}\nTeléfono: ${u.telefono||""}\nPC: ${u.pc_codigo||""}\nClave: ${u.clave||"12345a"}`;
+  navigator.clipboard?.writeText(txt).then(()=>toast("Datos copiados","green")).catch(()=>{});
+}
+
+async function resetearClaveUsuario(id, nombreUsuario){
+  if(!confirm(`¿Resetear clave de "${nombreUsuario}" a 12345a?`)) return;
+  const {error}=await supabaseClient.from("usuarios").update({clave:"12345a"}).eq("id",id);
+  if(!error) toast(`Clave de ${nombreUsuario} reseteada a 12345a`,"green");
+}
+
+async function cargarJugadores(){
+  setBox("tablaJugadores",`<div class="alert-box">Cargando...</div>`);
+
+  // Carga todos los usuarios (sin filtrar por PC para que el franquero vea todo)
+  const {data,error}=await supabaseClient.from("usuarios").select("*").order("created_at",{ascending:false});
+  if(error){setBox("tablaJugadores",`<div class="err-box">Error cargando jugadores.</div>`);return}
+
+  const lista=(data||[]).map(u=>({
+    ...u,
+    lealtad:calcularLealtad(u.usuario),
+    turnos:calcularTurnos(u.usuario)
+  }));
+  lista.sort((a,b)=>b.lealtad.score-a.lealtad.score);
+  todosLosJugadores=lista;
+
+  // Pobla filtro de PCs
+  const pcs=[...new Set(lista.map(u=>u.pc_codigo).filter(Boolean))].sort();
+  const sel=document.getElementById("jugFiltroPc");
+  if(sel){
+    sel.innerHTML=`<option value="">Todas las PCs</option>`+pcs.map(p=>`<option value="${p}">${p}</option>`).join("");
+  }
+
+  // Stats
+  setBox("jugTotalCount",lista.length);
+  setBox("jugVipCount",  lista.filter(u=>["VIP","Preferencial"].includes(u.lealtad.nivel)).length);
+  setBox("jugConfiableCount",lista.filter(u=>u.lealtad.nivel==="Confiable").length);
+  setBox("jugNuevoCount",lista.filter(u=>["Nuevo","Regular"].includes(u.lealtad.nivel)).length);
+
+  renderTablaJugadores(lista);
+}
+
+function filtrarJugadores(){
+  const texto  =(document.getElementById("jugFiltroTexto")?.value||"").trim().toLowerCase();
+  const nivel  = document.getElementById("jugFiltroNivel")?.value||"";
+  const pc     = document.getElementById("jugFiltroPc")?.value||"";
+  const turno  = document.getElementById("jugFiltroTurno")?.value||"";
+  let lista=todosLosJugadores;
+  if(texto)  lista=lista.filter(u=>`${u.usuario} ${u.nombre} ${u.telefono}`.toLowerCase().includes(texto));
+  if(nivel)  lista=lista.filter(u=>u.lealtad.nivel===nivel);
+  if(pc)     lista=lista.filter(u=>u.pc_codigo===pc);
+  if(turno)  lista=lista.filter(u=>u.turnos.dominante===turno);
+  renderTablaJugadores(lista);
+}
+
+function renderTablaJugadores(lista){
+  if(!lista.length){setBox("tablaJugadores",`<div class="alert-box">Sin jugadores para mostrar.</div>`);return}
+
+  const colores={muted:"#667085",blue:"#3d5afe",green:"#12b76a",purple:"#7c3aed",yellow:"#fdb022"};
+  const bg={muted:"#2a2f3b",blue:"#16235f",green:"#11371f",purple:"#2e1a5e",yellow:"#3d2d00"};
+
+  let html=`<div class="table-wrap"><table><thead><tr>
+    <th>Usuario</th><th>Nombre</th><th>PC</th>
+    <th>Score</th><th>Éxito</th><th>Ops</th>
+    <th title="Turno mañana 06-14">☀ TM</th>
+    <th title="Turno tarde 14-22">🌆 TT</th>
+    <th title="Turno noche 22-06">🌙 TN</th>
+    <th>Acciones</th>
+  </tr></thead><tbody>`;
+
+  lista.forEach(u=>{
+    const l=u.lealtad, t=u.turnos;
+    const c=colores[l.color]||colores.muted;
+    const bgc=bg[l.color]||bg.muted;
+    const id=u.id;
+    html+=`<tr>
+      <td><b>${u.usuario}</b><br><span class="small">${u.clave?"🔑 clave set":"🔓 sin clave"}</span></td>
+      <td>${u.nombre||"-"}<br><span class="small">${u.dni?"DNI: "+u.dni:""}</span></td>
+      <td><span class="badge badge-muted">${u.pc_codigo||"-"}</span></td>
+      <td>
+        <span style="padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;background:${bgc};color:${c}">${l.nivel}</span>
+        <b style="margin-left:4px">${l.score}</b><br>
+        <span class="small" style="color:${l.tasa>=80?"var(--green)":l.tasa>=50?"var(--yellow)":"var(--red)"}">${l.tasa}% éxito</span>
+      </td>
+      <td>${l.aprobadas}✓ ${l.rechazadas>0?`<span style="color:var(--red)">${l.rechazadas}✗</span>`:""}</td>
+      <td>${money(l.totalMonto)}</td>
+      <td>${turnoBar(t,"TM","#f6c90e")}</td>
+      <td>${turnoBar(t,"TT","#3d5afe")}</td>
+      <td>${turnoBar(t,"TN","#7c3aed")}</td>
+      <td>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <button class="mini-btn blue" onclick='copiarDatosUsuario(${JSON.stringify({usuario:u.usuario,nombre:u.nombre,telefono:u.telefono,pc_codigo:u.pc_codigo,clave:u.clave||"12345a"})})'>📋 Copiar</button>
+          <button class="mini-btn yellow" onclick="resetearClaveUsuario('${id}','${u.usuario}')">🔑 Reset clave</button>
+        </div>
+      </td>
+    </tr>`;
+  });
+
+  html+=`</tbody></table></div>`;
+  setBox("tablaJugadores",html);
+}
+
+// ── Control de retiros: 1 cada 24hs por usuario ──────────────────────────────
+async function verificarRetiro24h(usuario) {
+  const hace24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabaseClient
+    .from("solicitudes")
+    .select("id, created_at, monto, estado")
+    .eq("usuario", usuario)
+    .eq("tipo", "RETIRO")
+    .in("estado", ["PAGADA", "APROBADA", "ACREDITADA"])
+    .gte("created_at", hace24h)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (error) return { bloqueado: false }; // si falla la consulta, no bloqueamos
+
+  if (!data || !data.length) return { bloqueado: false };
+
+  const retiro = data[0];
+  const hace = Date.now() - new Date(retiro.created_at).getTime();
+  const horasRestantes = Math.ceil((24 * 60 * 60 * 1000 - hace) / (60 * 60 * 1000));
+
+  return {
+    bloqueado: true,
+    horasRestantes,
+    monto: retiro.monto,
+    fecha: retiro.created_at,
+    mensaje: `El usuario ya realizó un retiro hace ${Math.floor(hace / (60 * 60 * 1000))}hs. Puede volver a retirar en ${horasRestantes}hs.`
+  };
+}
+
 function esPendiente(s){const e=normalizar(s.ESTADO);return e.includes("PENDIENTE")||e==="NUEVA"||e==="NUEVO"||e==="EN_REVISION"}
+
+// ── Sistema de lealtad ────────────────────────────────────────────────────────
+// Lógica: el volumen exitoso pesa más que los rechazos.
+// Los rechazos penalizan según su TASA (rechazados/total), no su cantidad absoluta.
+// Ejemplo: 500 exitosas + 20 rechazadas → tasa 3.8% → penalización mínima → score alto.
+function calcularLealtad(usuarioNombre){
+  const todas = solicitudes.filter(s=>normalizar(s.USUARIO||s.USUARIO_JUGADOR||"")===normalizar(usuarioNombre));
+  const aprobadas  = todas.filter(esRealizada).length;
+  const rechazadas = todas.filter(s=>normalizar(s.ESTADO)==="RECHAZADA").length;
+  const totalOps   = aprobadas + rechazadas;
+  const totalMonto = todas.filter(esRealizada).reduce((a,s)=>a+Number(s.MONTO_REAL||s.MONTO_DECLARADO||s.MONTO||0),0);
+
+  if(totalOps===0) return {score:5,nivel:"Nuevo",color:"muted",aprobadas:0,rechazadas:0,tasa:100,totalMonto:0};
+
+  const tasaExito  = aprobadas/totalOps;                        // 0–1
+
+  // Volumen: logarítmico, tope 35 pts. 10 ops → ~17pts, 100 ops → ~35pts, 500 → 35pts
+  const volScore   = Math.min(Math.log10(aprobadas+1)*17.5, 35);
+
+  // Tasa de éxito: pesa 45 pts — el factor más importante
+  const rateScore  = tasaExito * 45;
+
+  // Monto total operado: logarítmico, tope 20 pts
+  const montoScore = Math.min(Math.log10(totalMonto/1000+1)*10, 20);
+
+  const score = Math.round(Math.min(volScore+rateScore+montoScore, 100));
+
+  let nivel,color;
+  if(score<15){nivel="Nuevo";color="muted"}
+  else if(score<35){nivel="Regular";color="blue"}
+  else if(score<55){nivel="Confiable";color="green"}
+  else if(score<75){nivel="Preferencial";color="purple"}
+  else{nivel="VIP";color="yellow"}
+
+  return {score,nivel,color,aprobadas,rechazadas,tasa:Math.round(tasaExito*100),totalMonto};
+}
+
+function scoreBadge(usuarioNombre){
+  const l=calcularLealtad(usuarioNombre);
+  const colores={muted:"#667085",blue:"#3d5afe",green:"#12b76a",purple:"#7c3aed",yellow:"#fdb022"};
+  const bg={muted:"#2a2f3b",blue:"#16235f",green:"#11371f",purple:"#2e1a5e",yellow:"#3d2d00"};
+  const color=colores[l.color]||colores.muted;
+  const bgc=bg[l.color]||bg.muted;
+  return `<span title="${l.aprobadas} aprobadas · ${l.rechazadas} rechazadas · ${l.tasa}% éxito" style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:${bgc};color:${color};cursor:help">${l.nivel} ${l.score}</span>`;
+}
 function esRealizada(s){const e=normalizar(s.ESTADO);return ["APROBADA_MANUAL","APROBADA_MANUAL_OK","ACREDITADA","PAGADA","APROBADA"].includes(e)}
 function estadoBadge(e){const x=normalizar(e);if(esRealizada({ESTADO:e}))return`<span class="badge badge-ok">${e}</span>`;if(["RECHAZADA","ERROR"].includes(x))return`<span class="badge badge-danger">${e}</span>`;return`<span class="badge badge-pending">${e||"-"}</span>`}
 function escapeHtml(text){return String(text||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;")}
@@ -447,15 +816,36 @@ async function login(){
   const clave=val("loginClave").trim();
   if(!usuario||!clave){setBox("loginMsg",`<div class="alert-box">Completá usuario y clave.</div>`);return}
   setBox("loginMsg",`<div class="alert-box">Ingresando...</div>`);
-  const r=await api({action:"login",usuario,clave});
-  if(!r.ok){setBox("loginMsg",`<div class="err-box">${r.error||"Error"}</div>`);return}
-  operador=r.operador;
-  const esFranq=normalizar(operador.tipoOperador)==="FRANQUERO";
-  if(operador.requiereSeleccionPc||esFranq){
-    abrirSelectorPc(operador.pcsDisponibles||["P1","P2","P3","P4","P5"]);
+
+  const {data,error}=await supabaseClient
+    .from("operadores")
+    .select("*")
+    .eq("usuario",usuario)
+    .eq("clave",clave)
+    .eq("activo",true)
+    .single();
+
+  if(error||!data){
+    setBox("loginMsg",`<div class="err-box">Usuario o clave incorrectos.</div>`);
     return;
   }
-  pcOperativa=operador.pc||operador.PC||"";
+
+  operador={
+    usuario:data.usuario,
+    nombre:data.nombre,
+    rol:data.rol,
+    tipoOperador:data.tipo_operador,
+    pc:data.pc_codigo||"",
+    pcsDisponibles:data.pcs_disponibles||[],
+    requiereSeleccionPc:data.tipo_operador==="FRANQUERO"||!data.pc_codigo
+  };
+
+  const esFranq=normalizar(operador.tipoOperador)==="FRANQUERO";
+  if(operador.requiereSeleccionPc||esFranq){
+    abrirSelectorPc(operador.pcsDisponibles.length?operador.pcsDisponibles:["P1","P2","P3","P4","P5"]);
+    return;
+  }
+  pcOperativa=operador.pc||"";
   finalizarLogin(true);
 }
 
@@ -524,7 +914,7 @@ function iniciarRealtimeSolicitudes(){
 
 
 function mostrarVista(vista){
-  ["Inicio","Solicitudes","Billeteras","Chat"].forEach(v=>{
+  ["Inicio","Solicitudes","Billeteras","Chat","Jugadores","Auto"].forEach(v=>{
     document.getElementById("view"+v)?.classList.add("hidden");
     document.getElementById("nav"+v)?.classList.remove("active");
   });
@@ -534,6 +924,8 @@ function mostrarVista(vista){
   if(vista==="solicitudes")renderSolicitudes();
   if(vista==="billeteras")cargarBilleteras();
   if(vista==="chat")cargarChats();
+  if(vista==="jugadores")cargarJugadores();
+  if(vista==="auto")verificarEstadoBackoffice();
   cerrarMenuMobile();
 }
 
@@ -559,16 +951,47 @@ async function cargarSolicitudes(silencioso=false){
   verificarSolicitudes(silencioso);
 }
 async function cargarBilleteras(render=true){
-  const r=await api({action:"getbilleteras",usuario:operador.usuario,operador:operador.nombre,pc:pcOperativa});
-  if(!r.ok)return;
-  billeteras=r.billeteras||[];
+  const {data,error}=await supabaseClient
+    .from("billeteras")
+    .select("*")
+    .eq("pc_codigo",pcOperativa)
+    .order("nombre_visible",{ascending:true});
+
+  if(error){console.error("Error billeteras:",error);return}
+
+  billeteras=(data||[]).map(b=>({
+    ID_BILLETERA:b.id,
+    NOMBRE_VISIBLE:b.nombre_visible,
+    TIPO:b.tipo||"",
+    PC:b.pc_codigo,
+    ACTIVA:b.activa?"SI":"NO",
+    SELECCIONADA_MANUAL:b.seleccionada_manual?"SI":"NO"
+  }));
+
   if(render)renderBilleteras();
   renderInicio();
 }
 async function cargarChats(silencioso=false){
-  const r=await api({action:"listarchatspendientes",usuario:operador.usuario,operador:operador.nombre,pc:pcOperativa,pcOperativa});
-  if(!r.ok){return}
-  chats=r.chats||r.data||[];
+  const {data,error}=await supabaseClient
+    .from("chats")
+    .select("*")
+    .eq("pc_codigo",pcOperativa)
+    .order("fecha_ultimo",{ascending:false});
+
+  if(error){return}
+
+  chats=(data||[]).map(c=>({
+    ID_CHAT:c.id,
+    USUARIO:c.usuario,
+    NOMBRE_COMPLETO:c.nombre_completo||"",
+    TELEFONO:c.telefono||"",
+    SOLICITUD_ID:c.solicitud_id||"",
+    SIN_LEER:c.sin_leer||0,
+    ULTIMO_MENSAJE:c.ultimo_mensaje||"",
+    FECHA_ULTIMO:c.fecha_ultimo||c.created_at,
+    FECHA:c.fecha_ultimo||c.created_at
+  }));
+
   renderChatList();
   renderInicio();
   verificarChats(silencioso);
@@ -608,7 +1031,7 @@ function tablaSolicitudesHTML(lista){
     html+=`<tr>
       <td>${formatFecha(s.FECHA_CREACION||s.FECHA)}</td>
       <td>${tipo}</td>
-      <td><b>${s.USUARIO||s.USUARIO_JUGADOR||"-"}</b><br><span class="small">${s.NOMBRE_COMPLETO||""}</span></td>
+      <td><b>${s.USUARIO||s.USUARIO_JUGADOR||"-"}</b><br><span class="small">${s.NOMBRE_COMPLETO||""}</span><br>${scoreBadge(s.USUARIO||s.USUARIO_JUGADOR||"")}</td>
       <td>${s.BILLETERA_NOMBRE||s.NOMBRE_BILLETERA||s.ID_BILLETERA||"-"}</td>
       <td>${money(s.MONTO_REAL||s.MONTO_DECLARADO||s.MONTO||0)}</td>
       <td>${estadoBadge(s.ESTADO)}</td>
@@ -617,6 +1040,8 @@ function tablaSolicitudesHTML(lista){
           <button class="mini-btn blue" onclick="tomarSolicitud('${id}')">Tomar</button>
           ${tipo==="RETIRO"?`<button class="mini-btn green" onclick="abrirCerrarRetiro('${id}')">Cerrar retiro</button>`:`<button class="mini-btn green" onclick="abrirAprobarSolicitud('${id}')">Aprobar</button>`}
           <button class="mini-btn red" onclick="abrirRechazarSolicitud('${id}')">Rechazar</button>
+        `:normalizar(s.ESTADO)==="APROBADA_MANUAL"&&tipo==="CARGA"&&window.ctrlElectron?`
+          <button class="mini-btn purple" onclick="ejecutarAutoCarga('${id}')">▶ Auto</button>
         `:"-"}
       </td>
     </tr>`;
@@ -693,10 +1118,25 @@ function abrirAprobarSolicitud(id){
 
   },"Aprobar");
 }
-function abrirCerrarRetiro(id){
+async function abrirCerrarRetiro(id){
   const s = solicitudes.find(x=>String(x.ID||x.SOLICITUD_ID)===String(id));
 
   if(!s) return;
+
+  const usuario = s.USUARIO || s.USUARIO_JUGADOR || "";
+  if(usuario){
+    const check = await verificarRetiro24h(usuario);
+    if(check.bloqueado){
+      abrirModal("Retiro bloqueado",`
+        <div class="err-box">
+          <b>⛔ ${usuario}</b> ya tiene un retiro registrado.<br><br>
+          ${check.mensaje}<br>
+          <span class="small">Monto anterior: ${money(check.monto)} · ${formatFecha(check.fecha)}</span>
+        </div>
+      `,()=>cerrarModal(),"Entendido");
+      return;
+    }
+  }
 
   abrirModal("Cerrar retiro",`
     <div class="ok-box"><b>${s.USUARIO||""}</b> · ${money(s.MONTO_DECLARADO||s.MONTO_REAL||0)}</div>
@@ -747,14 +1187,15 @@ function abrirRechazarSolicitud(id){
 }
 
 async function seleccionarBilletera(id){
-  const r=await api({action:"seleccionarbilletera",usuario:operador.usuario,operador:operador.nombre,idBilletera:id});
-  if(!r.ok){alert(r.error||"Error");return}
+  await supabaseClient.from("billeteras").update({seleccionada_manual:false}).eq("pc_codigo",pcOperativa);
+  const {error}=await supabaseClient.from("billeteras").update({seleccionada_manual:true}).eq("id",id);
+  if(error){alert(error.message||"Error");return}
   toast("Billetera puesta en landing","green");
   await cargarBilleteras();
 }
 async function cambiarEstadoBilletera(id,estado){
-  const r=await api({action:"actualizarestadobilletera",usuario:operador.usuario,operador:operador.nombre,idBilletera:id,estadoBilletera:estado});
-  if(!r.ok){alert(r.error||"Error");return}
+  const {error}=await supabaseClient.from("billeteras").update({activa:estado==="SI"}).eq("id",id);
+  if(error){alert(error.message||"Error");return}
   await cargarBilleteras();
 }
 
@@ -782,24 +1223,37 @@ async function abrirChat(id){
 }
 async function cargarChatActual(silencioso=false){
   if(!chatActualId)return;
-  const r=await api({
-    action:"getchatlanding",
-    usuario:operador.usuario,
-    operador:operador.nombre,
-    idChat:chatActualId,
-    chatSessionId:chatActualId,
-    t:Date.now()
-  });
-  if(!r.ok)return;
-  chatMensajes=r.mensajes||[];
+
+  const {data,error}=await supabaseClient
+    .from("mensajes_chat")
+    .select("*")
+    .eq("chat_id",chatActualId)
+    .order("created_at",{ascending:true});
+
+  if(error)return;
+
+  chatMensajes=(data||[]).map(m=>({
+    MENSAJE:m.mensaje||"",
+    IMAGEN_URL:m.imagen_url||"",
+    TIPO_EMISOR:m.tipo_emisor,
+    EMISOR:m.emisor||"",
+    FECHA:m.created_at
+  }));
+
   renderChatMensajes();
-  await api({
-    action:"marcarchatgeneralleido",
-    usuario:operador.usuario,
-    operador:operador.nombre,
-    idChat:chatActualId,
-    chatSessionId:chatActualId
-  });
+
+  await supabaseClient
+    .from("mensajes_chat")
+    .update({leido:true})
+    .eq("chat_id",chatActualId)
+    .eq("tipo_emisor","USUARIO")
+    .eq("leido",false);
+
+  await supabaseClient
+    .from("chats")
+    .update({sin_leer:0})
+    .eq("id",chatActualId);
+
   cargarChats(true);
 }
 
@@ -841,47 +1295,34 @@ async function enviarChat(){
   }
 
   const mensaje=val("chatInput").trim();
-
   if(!mensaje && !chatImagenBase64)return;
 
-  const payload={
-    action:"enviarmensajechatlanding",
-    idChat:chatActualId,
-    chatSessionId:chatActualId,
-    pc:pcOperativa,
-    operador:operador.nombre,
-    usuario:operador.usuario,
-    emisor:operador.nombre,
-    tipoEmisor:"OPERADOR",
-    mensaje
-  };
+  const {error}=await supabaseClient
+    .from("mensajes_chat")
+    .insert({
+      chat_id:chatActualId,
+      mensaje:mensaje||"",
+      imagen_url:chatImagenBase64||null,
+      tipo_emisor:"OPERADOR",
+      emisor:operador.nombre,
+      pc_codigo:pcOperativa,
+      leido:true
+    });
 
-  if(chatImagenBase64){
-    payload.imagenUrl=chatImagenBase64;
-    payload.imagenBase64=chatImagenBase64;
-    payload.imagenNombre=chatImagenNombre||"captura.png";
-  }
+  if(error){alert(error.message||"Error al enviar mensaje");return}
 
-  if(chatImagenBase64){
-    await apiPostNoCors(payload);
-    document.getElementById("chatInput").value="";
-    quitarImagenChat();
-    setTimeout(()=>cargarChatActual(false),1500);
-    setTimeout(()=>cargarChatActual(false),3800);
-    return;
-  }
-
-  const r=await api(payload);
-
-  if(!r.ok){
-    alert(r.error||"Error");
-    return;
-  }
+  await supabaseClient
+    .from("chats")
+    .update({
+      ultimo_mensaje:mensaje||"[imagen]",
+      fecha_ultimo:new Date().toISOString()
+    })
+    .eq("id",chatActualId);
 
   document.getElementById("chatInput").value="";
   quitarImagenChat();
 
-  setTimeout(()=>cargarChatActual(false),500);
+  setTimeout(()=>cargarChatActual(false),400);
   setTimeout(()=>cargarChatActual(false),2000);
 }
 
@@ -980,6 +1421,156 @@ function abrirModal(title,body,saveFn,saveText="Guardar"){
   document.getElementById("modalOverlay").classList.remove("hidden");
 }
 function cerrarModal(){document.getElementById("modalOverlay").classList.add("hidden")}
+
+// ── Automatización (solo disponible en Electron) ──────────────────────────────
+const enElectron = !!window.ctrlElectron;
+
+if(enElectron){
+  document.getElementById("navAuto")?.classList.remove("hidden");
+}
+
+async function callDrex(method, ...args){
+  return window.ctrlElectron.drexAutomation(method, ...args);
+}
+
+function autoResBox(id, ok, texto){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.innerHTML = `<div class="${ok?"ok-box":"err-box"}" style="margin-top:8px">${texto}</div>`;
+}
+
+async function abrirBackoffice(){
+  if(!enElectron) return;
+  await window.ctrlElectron.openAgentWindow();
+  await verificarEstadoBackoffice();
+}
+
+async function verificarEstadoBackoffice(){
+  if(!enElectron) return;
+  try{
+    const e = await callDrex("estadoPagina");
+    const ok = !e.needsLogin;
+    document.getElementById("autoEstadoVal").textContent = ok ? "✅ Listo" : "🔐 Requiere login";
+    document.getElementById("autoEstadoVal").style.color  = ok ? "var(--green)" : "var(--yellow)";
+    document.getElementById("autoEstadoMsg").textContent  = e.message || e.url || "";
+  }catch(err){
+    document.getElementById("autoEstadoVal").textContent = "⚠ Sin conexión";
+    document.getElementById("autoEstadoMsg").textContent = "Abrí el backoffice primero";
+  }
+}
+
+async function testBuscar(){
+  if(!enElectron) return;
+  const usuario = document.getElementById("autoUsuario").value.trim();
+  if(!usuario){ autoResBox("autoBuscarRes", false, "Ingresá un usuario."); return; }
+  autoResBox("autoBuscarRes", true, "Buscando...");
+  try{
+    await window.ctrlElectron.openAgentWindow();
+    const r = await callDrex("buscarUsuario", usuario);
+    if(r.exists){
+      const bal = r.balance ? ` · Saldo: ${r.balance.raw}` : "";
+      autoResBox("autoBuscarRes", true, `✅ Encontrado: <b>${r.user}</b>${bal}`);
+    } else {
+      autoResBox("autoBuscarRes", false, `❌ Usuario "${usuario}" no encontrado.`);
+    }
+  }catch(err){ autoResBox("autoBuscarRes", false, "Error: " + err.message); }
+}
+
+async function testCargar(){
+  if(!enElectron) return;
+  const usuario = document.getElementById("autoCargarUsuario").value.trim();
+  const monto   = Number(document.getElementById("autoCargarMonto").value);
+  if(!usuario || !monto){ autoResBox("autoCargarRes", false, "Completá usuario y monto."); return; }
+  autoResBox("autoCargarRes", true, "Buscando usuario...");
+  try{
+    await window.ctrlElectron.openAgentWindow();
+    const b = await callDrex("buscarUsuario", usuario); // navega y busca en página limpia
+    if(!b.exists){ autoResBox("autoCargarRes", false, `❌ Usuario "${usuario}" no encontrado.`); return; }
+    autoResBox("autoCargarRes", true, "Cargando saldo...");
+    const r = await callDrex("cargarSaldo", monto);
+    document.getElementById("autoResultVal").textContent = `CARGA · ${usuario} · $${monto.toLocaleString("es-AR")}`;
+    autoResBox("autoCargarRes", true, `✅ ${r.message || "Carga realizada."}`);
+    await window.ctrlElectron.navigateAgent(); // refresca después de cargar
+  }catch(err){ autoResBox("autoCargarRes", false, "Error: " + err.message); }
+}
+
+async function testRetirar(){
+  if(!enElectron) return;
+  const usuario = document.getElementById("autoRetirarUsuario").value.trim();
+  const monto   = Number(document.getElementById("autoRetirarMonto").value);
+  if(!usuario || !monto){ autoResBox("autoRetirarRes", false, "Completá usuario y monto."); return; }
+
+  autoResBox("autoRetirarRes", true, "Verificando política 24hs...");
+  const check = await verificarRetiro24h(usuario);
+  if(check.bloqueado){
+    autoResBox("autoRetirarRes", false, `⛔ ${check.mensaje}`);
+    return;
+  }
+
+  autoResBox("autoRetirarRes", true, "Buscando usuario...");
+  try{
+    await window.ctrlElectron.openAgentWindow();
+    const b = await callDrex("buscarUsuario", usuario);
+    if(!b.exists){ autoResBox("autoRetirarRes", false, `❌ Usuario "${usuario}" no encontrado.`); return; }
+    const saldo = b.balance?.value ?? -1;
+    if(saldo >= 0 && saldo < monto){
+      autoResBox("autoRetirarRes", false, `⛔ Saldo insuficiente: ${b.balance.raw.trim()} disponible, se solicitaron $${monto.toLocaleString("es-AR")}.`);
+      await window.ctrlElectron.navigateAgent();
+      return;
+    }
+    autoResBox("autoRetirarRes", true, `Encontrado · Saldo: ${b.balance?.raw?.trim() || "—"} · Retirando...`);
+    const r = await callDrex("retirarSaldo", monto);
+    document.getElementById("autoResultVal").textContent = `RETIRO · ${usuario} · $${monto.toLocaleString("es-AR")}`;
+    autoResBox("autoRetirarRes", true, `✅ ${r.message || "Retiro realizado."}`);
+    await window.ctrlElectron.navigateAgent();
+  }catch(err){ autoResBox("autoRetirarRes", false, "Error: " + err.message); }
+}
+
+async function ejecutarAutoCarga(id){
+  if(!window.ctrlElectron){ alert("La automatización solo funciona en la app de escritorio."); return; }
+
+  const s = solicitudes.find(x=>String(x.ID||x.SOLICITUD_ID)===String(id));
+  if(!s){ alert("Solicitud no encontrada."); return; }
+
+  const usuario = s.USUARIO || s.USUARIO_JUGADOR || "";
+  const monto   = Number(s.MONTO_REAL || s.MONTO_DECLARADO || s.MONTO || 0);
+
+  if(!usuario){ alert("La solicitud no tiene usuario asociado."); return; }
+  if(!monto)  { alert("La solicitud no tiene monto válido."); return; }
+
+  toast("Abriendo backoffice...","blue");
+  await window.ctrlElectron.openAgentWindow();
+
+  const estado = await callDrex("estadoPagina");
+  if(estado.needsLogin){
+    toast("Iniciá sesión en la ventana del backoffice primero.","red");
+    return;
+  }
+
+  toast(`Buscando usuario ${usuario}...`,"blue");
+  const busqueda = await callDrex("buscarUsuario", usuario);
+  if(!busqueda.exists){
+    toast(`Usuario "${usuario}" no encontrado en el backoffice.`,"red");
+    return;
+  }
+
+  toast(`Cargando $${monto.toLocaleString("es-AR")}...`,"blue");
+  const resultado = await callDrex("cargarSaldo", monto);
+
+  if(!resultado.ok && resultado.ok !== undefined){
+    toast("Error al cargar saldo: " + (resultado.message || "sin detalle"), "red");
+    return;
+  }
+
+  await actualizarSolicitudSupabase(id, {
+    estado: "ACREDITADA",
+    operador_usuario: operador.usuario || operador.nombre || ""
+  });
+
+  toast(`Carga automática completada · ${usuario} · $${monto.toLocaleString("es-AR")}`, "green");
+  await window.ctrlElectron.navigateAgent();
+  await refrescarTodo(false);
+}
 
 function abrirMenuMobile(){const menu=document.getElementById("mobileMenu");menu.classList.add("open");menu.innerHTML="";const clone=document.getElementById("sidebar").cloneNode(true);clone.style.display="block";menu.appendChild(clone)}
 function cerrarMenuMobile(e){if(!e||e.target.id==="mobileMenu"){const menu=document.getElementById("mobileMenu");menu.classList.remove("open");menu.innerHTML=""}}
