@@ -201,8 +201,9 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
                 <div id="chatSubtitulo" class="small">Sin conversación abierta</div>
               </div>
               <div id="chatAccionesRapidas" class="hidden" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-                <input id="chatCargarMonto" type="number" placeholder="Monto" style="width:90px;margin:0;padding:6px 10px;font-size:12px">
+                <input id="chatCargarMonto" type="number" min="1" placeholder="Monto" style="width:90px;margin:0;padding:6px 10px;font-size:12px">
                 <button class="mini-btn green" onclick="chatAccionCargar()" title="Cargar saldo al usuario del chat">⚡ Cargar</button>
+                <button class="mini-btn red" onclick="chatAccionRetirar()" title="Retirar saldo al usuario del chat">🏧 Retirar</button>
                 <button class="mini-btn yellow" onclick="chatAccionResetClave()" title="Resetear clave a 12345a">🔑 Reset</button>
               </div>
               <span id="chatEstado" class="badge badge-muted">-</span>
@@ -1765,6 +1766,19 @@ async function chatAccionCargar(){
   await cargarSaldoRapido(usuario, monto);
 }
 
+async function chatAccionRetirar(){
+  const usuario = chatUsuarioActivo();
+  const monto   = Number(document.getElementById("chatCargarMonto")?.value||0);
+  if(!usuario){ toast("Sin chat activo","red"); return; }
+  if(!monto || monto <= 0){ toast("Ingresá un monto válido","red"); return; }
+
+  const check = await verificarRetiro24h(usuario);
+  if(check.bloqueado){ toast(check.mensaje,"red"); return; }
+
+  document.getElementById("chatCargarMonto").value = "";
+  await retirarSaldoRapido(usuario, monto);
+}
+
 async function chatAccionResetClave(){
   const usuario = chatUsuarioActivo();
   if(!usuario){ toast("Sin chat activo","red"); return; }
@@ -2002,6 +2016,34 @@ async function resetClaveRapido(usuario, claveNueva="12345a"){
   if(r && r.ok === false){ toast("Error: "+(r.message||"falló"),"red"); return; }
 
   toast(`Clave reseteada a "${claveNueva}"`, "green");
+  await window.ctrlElectron.navigateAgent();
+}
+
+async function retirarSaldoRapido(usuario, monto){
+  if(!window.ctrlElectron){ alert("Solo en la app de escritorio."); return; }
+  monto = Number(monto);
+  if(!usuario || !monto || monto <= 0){ alert("Usuario y monto requeridos."); return; }
+
+  toast(`Retirando $${monto.toLocaleString("es-AR")} de ${usuario}...`, "blue");
+  await window.ctrlElectron.openAgentWindow();
+
+  const estado = await callDrex("estadoPagina");
+  if(estado.needsLogin){ toast("Iniciá sesión en el backoffice.","red"); return; }
+
+  const b = await callDrex("buscarUsuario", usuario);
+  if(!b.exists){ toast(`Usuario "${usuario}" no encontrado.`,"red"); return; }
+
+  const saldo = b.balance?.value ?? -1;
+  if(saldo >= 0 && saldo < monto){
+    toast(`Saldo insuficiente: ${b.balance.raw.trim()}`, "red");
+    await window.ctrlElectron.navigateAgent();
+    return;
+  }
+
+  const r = await callDrex("retirarSaldo", monto);
+  if(r && r.ok === false){ toast("Error: " + (r.message||"falló"), "red"); return; }
+
+  toast(`Retiro completado · ${usuario} · $${monto.toLocaleString("es-AR")}`, "green");
   await window.ctrlElectron.navigateAgent();
 }
 
