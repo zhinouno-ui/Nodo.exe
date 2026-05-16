@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>NODO · OPERATIVO LITE</title>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}
+:root{
+  --bg:#0e1014;--panel:#151821;--card:#191d27;--card2:#1c2230;--line:#2c3140;
+  --muted:#98a2b3;--blue:#3d5afe;--green:#12b76a;--red:#f04438;--yellow:#fdb022;
+  --purple:#7c3aed;
+}
+body{background:var(--bg);color:#fff;overflow:hidden}
+.hidden{display:none!important}
+.layout{display:grid;grid-template-columns:280px 1fr;height:100vh}
+.sidebar{background:var(--panel);border-right:1px solid #272b36;padding:18px;overflow-y:auto}
+.main{overflow-y:auto;padding:18px}
+.logo{width:170px;display:block;margin:0 auto 18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:16px}
+.card-title{font-size:20px;font-weight:900;margin-bottom:14px}
+.small{font-size:12px;color:var(--muted)}
+.nav-btn{width:100%;background:#1d2230;color:#fff;border:none;padding:12px;border-radius:12px;margin-bottom:8px;cursor:pointer;text-align:left;font-weight:bold;transition:.15s;position:relative}
+.nav-btn:hover{background:#262d3d}.nav-btn.active{background:var(--blue)}
+.badge-alert{position:absolute;right:12px;top:10px;background:#ff3b30;color:#fff;border-radius:999px;min-width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold}
+.badge-chat{right:42px;background:var(--purple)}
+.badge{display:inline-block;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:bold;margin:2px}
+.badge-pending{background:#5a3d09;color:#ffd98f}.badge-ok{background:#11371f;color:#b9f7cb}.badge-danger{background:#3a1515;color:#ffd0d0}.badge-blue{background:#16235f;color:#cbd5ff}.badge-muted{background:#2a2f3b;color:#d0d5dd}
+.top-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:18px}
+.stat-card{background:#1b202c;border:1px solid #2e3444;border-radius:18px;padding:16px}
+.stat-title{font-size:13px;color:var(--muted);margin-bottom:10px}.stat-value{font-size:28px;font-weight:900}.stat-sub{font-size:12px;color:var(--muted);margin-top:6px}
+.wallet-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.wallet-card{background:var(--card2);border:1px solid #30384a;border-radius:18px;padding:14px;position:relative;overflow:hidden}
+.wallet-card.ok{border-color:rgba(18,183,106,.45)}.wallet-card.paused{opacity:.72;border-color:rgba(240,68,56,.5)}.wallet-card.selected{border-color:rgba(61,90,254,.8);box-shadow:0 0 0 1px rgba(61,90,254,.45)}
+.wallet-name{font-weight:bold;font-size:16px}.wallet-type{color:var(--muted);margin-top:4px;font-size:13px}
+.wallet-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+input,select,textarea,button{font-size:14px}
+input,select,textarea{width:100%;border:none;border-radius:10px;padding:11px;margin-top:6px;margin-bottom:12px;background:#fff;color:#111}
+textarea{resize:vertical;min-height:80px}
+.btn{width:100%;border:none;border-radius:12px;padding:12px;cursor:pointer;font-weight:bold}
+.btn-primary{background:var(--blue);color:#fff}.btn-green{background:var(--green);color:#fff}.btn-red{background:var(--red);color:#fff}.btn-gray{background:#667085;color:#fff}.btn-yellow{background:var(--yellow);color:#111}
+.mini-btn{border:none;border-radius:10px;padding:8px 10px;cursor:pointer;font-size:12px;font-weight:bold}
+.green{background:var(--green);color:#fff}.red{background:var(--red);color:#fff}.blue{background:var(--blue);color:#fff}.yellow{background:var(--yellow);color:#111}.gray{background:#667085;color:#fff}.purple{background:var(--purple);color:#fff}
+table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px solid #2d3342;text-align:left;font-size:13px;vertical-align:top}th{background:#202635;position:sticky;top:0;z-index:1}tr:hover{background:#1c2230}
+.table-wrap{max-height:520px;overflow:auto;border-radius:14px;border:1px solid #2d3342}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px}
+.alert-box{background:#38280d;color:#ffd98f;padding:14px;border-radius:14px;margin-bottom:14px}.err-box{background:#3a1515;color:#ffd0d0;padding:14px;border-radius:14px;margin-bottom:14px}.ok-box{background:#123322;color:#b9f7cb;padding:14px;border-radius:14px;margin-bottom:14px}
+.login-wrap{display:flex;align-items:center;justify-content:center;height:100vh;padding:20px}.login-card{width:100%;max-width:420px;background:var(--card);border:1px solid #2d3342;border-radius:20px;padding:22px}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;z-index:9999;padding:14px}
+.modal{width:100%;max-width:560px;max-height:92vh;overflow:auto;background:var(--card);border:1px solid #2e3444;border-radius:22px;padding:20px}
+.modal-title{font-size:22px;font-weight:900;margin-bottom:18px}.modal-actions{display:flex;gap:10px;margin-top:10px}.modal-actions button{flex:1}
+.chat-layout{display:grid;grid-template-columns:330px 1fr;gap:14px;min-height:calc(100vh - 120px)}
+.chat-list{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.chat-list-head{padding:14px;border-bottom:1px solid var(--line);background:#202635}
+.chat-item{padding:12px;border-bottom:1px solid #2d3342;cursor:pointer}
+.chat-item:hover,.chat-item.active{background:#1c2230}
+.chat-item-title{display:flex;justify-content:space-between;gap:8px;font-weight:900}
+.chat-unread{background:#ff3b30;color:#fff;border-radius:999px;min-width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.chat-panel{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;display:flex;flex-direction:column}
+.chat-head{padding:14px;background:#202635;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px}
+.chat-body{flex:1;min-height:360px;max-height:calc(100vh - 260px);overflow-y:auto;padding:14px;background:#10131a}
+.chat-msg{max-width:78%;margin-bottom:10px;display:flex;flex-direction:column}
+.chat-msg.user{align-items:flex-start;margin-right:auto}.chat-msg.op{align-items:flex-end;margin-left:auto}
+.chat-bubble{padding:10px 12px;border-radius:16px;line-height:1.35;font-size:14px;word-break:break-word}
+.chat-msg.user .chat-bubble{background:#1d2939;color:#f4f7fb;border-bottom-left-radius:4px}
+.chat-msg.op .chat-bubble{background:linear-gradient(135deg,#3d5afe,#6d7dff);color:#fff;border-bottom-right-radius:4px}
+.chat-bubble img{width:100%;max-width:260px;border-radius:12px;margin-top:6px;display:block}
+.chat-meta{color:#98a2b3;font-size:11px;margin-top:4px;padding:0 4px}
+.chat-compose{padding:12px;border-top:1px solid var(--line);background:#151821}
+.chat-preview{display:none;align-items:center;justify-content:space-between;gap:10px;padding:8px;border-radius:14px;background:rgba(255,255,255,.08);margin-bottom:10px}
+.chat-preview.show{display:flex}.chat-preview img{width:58px;height:58px;object-fit:cover;border-radius:12px}
+.chat-row{display:grid;grid-template-columns:42px 1fr 46px;gap:8px;align-items:end}
+#chatInput{min-height:42px;max-height:110px;margin:0;padding:11px 12px;resize:none;border-radius:14px;font-size:15px;background:#fff;color:#111}
+.toast{position:fixed;top:20px;right:20px;background:var(--blue);color:#fff;padding:14px 18px;border-radius:14px;z-index:99999;font-weight:bold;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.mobile-top{display:none;background:#151821;border-bottom:1px solid #272b36;padding:12px;align-items:center;justify-content:space-between}.mobile-menu{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1200}.mobile-menu .sidebar{display:block;width:280px;height:100%;position:absolute;left:0;top:0}
+@media(max-width:900px){body{overflow:auto}.layout{display:block;height:auto;min-height:100vh}.sidebar{display:none}.main{padding:12px}.mobile-top{display:flex}.top-grid{grid-template-columns:repeat(2,1fr);gap:10px}.stat-value{font-size:21px}th,td{font-size:11px;padding:8px}.mobile-menu.open{display:block}.chat-layout{grid-template-columns:1fr}.chat-body{max-height:420px}}
+</style>
+</head>
+
+<body>
+<div id="loginView" class="login-wrap">
+  <div class="login-card">
+    <img src="NODO%20%C2%B7%20OPERATIVO%20LITE_files/logo-nodo.png" class="logo" alt="NODO">
+    <h2 style="margin-bottom:18px">PANEL OPERATIVO LITE</h2>
+    <label>Usuario</label>
+    <input id="loginUsuario" autocomplete="username">
+    <label>Clave</label>
+    <input id="loginClave" type="password" autocomplete="current-password">
+    <button class="btn btn-primary" onclick="login()">Ingresar</button>
+    <div id="loginMsg" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<div id="appView" class="hidden">
+  <div class="mobile-top">
+    <button class="mini-btn blue" onclick="abrirMenuMobile()">☰ Menú</button>
+    <b>NODO Operativo</b>
+    <button class="mini-btn red" onclick="cerrarSesion()">Salir</button>
+  </div>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <img src="NODO%20%C2%B7%20OPERATIVO%20LITE_files/logo-nodo.png" class="logo" alt="NODO">
+      <div class="card"><div id="operadorInfo"></div></div>
+
+      <button id="navInicio" class="nav-btn active" onclick="mostrarVista('inicio')">🏠 Inicio</button>
+      <button id="navSolicitudes" class="nav-btn" onclick="mostrarVista('solicitudes')">📋 Solicitudes <span id="badgeSolicitudes" class="badge-alert hidden">0</span></button>
+      <button id="navBilleteras" class="nav-btn" onclick="mostrarVista('billeteras')">💳 Billeteras</button>
+      <button id="navChat" class="nav-btn" onclick="mostrarVista('chat')">💬 Chat <span id="badgeChat" class="badge-alert badge-chat hidden">0</span></button>
+
+      <button class="nav-btn" onclick="cerrarSesion()">🚪 Cerrar sesión</button>
+    </aside>
+
+    <main class="main">
+      <section id="viewInicio">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+          <div>
+            <h1 style="font-size:26px">Inicio operativo</h1>
+            <div class="small">Solicitudes pendientes, chats y billetera activa de landing.</div>
+          </div>
+          <button class="mini-btn blue" onclick="refrescarTodo(true)">🔄 Actualizar</button>
+        </div>
+
+        <div id="alertas"></div>
+
+        <div class="top-grid">
+          <div class="stat-card"><div class="stat-title">Solicitudes pendientes</div><div class="stat-value" id="statPendientes">0</div><div class="stat-sub" id="statRetiros">Retiros: 0</div></div>
+          <div class="stat-card"><div class="stat-title">Chats sin leer</div><div class="stat-value" id="statChats">0</div><div class="stat-sub">Consultas landing</div></div>
+          <div class="stat-card"><div class="stat-title">Billetera en landing</div><div class="stat-value" id="statBilletera">-</div><div class="stat-sub" id="statBilleteraTipo">-</div></div>
+        </div>
+
+        <div class="card">
+          <h2 class="card-title">Solicitudes pendientes</h2>
+          <div id="tablaSolicitudesInicio"></div>
+        </div>
+      </section>
+
+      <section id="viewSolicitudes" class="hidden">
+        <div class="card">
+          <h2 class="card-title">📋 Solicitudes</h2>
+          <div class="filters">
+            <select id="filtroEstado" onchange="renderSolicitudes()">
+              <option value="" selected="selected">Todas</option>
+              <option value="PENDIENTE">Pendientes</option>
+              <option value="REALIZADAS">Realizadas</option>
+              <option value="RECHAZADA">Rechazadas</option>
+            </select>
+            <select id="filtroTipo" onchange="renderSolicitudes()">
+              <option value="" selected="selected">Todos los tipos</option>
+              <option value="CARGA">Carga</option>
+              <option value="RETIRO">Retiro</option>
+            </select>
+            <input id="filtroTexto" placeholder="Buscar usuario / nombre / billetera" oninput="renderSolicitudes()">
+          </div>
+          <div id="tablaSolicitudesCompleta"></div>
+        </div>
+      </section>
+
+      <section id="viewBilleteras" class="hidden">
+        <div class="card">
+          <h2 class="card-title">💳 Billeteras para landing</h2>
+          <div class="alert-box">Solo una billetera puede quedar marcada como <b>EN LANDING</b>. No se muestran montos en este panel.</div>
+          <div id="walletsGrid" class="wallet-grid"></div>
+        </div>
+      </section>
+
+      <section id="viewChat" class="hidden">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+          <div>
+            <h1 style="font-size:26px">Chat interno</h1>
+            <div class="small">Consultas desde landing. Podés pegar texto o imágenes con Ctrl + V.</div>
+          </div>
+          <button class="mini-btn blue" onclick="cargarChats(true)">🔄 Actualizar chats</button>
+        </div>
+
+        <div class="chat-layout">
+          <div class="chat-list">
+            <div class="chat-list-head">
+              <b>Chats activos</b>
+              <div class="small">Mensajes de usuarios desde landing</div>
+            </div>
+            <div id="chatList"></div>
+          </div>
+
+          <div class="chat-panel">
+            <div class="chat-head">
+              <div>
+                <b id="chatTitulo">Seleccioná un chat</b>
+                <div id="chatSubtitulo" class="small">Sin conversación abierta</div>
+              </div>
+              <span id="chatEstado" class="badge badge-muted">-</span>
+            </div>
+
+            <div id="chatBody" class="chat-body">
+              <div class="alert-box">Seleccioná un chat de la izquierda para responder.</div>
+            </div>
+
+            <div class="chat-compose">
+              <div id="chatPreview" class="chat-preview">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <img id="chatPreviewImg" src="" alt="Imagen">
+                  <div><b>Imagen lista</b><div class="chat-meta">Se enviará con el mensaje</div></div>
+                </div>
+                <button class="mini-btn red" onclick="quitarImagenChat()">×</button>
+              </div>
+
+              <div class="chat-row">
+                <button class="mini-btn gray" onclick="document.getElementById('chatFile').click()">📎</button>
+                <textarea id="chatInput" rows="1" placeholder="Responder..."></textarea>
+                <button class="mini-btn blue" onclick="enviarChat()">➤</button>
+              </div>
+              <input id="chatFile" type="file" accept="image/*" style="display:none" onchange="tomarImagenChatFile()">
+              <div class="small" style="text-align:center;margin-top:8px">Ctrl + V admite texto e imagen del portapapeles.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<div id="mobileMenu" class="mobile-menu" onclick="cerrarMenuMobile(event)"></div>
+
+<div id="modalOverlay" class="modal-overlay hidden">
+  <div class="modal">
+    <div id="modalTitle" class="modal-title">Modal</div>
+    <div id="modalBody"></div>
+    <div class="modal-actions">
+      <button class="btn btn-gray" onclick="cerrarModal()">Cancelar</button>
+      <button id="modalSaveBtn" class="btn btn-primary">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div id="selectorPcOverlay" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-title">Seleccionar PC operativa</div>
+    <p class="small">Elegí la PC que cubrís hoy.</p>
+    <div id="pcSelectorGrid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:20px"></div>
+  </div>
+</div>
+
+<script src="NODO%20%C2%B7%20OPERATIVO%20LITE_files/supabase-js@2"></script>
+
+<script>
+const API_URL = "https://script.google.com/macros/s/AKfycbwvZGRAOxBLNIQ52mlED6ZlsOkpAd2PicOvmlZFBTKptXR5lnC_n87w-awDvowmktI8/exec";
+
+const SUPABASE_URL = "https://pjvvyvfcwjoocjqvdror.supabase.co";
+const SUPABASE_KEY = "sb_publishable_NYqRoKptTgcL90VAVF2kqA_Gl06mEUF";
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let operador=null, pcOperativa=null;
+let solicitudes=[], billeteras=[], chats=[], chatMensajes=[];
+let timersIniciados=false;
+let lastPendientesIds=new Set(), lastChatUnread=0;
+let chatActualId="", chatImagenBase64="", chatImagenNombre="";
+
+window.addEventListener("load",()=>{
+  const saved=localStorage.getItem("nodo_operador_lite");
+  const pc=localStorage.getItem("nodo_pc_operativa_lite");
+  if(saved && pc){
+    try{
+      operador=JSON.parse(saved);
+      pcOperativa=pc;
+      finalizarLogin(false);
+    }catch(e){
+      localStorage.removeItem("nodo_operador_lite");
+      localStorage.removeItem("nodo_pc_operativa_lite");
+    }
+  }
+});
+
+function money(v){return Number(v||0).toLocaleString("es-AR",{style:"currency",currency:"ARS",maximumFractionDigits:0})}
+function normalizar(v){return String(v||"").trim().toUpperCase()}
+function setBox(id,html){const el=document.getElementById(id);if(el)el.innerHTML=html}
+function val(id){return document.getElementById(id)?.value||""}
+function toast(msg,type="blue"){const div=document.createElement("div");div.className="toast";div.style.background=type==="red"?"#f04438":type==="green"?"#12b76a":"#3d5afe";div.innerText=msg;document.body.appendChild(div);setTimeout(()=>div.remove(),3500)}
+function formatFecha(fechaRaw){
+  if(!fechaRaw) return "";
+
+  try{
+    const fecha = new Date(fechaRaw);
+
+    if(isNaN(fecha)){
+      return String(fechaRaw || "");
+    }
+
+    return fecha.toLocaleString("es-AR",{
+      timeZone:"America/Argentina/Buenos_Aires",
+      day:"2-digit",
+      month:"2-digit",
+      hour:"2-digit",
+      minute:"2-digit",
+      hour12:false
+    }).replace(",", " ·");
+
+  }catch(e){
+    return String(fechaRaw || "");
+  }
+}
+
+function formatearHoraChat(fechaRaw){
+  if(!fechaRaw) return "";
+
+  try{
+    const fecha = new Date(fechaRaw);
+
+    if(isNaN(fecha)){
+      return "";
+    }
+
+    return fecha.toLocaleTimeString("es-AR",{
+      timeZone:"America/Argentina/Buenos_Aires",
+      hour:"2-digit",
+      minute:"2-digit",
+      hour12:false
+    });
+
+  }catch(e){
+    return "";
+  }
+}
+
+
+function esPendiente(s){const e=normalizar(s.ESTADO);return e.includes("PENDIENTE")||e==="NUEVA"||e==="NUEVO"||e==="EN_REVISION"}
+function esRealizada(s){const e=normalizar(s.ESTADO);return ["APROBADA_MANUAL","APROBADA_MANUAL_OK","ACREDITADA","PAGADA","APROBADA"].includes(e)}
+function estadoBadge(e){const x=normalizar(e);if(esRealizada({ESTADO:e}))return`<span class="badge badge-ok">${e}</span>`;if(["RECHAZADA","ERROR"].includes(x))return`<span class="badge badge-danger">${e}</span>`;return`<span class="badge badge-pending">${e||"-"}</span>`}
+function escapeHtml(text){return String(text||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;")}
+
+async function api(data){
+  const fd=new FormData();
+  Object.keys(data).forEach(k=>fd.append(k,data[k]??""));
+  const res=await fetch(API_URL,{method:"POST",body:fd});
+  const text=await res.text();
+  try{return JSON.parse(text)}catch(e){console.error(text);return{ok:false,error:"Respuesta inválida de API"}}
+}
+
+
+
+function mapSolicitudSupabase(s){
+  return {
+    ID: s.id,
+    SOLICITUD_ID: s.id,
+    FECHA_CREACION: s.created_at,
+    FECHA: s.created_at,
+    TIPO_SOLICITUD: s.tipo,
+    TIPO: s.tipo,
+    USUARIO: s.usuario,
+    USUARIO_JUGADOR: s.usuario,
+    NOMBRE_COMPLETO: s.nombre_completo,
+    TELEFONO: s.telefono,
+    PC: s.pc_codigo,
+    MONTO_DECLARADO: s.monto,
+    MONTO_REAL: s.monto,
+    ESTADO: s.estado,
+    BILLETERA_NOMBRE: s.billetera_nombre || "",
+    ID_BILLETERA: s.billetera_id || "",
+    CHAT_ID: s.chat_id || "",
+    OPERADOR: s.operador_usuario || ""
+  };
+}
+
+async function cargarSolicitudesSupabase(){
+  const { data, error } = await supabaseClient
+    .from("solicitudes")
+    .select("*")
+    .eq("pc_codigo", pcOperativa)
+    .order("created_at", { ascending:false });
+
+  if(error){
+    console.error("Error solicitudes Supabase:", error);
+    return { ok:false, error:error.message || "Error cargando solicitudes" };
+  }
+
+  return {
+    ok:true,
+    solicitudes:(data || []).map(mapSolicitudSupabase)
+  };
+}
+
+async function actualizarSolicitudSupabase(id, cambios){
+  const { data, error } = await supabaseClient
+    .from("solicitudes")
+    .update(cambios)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if(error){
+    console.error("Error actualizando solicitud:", error);
+    return { ok:false, error:error.message || "No se pudo actualizar la solicitud" };
+  }
+
+  return {
+    ok:true,
+    solicitud:mapSolicitudSupabase(data)
+  };
+}
+
+
+async function apiPostNoCors(data){
+  await fetch(API_URL, {
+    method: "POST",
+    mode: "no-cors",
+    body: JSON.stringify(data)
+  });
+  return { ok:true };
+}
+
+function comprimirImagenChat(file, cb){
+  const img = new Image();
+  const reader = new FileReader();
+
+  reader.onload = () => {
+    img.onload = () => {
+      const max = 560;
+      let w = img.width;
+      let h = img.height;
+
+      if(w > h && w > max){
+        h = Math.round(h * max / w);
+        w = max;
+      }else if(h >= w && h > max){
+        w = Math.round(w * max / h);
+        h = max;
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+
+      cb(canvas.toDataURL("image/jpeg", .52));
+    };
+
+    img.src = reader.result;
+  };
+
+  reader.readAsDataURL(file);
+}
+
+async function login(){
+  const usuario=val("loginUsuario").trim();
+  const clave=val("loginClave").trim();
+  if(!usuario||!clave){setBox("loginMsg",`<div class="alert-box">Completá usuario y clave.</div>`);return}
+  setBox("loginMsg",`<div class="alert-box">Ingresando...</div>`);
+  const r=await api({action:"login",usuario,clave});
+  if(!r.ok){setBox("loginMsg",`<div class="err-box">${r.error||"Error"}</div>`);return}
+  operador=r.operador;
+  const esFranq=normalizar(operador.tipoOperador)==="FRANQUERO";
+  if(operador.requiereSeleccionPc||esFranq){
+    abrirSelectorPc(operador.pcsDisponibles||["P1","P2","P3","P4","P5"]);
+    return;
+  }
+  pcOperativa=operador.pc||operador.PC||"";
+  finalizarLogin(true);
+}
+
+function abrirSelectorPc(lista){
+  const grid=document.getElementById("pcSelectorGrid");
+  grid.innerHTML="";
+  [...new Set(lista.map(x=>String(x).trim().toUpperCase()).filter(Boolean))].forEach(pc=>{
+    grid.innerHTML+=`<button class="btn btn-primary" onclick="seleccionarPcOperativa('${pc}')">${pc}</button>`;
+  });
+  document.getElementById("selectorPcOverlay").classList.remove("hidden");
+}
+function seleccionarPcOperativa(pc){pcOperativa=pc;document.getElementById("selectorPcOverlay").classList.add("hidden");finalizarLogin(true)}
+
+function finalizarLogin(guardar=true){
+  if(guardar){
+    localStorage.setItem("nodo_operador_lite",JSON.stringify(operador));
+    localStorage.setItem("nodo_pc_operativa_lite",pcOperativa);
+  }
+  document.getElementById("loginView").classList.add("hidden");
+  document.getElementById("appView").classList.remove("hidden");
+  setBox("operadorInfo",`
+    <b>${operador.nombre||operador.NOMBRE}</b><br>
+    <span class="badge badge-blue">Rol: ${operador.rol||operador.ROL}</span>
+    <span class="badge badge-muted">Tipo: ${operador.tipoOperador||"-"}</span>
+    <span class="badge badge-ok">PC: ${pcOperativa}</span>
+  `);
+  refrescarTodo(false);
+  iniciarRealtimeSolicitudes();
+  if(!timersIniciados){
+    timersIniciados=true;
+    setInterval(()=>cargarSolicitudes(true),4500);
+    setInterval(()=>cargarChats(true),4500);
+    setInterval(()=>cargarBilleteras(false),20000);
+    setInterval(()=>{ if(chatActualId) cargarChatActual(true); },3500);
+  }
+}
+
+
+let supabaseSolicitudesChannel = null;
+
+function iniciarRealtimeSolicitudes(){
+  if(supabaseSolicitudesChannel){
+    supabaseClient.removeChannel(supabaseSolicitudesChannel);
+  }
+
+  supabaseSolicitudesChannel = supabaseClient
+    .channel("solicitudes_" + pcOperativa)
+    .on(
+      "postgres_changes",
+      {
+        event:"*",
+        schema:"public",
+        table:"solicitudes",
+        filter:"pc_codigo=eq." + pcOperativa
+      },
+      payload => {
+        cargarSolicitudes(true);
+        if(payload.eventType === "INSERT"){
+          toast("🔔 Nueva solicitud");
+          sonido("solicitud");
+        }
+      }
+    )
+    .subscribe();
+}
+
+
+function mostrarVista(vista){
+  ["Inicio","Solicitudes","Billeteras","Chat"].forEach(v=>{
+    document.getElementById("view"+v)?.classList.add("hidden");
+    document.getElementById("nav"+v)?.classList.remove("active");
+  });
+  const cap=vista.charAt(0).toUpperCase()+vista.slice(1);
+  document.getElementById("view"+cap)?.classList.remove("hidden");
+  document.getElementById("nav"+cap)?.classList.add("active");
+  if(vista==="solicitudes")renderSolicitudes();
+  if(vista==="billeteras")cargarBilleteras();
+  if(vista==="chat")cargarChats();
+  cerrarMenuMobile();
+}
+
+async function refrescarTodo(showToast=true){
+  await cargarSolicitudes(false);
+  await cargarBilleteras(false);
+  await cargarChats(false);
+  renderInicio();
+  if(showToast)toast("Panel actualizado","green");
+}
+async function cargarSolicitudes(silencioso=false){
+  const r = await cargarSolicitudesSupabase();
+
+  if(!r.ok){
+    toast(r.error || "Error solicitudes Supabase","red");
+    return;
+  }
+
+  solicitudes = (r.solicitudes || []);
+
+  renderSolicitudes();
+  renderInicio();
+  verificarSolicitudes(silencioso);
+}
+async function cargarBilleteras(render=true){
+  const r=await api({action:"getbilleteras",usuario:operador.usuario,operador:operador.nombre,pc:pcOperativa});
+  if(!r.ok)return;
+  billeteras=r.billeteras||[];
+  if(render)renderBilleteras();
+  renderInicio();
+}
+async function cargarChats(silencioso=false){
+  const r=await api({action:"listarchatspendientes",usuario:operador.usuario,operador:operador.nombre,pc:pcOperativa,pcOperativa});
+  if(!r.ok){return}
+  chats=r.chats||r.data||[];
+  renderChatList();
+  renderInicio();
+  verificarChats(silencioso);
+}
+function renderInicio(){
+  const pendientes=solicitudes.filter(esPendiente);
+  const retiros=pendientes.filter(s=>normalizar(s.TIPO_SOLICITUD||s.TIPO)==="RETIRO");
+  const unread=chats.reduce((a,c)=>a+Number(c.SIN_LEER||0),0);
+  const bil=billeteras.find(b=>normalizar(b.SELECCIONADA_MANUAL)==="SI") || billeteras.find(b=>normalizar(b.ACTIVA)==="SI") || {};
+  setBox("statPendientes",pendientes.length);
+  setBox("statRetiros",`Retiros: ${retiros.length}`);
+  setBox("statChats",unread);
+  setBox("statBilletera",bil.NOMBRE_VISIBLE||bil.BILLETERA_NOMBRE||"-");
+  setBox("statBilleteraTipo",bil.TIPO?`${bil.TIPO} · ${bil.PC||pcOperativa}`:"-");
+  setBox("alertas",`
+    ${pendientes.length?`<div class="alert-box">🔔 Hay ${pendientes.length} solicitud/es pendiente/s.</div>`:""}
+    ${unread?`<div class="alert-box">💬 Hay ${unread} mensaje/s de chat sin leer.</div>`:""}
+  `);
+  setBox("tablaSolicitudesInicio",tablaSolicitudesHTML(pendientes.slice(0,40)));
+}
+function renderSolicitudes(){
+  let lista=solicitudes.slice();
+  const estado=val("filtroEstado"), tipo=val("filtroTipo"), texto=normalizar(val("filtroTexto"));
+  if(estado==="PENDIENTE")lista=lista.filter(esPendiente);
+  if(estado==="REALIZADAS")lista=lista.filter(esRealizada);
+  if(estado==="RECHAZADA")lista=lista.filter(s=>normalizar(s.ESTADO)==="RECHAZADA");
+  if(tipo)lista=lista.filter(s=>normalizar(s.TIPO_SOLICITUD||s.TIPO)===tipo);
+  if(texto)lista=lista.filter(s=>normalizar(`${s.USUARIO||""} ${s.NOMBRE_COMPLETO||""} ${s.BILLETERA_NOMBRE||""} ${s.ID||""}`).includes(texto));
+  setBox("tablaSolicitudesCompleta",tablaSolicitudesHTML(lista));
+}
+function tablaSolicitudesHTML(lista){
+  if(!lista.length)return`<div class="alert-box">No hay solicitudes para mostrar.</div>`;
+  let html=`<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Usuario</th><th>Billetera</th><th>Monto</th><th>Estado</th><th>Acción</th></tr></thead><tbody>`;
+  lista.forEach(s=>{
+    const id=s.ID||s.SOLICITUD_ID||s.ID_SOLICITUD||"";
+    const tipo=normalizar(s.TIPO_SOLICITUD||s.TIPO);
+    html+=`<tr>
+      <td>${formatFecha(s.FECHA_CREACION||s.FECHA)}</td>
+      <td>${tipo}</td>
+      <td><b>${s.USUARIO||s.USUARIO_JUGADOR||"-"}</b><br><span class="small">${s.NOMBRE_COMPLETO||""}</span></td>
+      <td>${s.BILLETERA_NOMBRE||s.NOMBRE_BILLETERA||s.ID_BILLETERA||"-"}</td>
+      <td>${money(s.MONTO_REAL||s.MONTO_DECLARADO||s.MONTO||0)}</td>
+      <td>${estadoBadge(s.ESTADO)}</td>
+      <td>
+        ${esPendiente(s)?`
+          <button class="mini-btn blue" onclick="tomarSolicitud('${id}')">Tomar</button>
+          ${tipo==="RETIRO"?`<button class="mini-btn green" onclick="abrirCerrarRetiro('${id}')">Cerrar retiro</button>`:`<button class="mini-btn green" onclick="abrirAprobarSolicitud('${id}')">Aprobar</button>`}
+          <button class="mini-btn red" onclick="abrirRechazarSolicitud('${id}')">Rechazar</button>
+        `:"-"}
+      </td>
+    </tr>`;
+  });
+  html+=`</tbody></table></div>`;
+  return html;
+}
+
+function renderBilleteras(){
+  if(!billeteras.length){setBox("walletsGrid",`<div class="alert-box">No hay billeteras configuradas.</div>`);return}
+  let html="";
+  billeteras.forEach(b=>{
+    const activa=normalizar(b.ACTIVA)==="SI";
+    const seleccionada=normalizar(b.SELECCIONADA_MANUAL)==="SI";
+    html+=`<div class="wallet-card ${activa?"ok":"paused"} ${seleccionada?"selected":""}">
+      <div class="wallet-name">💳 ${b.NOMBRE_VISIBLE||b.BILLETERA_NOMBRE||b.ID_BILLETERA}</div>
+      <div class="wallet-type">${b.TIPO||""} · ${b.PC||pcOperativa}</div>
+      <div style="margin-top:12px">
+        ${activa?'<span class="badge badge-ok">ACTIVA</span>':'<span class="badge badge-danger">PAUSADA</span>'}
+        ${seleccionada?'<span class="badge badge-blue">EN LANDING</span>':''}
+      </div>
+      <div class="wallet-actions">
+        <button class="mini-btn blue" onclick="seleccionarBilletera('${b.ID_BILLETERA}')">Poner en landing</button>
+        <button class="mini-btn green" onclick="cambiarEstadoBilletera('${b.ID_BILLETERA}','SI')">Activar</button>
+        <button class="mini-btn red" onclick="cambiarEstadoBilletera('${b.ID_BILLETERA}','NO')">Pausar</button>
+      </div>
+    </div>`;
+  });
+  setBox("walletsGrid",html);
+}
+
+async function tomarSolicitud(id){
+  const r = await actualizarSolicitudSupabase(id, {
+    operador_usuario: operador.usuario || operador.nombre || "",
+    estado: "PENDIENTE"
+  });
+
+  if(!r.ok){
+    alert(r.error || "Error");
+    return;
+  }
+
+  toast("Solicitud tomada","green");
+  await refrescarTodo(false);
+}
+function abrirAprobarSolicitud(id){
+  const s = solicitudes.find(x=>String(x.ID||x.SOLICITUD_ID)===String(id));
+
+  if(!s) return;
+
+  abrirModal("Aprobar carga",`
+    <div class="ok-box"><b>${s.USUARIO||""}</b> · ${money(s.MONTO_DECLARADO||s.MONTO_REAL||0)}</div>
+    <label>Monto real</label>
+    <input id="apMonto" type="number" value="${s.MONTO_REAL||s.MONTO_DECLARADO||""}">
+    <label>Observaciones</label>
+    <textarea id="apObs"></textarea>
+    <div class="alert-box">Este paso deja la solicitud como APROBADA_MANUAL en Supabase. Después conectamos la cola de Playwright.</div>
+  `,async()=>{
+
+    const r = await actualizarSolicitudSupabase(id, {
+      estado:"APROBADA_MANUAL",
+      monto:Number(val("apMonto") || s.MONTO_DECLARADO || 0),
+      operador_usuario:operador.usuario || operador.nombre || ""
+    });
+
+    if(!r.ok){
+      alert(r.error || "Error");
+      return;
+    }
+
+    cerrarModal();
+    toast("Carga aprobada","green");
+    await refrescarTodo(false);
+
+  },"Aprobar");
+}
+function abrirCerrarRetiro(id){
+  const s = solicitudes.find(x=>String(x.ID||x.SOLICITUD_ID)===String(id));
+
+  if(!s) return;
+
+  abrirModal("Cerrar retiro",`
+    <div class="ok-box"><b>${s.USUARIO||""}</b> · ${money(s.MONTO_DECLARADO||s.MONTO_REAL||0)}</div>
+    <label>Monto final</label>
+    <input id="retMonto" type="number" value="${s.MONTO_REAL||s.MONTO_DECLARADO||""}">
+    <label>Observaciones</label>
+    <textarea id="retObs"></textarea>
+  `,async()=>{
+
+    const r = await actualizarSolicitudSupabase(id, {
+      estado:"PAGADA",
+      monto:Number(val("retMonto") || s.MONTO_DECLARADO || 0),
+      operador_usuario:operador.usuario || operador.nombre || ""
+    });
+
+    if(!r.ok){
+      alert(r.error || "Error");
+      return;
+    }
+
+    cerrarModal();
+    toast("Retiro cerrado","green");
+    await refrescarTodo(false);
+
+  },"Cerrar retiro");
+}
+function abrirRechazarSolicitud(id){
+  abrirModal("Rechazar solicitud",`
+    <label>Motivo</label>
+    <textarea id="rechObs"></textarea>
+  `,async()=>{
+
+    const r = await actualizarSolicitudSupabase(id, {
+      estado:"RECHAZADA",
+      operador_usuario:operador.usuario || operador.nombre || ""
+    });
+
+    if(!r.ok){
+      alert(r.error || "Error");
+      return;
+    }
+
+    cerrarModal();
+    toast("Solicitud rechazada","red");
+    await refrescarTodo(false);
+
+  },"Rechazar");
+}
+
+async function seleccionarBilletera(id){
+  const r=await api({action:"seleccionarbilletera",usuario:operador.usuario,operador:operador.nombre,idBilletera:id});
+  if(!r.ok){alert(r.error||"Error");return}
+  toast("Billetera puesta en landing","green");
+  await cargarBilleteras();
+}
+async function cambiarEstadoBilletera(id,estado){
+  const r=await api({action:"actualizarestadobilletera",usuario:operador.usuario,operador:operador.nombre,idBilletera:id,estadoBilletera:estado});
+  if(!r.ok){alert(r.error||"Error");return}
+  await cargarBilleteras();
+}
+
+function renderChatList(){
+  if(!chats.length){setBox("chatList",`<div class="alert-box" style="margin:12px">No hay chats activos.</div>`);return}
+  let html="";
+  chats.forEach(c=>{
+    const id=c.ID_CHAT||c.idChat||"";
+    const unread=Number(c.SIN_LEER||0);
+    html+=`<div class="chat-item ${id===chatActualId?"active":""}" onclick="abrirChat('${id}')">
+      <div class="chat-item-title">
+        <span>${c.USUARIO||"Usuario landing"}</span>
+        ${unread?`<span class="chat-unread">${unread}</span>`:""}
+      </div>
+      <div class="small">${c.NOMBRE_COMPLETO||""} · ${formatFecha(c.FECHA_ULTIMO||c.FECHA||"")}</div>
+      <div class="small">${escapeHtml(c.ULTIMO_MENSAJE||"")}</div>
+    </div>`;
+  });
+  setBox("chatList",html);
+}
+async function abrirChat(id){
+  chatActualId=id;
+  renderChatList();
+  await cargarChatActual(false);
+}
+async function cargarChatActual(silencioso=false){
+  if(!chatActualId)return;
+  const r=await api({
+    action:"getchatlanding",
+    usuario:operador.usuario,
+    operador:operador.nombre,
+    idChat:chatActualId,
+    chatSessionId:chatActualId,
+    t:Date.now()
+  });
+  if(!r.ok)return;
+  chatMensajes=r.mensajes||[];
+  renderChatMensajes();
+  await api({
+    action:"marcarchatgeneralleido",
+    usuario:operador.usuario,
+    operador:operador.nombre,
+    idChat:chatActualId,
+    chatSessionId:chatActualId
+  });
+  cargarChats(true);
+}
+
+function normalizarImagenUrl(url){
+  const u = String(url || "");
+  if(u.startsWith("data:image")) return u;
+  const m1 = u.match(/\/d\/([^/]+)/);
+  const m2 = u.match(/[?&]id=([^&]+)/);
+  const id = m1 ? m1[1] : (m2 ? m2[1] : "");
+  return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w1000` : u;
+}
+
+function renderChatMensajes(){
+  const chat=chats.find(c=>String(c.ID_CHAT)===String(chatActualId))||{};
+  setBox("chatTitulo",chat.USUARIO||"Chat landing");
+  setBox("chatSubtitulo",`${chat.NOMBRE_COMPLETO||""} ${chat.TELEFONO? "· "+chat.TELEFONO:""}`);
+  setBox("chatEstado",chat.SOLICITUD_ID?`Solicitud: ${chat.SOLICITUD_ID}`:"Sin solicitud");
+  if(!chatMensajes.length){setBox("chatBody",`<div class="alert-box">Sin mensajes todavía.</div>`);return}
+  let html="";
+  chatMensajes.forEach(m=>{
+    const tipo=normalizar(m.TIPO_EMISOR);
+    const esUser=tipo==="USUARIO";
+    html+=`<div class="chat-msg ${esUser?"user":"op"}">
+      <div class="chat-bubble">
+        ${escapeHtml(m.MENSAJE||"")}
+        ${m.IMAGEN_URL?`<img src="${normalizarImagenUrl(m.IMAGEN_URL)}" alt="Imagen">`:""}
+      </div>
+      <div class="chat-meta">${esUser?"Usuario":"Operador"} · ${formatFecha(m.FECHA)}</div>
+    </div>`;
+  });
+  const box=document.getElementById("chatBody");
+  box.innerHTML=html;
+  box.scrollTop=box.scrollHeight;
+}
+async function enviarChat(){
+  if(!chatActualId){
+    alert("Seleccioná un chat primero.");
+    return;
+  }
+
+  const mensaje=val("chatInput").trim();
+
+  if(!mensaje && !chatImagenBase64)return;
+
+  const payload={
+    action:"enviarmensajechatlanding",
+    idChat:chatActualId,
+    chatSessionId:chatActualId,
+    pc:pcOperativa,
+    operador:operador.nombre,
+    usuario:operador.usuario,
+    emisor:operador.nombre,
+    tipoEmisor:"OPERADOR",
+    mensaje
+  };
+
+  if(chatImagenBase64){
+    payload.imagenUrl=chatImagenBase64;
+    payload.imagenBase64=chatImagenBase64;
+    payload.imagenNombre=chatImagenNombre||"captura.png";
+  }
+
+  if(chatImagenBase64){
+    await apiPostNoCors(payload);
+    document.getElementById("chatInput").value="";
+    quitarImagenChat();
+    setTimeout(()=>cargarChatActual(false),1500);
+    setTimeout(()=>cargarChatActual(false),3800);
+    return;
+  }
+
+  const r=await api(payload);
+
+  if(!r.ok){
+    alert(r.error||"Error");
+    return;
+  }
+
+  document.getElementById("chatInput").value="";
+  quitarImagenChat();
+
+  setTimeout(()=>cargarChatActual(false),500);
+  setTimeout(()=>cargarChatActual(false),2000);
+}
+
+function agregarMensajeLocalPanel(mensaje, imagen){
+  const box = document.getElementById("chatBody");
+  box.insertAdjacentHTML("beforeend", `
+    <div class="chat-msg op">
+      <div class="chat-bubble">
+        ${escapeHtml(mensaje || "")}
+        ${imagen ? `<img src="${imagen}" alt="Imagen">` : ""}
+      </div>
+      <div class="chat-meta">Operador · enviando...</div>
+    </div>
+  `);
+  box.scrollTop = box.scrollHeight;
+}
+function marcarUltimoMensajePanelEnviado(){
+  const metas = document.querySelectorAll("#chatBody .chat-msg.op .chat-meta");
+  const last = metas[metas.length - 1];
+  if(last && last.innerText.includes("enviando")) last.innerText = "Operador · enviado";
+}
+function tomarImagenChatFile(){
+  const file=document.getElementById("chatFile").files[0];
+  if(file)leerImagenChat(file);
+}
+function leerImagenChat(file){
+  if(!file.type.startsWith("image/")){
+    alert("Pegá o adjuntá una imagen válida.");
+    return;
+  }
+
+  comprimirImagenChat(file, base64 => {
+    chatImagenBase64 = base64;
+    chatImagenNombre = (file.name || "captura.jpg").replace(/\.[^.]+$/, ".jpg");
+    document.getElementById("chatPreviewImg").src = chatImagenBase64;
+    document.getElementById("chatPreview").classList.add("show");
+  });
+}
+function quitarImagenChat(){
+  chatImagenBase64="";
+  chatImagenNombre="";
+  document.getElementById("chatFile").value="";
+  document.getElementById("chatPreviewImg").src="";
+  document.getElementById("chatPreview").classList.remove("show");
+}
+document.addEventListener("paste",e=>{
+  const visible=!document.getElementById("viewChat").classList.contains("hidden");
+  if(!visible)return;
+  const items=e.clipboardData?.items||[];
+  let hayImagen=false;
+  for(const item of items){
+    if(item.type&&item.type.startsWith("image/")){
+      const file=item.getAsFile();
+      if(file){leerImagenChat(file);e.preventDefault();hayImagen=true;return}
+    }
+  }
+});
+document.getElementById("chatInput")?.addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&!e.shiftKey){
+    e.preventDefault();
+    enviarChat();
+  }
+});
+
+function verificarSolicitudes(silencioso=false){
+  const pendientes=solicitudes.filter(esPendiente);
+  const ids=new Set(pendientes.map(s=>String(s.ID||s.SOLICITUD_ID||"")).filter(Boolean));
+  const badge=document.getElementById("badgeSolicitudes");
+  if(pendientes.length){badge.classList.remove("hidden");badge.innerText=pendientes.length}else badge.classList.add("hidden");
+  let nuevas=0;ids.forEach(id=>{if(!lastPendientesIds.has(id))nuevas++});
+  if(!silencioso||lastPendientesIds.size===0){lastPendientesIds=ids;return}
+  if(nuevas>0){toast(`🔔 ${nuevas} nueva/s solicitud/es`);sonido("solicitud")}
+  lastPendientesIds=ids;
+}
+function verificarChats(silencioso=false){
+  const unread=chats.reduce((a,c)=>a+Number(c.SIN_LEER||0),0);
+  const badge=document.getElementById("badgeChat");
+  if(unread){badge.classList.remove("hidden");badge.innerText=unread}else badge.classList.add("hidden");
+  if(silencioso && unread>lastChatUnread){toast("💬 Nuevo mensaje de chat");sonido("chat")}
+  lastChatUnread=unread;
+}
+function sonido(tipo="msg"){
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    const osc=ctx.createOscillator();
+    const gain=ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.type="sine";osc.frequency.value=tipo==="chat"?660:520;gain.gain.value=.08;
+    osc.start();setTimeout(()=>{osc.stop();ctx.close()},220);
+  }catch(e){}
+}
+
+function abrirModal(title,body,saveFn,saveText="Guardar"){
+  setBox("modalTitle",title);setBox("modalBody",body);
+  const btn=document.getElementById("modalSaveBtn");btn.innerText=saveText;btn.onclick=saveFn;
+  document.getElementById("modalOverlay").classList.remove("hidden");
+}
+function cerrarModal(){document.getElementById("modalOverlay").classList.add("hidden")}
+
+function abrirMenuMobile(){const menu=document.getElementById("mobileMenu");menu.classList.add("open");menu.innerHTML="";const clone=document.getElementById("sidebar").cloneNode(true);clone.style.display="block";menu.appendChild(clone)}
+function cerrarMenuMobile(e){if(!e||e.target.id==="mobileMenu"){const menu=document.getElementById("mobileMenu");menu.classList.remove("open");menu.innerHTML=""}}
+function cerrarSesion(){localStorage.removeItem("nodo_operador_lite");localStorage.removeItem("nodo_pc_operativa_lite");location.reload()}
+</script>
+
+
+</body></html>
