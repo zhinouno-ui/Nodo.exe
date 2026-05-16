@@ -250,6 +250,65 @@ input::placeholder{color:#484f58}
     <div id="historialLista"><div style="color:var(--muted);font-size:13px;text-align:center;padding:30px 0">Cargando...</div></div>
   </div>
 
+  <!-- ═══ RETIRO ═══ -->
+  <div id="secRetiro" class="wrap hidden">
+    <div style="padding-top:20px;margin-bottom:16px">
+      <h1 style="font-size:24px;font-weight:900">Solicitar retiro</h1>
+      <p style="font-size:13px;color:var(--muted)">El operador transfiere al CBU/alias que tengas guardado.</p>
+    </div>
+
+    <!-- Estado: retiro pendiente -->
+    <div id="retiroStatusCard" class="hidden"></div>
+
+    <!-- Setup: faltan datos bancarios -->
+    <div id="retiroDatosSetup" class="hidden">
+      <div class="alert alert-warn" style="margin-bottom:14px">
+        ⚠️ Para solicitar un retiro necesitás completar tus datos bancarios primero.
+      </div>
+      <div class="card">
+        <div class="card-title">Datos bancarios para el retiro</div>
+        <div class="field">
+          <label>DNI *</label>
+          <input id="setupDni" type="number" placeholder="Sin puntos · ej: 38456789">
+        </div>
+        <div class="field">
+          <label>Nombre exacto en transferencia *</label>
+          <input id="setupNombreTransf" type="text" autocapitalize="words" placeholder="Tal cual figura en tu CBU/CVU">
+          <div class="field-warn">⚠️ Si el nombre no coincide, puede demorar o rechazar la transferencia.</div>
+        </div>
+        <div class="field">
+          <label>CBU / CVU / Alias *</label>
+          <input id="setupCbuAlias" type="text" placeholder="0000003100... o tu.alias.mp" autocapitalize="none">
+          <div class="field-hint">Podés ingresar CBU, CVU o alias de Mercado Pago / Uala / banco.</div>
+        </div>
+        <div id="setupRetiroMsg"></div>
+        <button class="btn btn-primary" onclick="guardarDatosRetiro()">Guardar y continuar</button>
+      </div>
+    </div>
+
+    <!-- Formulario de retiro: datos completos -->
+    <div id="retiroFormCard" class="hidden">
+      <!-- Datos bancarios readonly -->
+      <div class="card" style="padding:16px;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div style="font-size:13px;font-weight:700;color:var(--muted)">🏦 Tu cuenta de cobro</div>
+          <button onclick="mostrarSeccion('perfil')" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline">Editar en perfil</button>
+        </div>
+        <div id="retiroDatosResumen"></div>
+      </div>
+
+      <div class="card">
+        <div class="field">
+          <label>Monto a retirar *</label>
+          <input id="retiroMonto" type="number" min="1" placeholder="ej: 5000" inputmode="numeric">
+        </div>
+        <div id="retiroFormMsg"></div>
+        <button class="btn btn-red" onclick="enviarSolicitudRetiro()">Solicitar retiro</button>
+        <p style="font-size:11px;color:var(--muted);margin-top:10px;text-align:center">El operador procesará el retiro y transferirá al CBU/alias registrado.</p>
+      </div>
+    </div>
+  </div>
+
   <div id="secChat" class="wrap hidden">
     <div style="padding-top:20px;margin-bottom:14px">
       <h2 style="font-size:20px;font-weight:800">💬 Chat con soporte</h2>
@@ -314,6 +373,10 @@ input::placeholder{color:#484f58}
         <input id="editNombreTransferencia" type="text" autocapitalize="words">
         <div class="field-warn">⚠️ Exactamente como figura en tu CBU/CVU. Diferencias pueden demorar operaciones.</div>
       </div>
+      <div class="field">
+        <label>CBU / CVU / Alias <span class="optional-tag">opcional</span></label>
+        <input id="editCbuAlias" type="text" autocapitalize="none" placeholder="0000003100... o tu.alias.mp">
+      </div>
 
       <div id="editMsg"></div>
       <button class="btn btn-primary" onclick="guardarPerfil()">Guardar cambios</button>
@@ -344,6 +407,9 @@ input::placeholder{color:#484f58}
   <nav class="bottom-nav">
     <button id="navInicio" class="active" onclick="mostrarSeccion('inicio')">
       <span class="icon">💸</span>Cargar
+    </button>
+    <button id="navRetiro" onclick="mostrarSeccion('retiro')">
+      <span class="icon">🏧</span>Retirar
     </button>
     <button id="navHistorial" onclick="mostrarSeccion('historial')">
       <span class="icon">📋</span>Historial
@@ -652,7 +718,7 @@ async function cargarHistorial(){
 }
 
 function mostrarSeccion(sec){
-  ['inicio','historial','chat','perfil'].forEach(s=>{
+  ['inicio','retiro','historial','chat','perfil'].forEach(s=>{
     document.getElementById('sec'+s.charAt(0).toUpperCase()+s.slice(1))?.classList.add('hidden');
     document.getElementById('nav'+s.charAt(0).toUpperCase()+s.slice(1))?.classList.remove('active');
   });
@@ -661,6 +727,7 @@ function mostrarSeccion(sec){
   if(sec==='chat'){ document.getElementById('navChatBadge')?.classList.add('hidden'); scrollChat(); }
   if(sec==='perfil') rellenarFormPerfil();
   if(sec==='historial') cargarHistorial();
+  if(sec==='retiro') cargarSeccionRetiro();
 }
 
 // ── Perfil ────────────────────────────────────────────────────────────────────
@@ -685,6 +752,7 @@ function rellenarFormPerfil(){
   setVal('editTelefono', usuario.telefono);
   setVal('editDni', usuario.dni || '');
   setVal('editNombreTransferencia', usuario.nombre_transferencia || '');
+  setVal('editCbuAlias', usuario.cbu_alias || '');
 }
 
 async function guardarPerfil(){
@@ -700,6 +768,7 @@ async function guardarPerfil(){
     telefono,
     dni: val('editDni') || null,
     nombre_transferencia: val('editNombreTransferencia') || null,
+    cbu_alias: val('editCbuAlias') || null,
     updated_at: new Date().toISOString()
   };
 
@@ -711,6 +780,118 @@ async function guardarPerfil(){
   renderResumenPerfil();
   msg('editMsg','Perfil actualizado correctamente.','ok');
   setTimeout(()=>msg('editMsg',''), 3000);
+}
+
+// ── Sección Retiro ────────────────────────────────────────────────────────────
+async function cargarSeccionRetiro(){
+  const datosCompletos = usuario.dni && usuario.nombre_transferencia && usuario.cbu_alias;
+
+  hide('retiroDatosSetup'); hide('retiroFormCard'); hide('retiroStatusCard');
+
+  if(!datosCompletos){
+    show('retiroDatosSetup');
+    return;
+  }
+
+  // Verifica si hay un retiro pendiente
+  const { data: pendiente } = await sb.from('solicitudes').select('id,estado,monto,created_at')
+    .eq('usuario', usuario.usuario).eq('pc_codigo', PC).eq('tipo','RETIRO')
+    .in('estado',['PENDIENTE','NUEVA','EN_REVISION'])
+    .limit(1);
+
+  if(pendiente && pendiente.length){
+    const p = pendiente[0];
+    document.getElementById('retiroStatusCard').innerHTML = `
+      <div style="background:linear-gradient(135deg,#3d2d00,#6e4e00);border-radius:18px;padding:22px;margin-bottom:14px;text-align:center">
+        <div style="font-size:32px;margin-bottom:8px">⏳</div>
+        <div style="font-weight:900;font-size:18px;margin-bottom:6px">Retiro en proceso</div>
+        <div style="font-size:13px;opacity:.85">Solicitud de <b>$${Number(p.monto||0).toLocaleString('es-AR')}</b> siendo procesada.<br>Te avisamos cuando se transfiera.</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:10px">${formatFechaCorta(p.created_at)}</div>
+      </div>
+      <div class="alert alert-warn" style="text-align:center;font-size:13px">No podés enviar otro retiro mientras este está pendiente.</div>
+    `;
+    show('retiroStatusCard');
+    return;
+  }
+
+  // Muestra el formulario con los datos readonly
+  const resumen = document.getElementById('retiroDatosResumen');
+  resumen.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:8px">
+        <span style="color:var(--muted);font-size:12px">DNI</span>
+        <b>${escHtml(usuario.dni)}</b>
+      </div>
+      <div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:8px">
+        <span style="color:var(--muted);font-size:12px">Nombre en transferencia</span>
+        <b style="text-align:right;max-width:60%">${escHtml(usuario.nombre_transferencia)}</b>
+      </div>
+      <div style="display:flex;justify-content:space-between">
+        <span style="color:var(--muted);font-size:12px">CBU / CVU / Alias</span>
+        <b style="text-align:right;max-width:60%;word-break:break-all">${escHtml(usuario.cbu_alias)}</b>
+      </div>
+    </div>
+  `;
+  show('retiroFormCard');
+  msg('retiroFormMsg','');
+}
+
+async function guardarDatosRetiro(){
+  const dni              = (document.getElementById('setupDni')?.value||'').trim();
+  const nombreTransf     = (document.getElementById('setupNombreTransf')?.value||'').trim();
+  const cbuAlias         = (document.getElementById('setupCbuAlias')?.value||'').trim();
+
+  if(!dni)           { msg('setupRetiroMsg','Ingresá tu DNI.','err'); return; }
+  if(!nombreTransf)  { msg('setupRetiroMsg','Ingresá el nombre en transferencia.','err'); return; }
+  if(!cbuAlias)      { msg('setupRetiroMsg','Ingresá tu CBU, CVU o alias.','err'); return; }
+
+  msg('setupRetiroMsg','<span class="spinner"></span>Guardando...','info');
+
+  const { data, error } = await sb.from('usuarios').update({
+    dni, nombre_transferencia: nombreTransf, cbu_alias: cbuAlias,
+    updated_at: new Date().toISOString()
+  }).eq('id', usuario.id).select().single();
+
+  if(error){ msg('setupRetiroMsg','Error al guardar. Intentá de nuevo.','err'); return; }
+
+  usuario = data;
+  localStorage.setItem('nodo_usuario_landing', JSON.stringify(usuario));
+  cargarSeccionRetiro();
+}
+
+async function enviarSolicitudRetiro(){
+  const monto = Number(document.getElementById('retiroMonto')?.value || 0);
+  if(!monto || monto <= 0){ msg('retiroFormMsg','Ingresá el monto a retirar.','err'); return; }
+
+  // Bloqueo doble: no se puede enviar si ya hay uno pendiente
+  const { data: enCola } = await sb.from('solicitudes').select('id')
+    .eq('usuario', usuario.usuario).eq('pc_codigo', PC).eq('tipo','RETIRO')
+    .in('estado',['PENDIENTE','NUEVA','EN_REVISION'])
+    .limit(1);
+  if(enCola && enCola.length){
+    msg('retiroFormMsg','⏳ Ya tenés un retiro en proceso.','warn');
+    return;
+  }
+
+  msg('retiroFormMsg','<span class="spinner"></span>Enviando solicitud...','info');
+
+  const { error } = await sb.from('solicitudes').insert({
+    tipo:            'RETIRO',
+    usuario:         usuario.usuario,
+    nombre_completo: usuario.nombre,
+    telefono:        usuario.telefono,
+    pc_codigo:       PC,
+    monto,
+    estado:          'PENDIENTE',
+    // Guardamos los datos bancarios en el nombre de billetera para que el operador los vea
+    billetera_nombre: `DNI: ${usuario.dni} · ${usuario.nombre_transferencia} · ${usuario.cbu_alias}`
+  });
+
+  if(error){ msg('retiroFormMsg','Error al enviar. Intentá de nuevo.','err'); return; }
+
+  document.getElementById('retiroMonto').value = '';
+  msg('retiroFormMsg','','');
+  cargarSeccionRetiro(); // Recarga para mostrar estado pendiente
 }
 
 async function solicitarResetClave(){

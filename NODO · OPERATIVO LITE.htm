@@ -710,6 +710,36 @@ async function importarCSV(){
   await cargarJugadores();
 }
 
+function abrirEditarUsuario(u){
+  abrirModal(`✏ Editar — ${u.usuario}`,`
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
+      <div><label class="small">Nombre</label><input id="eU_nombre" value="${escapeHtml(u.nombre)}" style="margin-top:4px"></div>
+      <div><label class="small">Teléfono</label><input id="eU_telefono" value="${escapeHtml(u.telefono)}" style="margin-top:4px"></div>
+      <div><label class="small">DNI</label><input id="eU_dni" value="${escapeHtml(u.dni)}" style="margin-top:4px"></div>
+      <div><label class="small">Nombre en transferencia</label><input id="eU_nombre_transf" value="${escapeHtml(u.nombre_transferencia)}" style="margin-top:4px"></div>
+      <div><label class="small">CBU / CVU / Alias</label><input id="eU_cbu_alias" value="${escapeHtml(u.cbu_alias)}" autocapitalize="none" style="margin-top:4px"></div>
+      <div><label class="small">PC</label><input id="eU_pc" value="${escapeHtml(u.pc_codigo)}" style="margin-top:4px"></div>
+      <div><label class="small">Clave</label><input id="eU_clave" value="${escapeHtml(u.clave)}" style="margin-top:4px"></div>
+    </div>
+  `, async()=>{
+    const cambios = {
+      nombre:               val("eU_nombre")||null,
+      telefono:             val("eU_telefono")||null,
+      dni:                  val("eU_dni")||null,
+      nombre_transferencia: val("eU_nombre_transf")||null,
+      cbu_alias:            val("eU_cbu_alias")||null,
+      pc_codigo:            val("eU_pc")||u.pc_codigo,
+      clave:                val("eU_clave")||null,
+      updated_at:           new Date().toISOString()
+    };
+    const {error} = await supabaseClient.from("usuarios").update(cambios).eq("id", u.id);
+    if(error){ alert(error.message||"Error"); return; }
+    cerrarModal();
+    toast("Usuario actualizado","green");
+    await cargarJugadores();
+  },"Guardar cambios");
+}
+
 function copiarDatosUsuario(u){
   const txt=`Usuario: ${u.usuario}\nNombre: ${u.nombre}\nTeléfono: ${u.telefono||""}\nPC: ${u.pc_codigo||""}\nClave: ${u.clave||"12345a"}`;
   navigator.clipboard?.writeText(txt).then(()=>toast("Datos copiados","green")).catch(()=>{});
@@ -852,6 +882,7 @@ function renderTablaJugadores(lista){
       <td>
         <div style="display:flex;flex-direction:column;gap:4px">
           <button class="mini-btn blue" onclick='copiarDatosUsuario(${JSON.stringify({usuario:u.usuario,nombre:u.nombre,telefono:u.telefono,pc_codigo:u.pc_codigo,clave:u.clave||"12345a"})})'>📋 Copiar</button>
+          <button class="mini-btn green" onclick='abrirEditarUsuario(${JSON.stringify({id:u.id,usuario:u.usuario,nombre:u.nombre||"",telefono:u.telefono||"",dni:u.dni||"",nombre_transferencia:u.nombre_transferencia||"",cbu_alias:u.cbu_alias||"",pc_codigo:u.pc_codigo||"",clave:u.clave||""})})'>✏ Editar</button>
           <button class="mini-btn yellow" onclick="resetearClaveUsuario('${id}','${u.usuario}')">🔑 Reset</button>
         </div>
       </td>
