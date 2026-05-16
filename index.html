@@ -56,6 +56,8 @@ input::placeholder{color:#484f58}
 .alert-ok{background:#0d3321;color:#3fb950;border:1px solid #196c2e}
 .alert-err{background:#3d1d1c;color:#f85149;border:1px solid #6e3531}
 .alert-warn{background:#3d2d00;color:#d29922;border:1px solid #6e4e00}
+@keyframes pulse{0%,100%{box-shadow:0 4px 20px rgba(18,183,106,.4)}50%{box-shadow:0 4px 30px rgba(18,183,106,.8)}}
+.alert-warn{background:#3d2d00;color:#d29922;border:1px solid #6e4e00}
 
 /* ── Billeteras ── */
 .billetera-card{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
@@ -198,8 +200,11 @@ input::placeholder{color:#484f58}
       <p style="font-size:13px;color:var(--muted)">Ingresá el monto. Te avisamos cuando la carga esté confirmada.</p>
     </div>
 
+    <!-- ── Card dinámica: solicitud pendiente / aprobada / ir al juego ── -->
+    <div id="cargaStatusCard" class="hidden"></div>
+
     <!-- Banner paso 1 -->
-    <div style="background:linear-gradient(135deg,#0a6e57,#12b76a);border-radius:16px;padding:16px;margin-bottom:14px;position:relative">
+    <div id="cargaPaso1" style="background:linear-gradient(135deg,#0a6e57,#12b76a);border-radius:16px;padding:16px;margin-bottom:14px">
       <div style="font-weight:800;font-size:14px;margin-bottom:4px">📋 Paso 1: Copiá el CBU/CVU y hacé la transferencia.</div>
       <div style="font-size:12px;opacity:.9">💬 ¿No sabés cómo hacerla? <span style="text-decoration:underline;cursor:pointer" onclick="mostrarSeccion('chat')">Preguntanos en el chat →</span></div>
     </div>
@@ -210,22 +215,13 @@ input::placeholder{color:#484f58}
     </div>
 
     <!-- Banner paso 2 -->
-    <div style="background:linear-gradient(135deg,#1a2f6d,#3d5afe);border-radius:16px;padding:16px;margin-bottom:14px">
+    <div id="cargaPaso2" style="background:linear-gradient(135deg,#1a2f6d,#3d5afe);border-radius:16px;padding:16px;margin-bottom:14px">
       <div style="font-weight:800;font-size:14px;margin-bottom:4px">👤 Paso 2: Completá tu solicitud.</div>
       <div style="font-size:12px;opacity:.9">¿No sabés cuál es tu usuario? <span style="text-decoration:underline;cursor:pointer" onclick="mostrarSeccion('chat')">Preguntanos en el chat 💬</span></div>
     </div>
 
-    <!-- Mis solicitudes recientes -->
-    <div id="misSolicitudesCard" class="card hidden" style="padding:14px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <b style="font-size:14px">📑 Mis últimas solicitudes</b>
-        <button onclick="cargarMisSolicitudes()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">🔄</button>
-      </div>
-      <div id="misSolicitudesList"></div>
-    </div>
-
     <!-- Formulario pre-llenado -->
-    <div class="card">
+    <div id="cargaFormCard" class="card">
       <div class="field">
         <label>Usuario</label>
         <input id="cargaUsuario" type="text" readonly style="opacity:.7;cursor:default">
@@ -243,6 +239,15 @@ input::placeholder{color:#484f58}
       <button class="btn btn-green" onclick="enviarSolicitudCarga()">Enviar solicitud de carga</button>
       <p style="font-size:11px;color:var(--muted);margin-top:10px;text-align:center">Importante: realizá primero la transferencia con los datos de arriba, luego completá este formulario.</p>
     </div>
+  </div>
+
+  <!-- Historial de transacciones -->
+  <div id="secHistorial" class="wrap hidden">
+    <div style="padding-top:20px;margin-bottom:14px">
+      <h2 style="font-size:20px;font-weight:800">📋 Mis transacciones</h2>
+      <p style="font-size:13px;color:var(--muted)">Historial de cargas, retiros y solicitudes.</p>
+    </div>
+    <div id="historialLista"><div style="color:var(--muted);font-size:13px;text-align:center;padding:30px 0">Cargando...</div></div>
   </div>
 
   <div id="secChat" class="wrap hidden">
@@ -339,6 +344,9 @@ input::placeholder{color:#484f58}
   <nav class="bottom-nav">
     <button id="navInicio" class="active" onclick="mostrarSeccion('inicio')">
       <span class="icon">💸</span>Cargar
+    </button>
+    <button id="navHistorial" onclick="mostrarSeccion('historial')">
+      <span class="icon">📋</span>Historial
     </button>
     <button id="navChat" onclick="mostrarSeccion('chat')">
       <span class="icon">💬</span>Chat
@@ -491,61 +499,160 @@ async function entrarApp(){
   chatPolling = setInterval(()=>{ cargarMensajes(true); cargarMisSolicitudes(); }, 4000);
 }
 
-// ── Mis solicitudes (estado en vivo) ──────────────────────────────────────────
+// ── Helpers de estado ─────────────────────────────────────────────────────────
+function estadoSolicitud(estado){
+  const e = String(estado||'').toUpperCase();
+  if(['PENDIENTE','NUEVA','EN_REVISION','APROBADA_MANUAL','APROBADA_MANUAL_OK'].includes(e))
+    return {label:'⏳ En proceso',bg:'#3d2d00',fg:'#d29922',esPendiente:true};
+  if(['APROBADA','ACREDITADA','PAGADA'].includes(e))
+    return {label:'✅ Aprobada',bg:'#0d3321',fg:'#3fb950',esPendiente:false};
+  if(e==='RECHAZADA')
+    return {label:'❌ Rechazada',bg:'#3a1515',fg:'#f85149',esPendiente:false};
+  return {label:e||'-',bg:'#2a2f3b',fg:'#98a2b3',esPendiente:false};
+}
+function tipoIcon(t){
+  const x=String(t||'').toUpperCase();
+  if(x==='CARGA') return '💸';
+  if(x==='RETIRO') return '🏧';
+  if(x==='CAMBIO_CLAVE') return '🔑';
+  return '📄';
+}
+function formatFechaCorta(ts){
+  if(!ts) return '';
+  return new Date(ts).toLocaleString('es-AR',{
+    timeZone:'America/Argentina/Buenos_Aires',
+    day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false
+  });
+}
+
+// ── Estado del inicio: bloqueo, "Ir al juego", o formulario normal ────────────
 async function cargarMisSolicitudes(){
   if(!usuario?.usuario) return;
+
   const { data } = await sb.from('solicitudes').select('*')
     .eq('usuario', usuario.usuario).eq('pc_codigo', PC)
-    .order('created_at',{ascending:false}).limit(6);
+    .eq('tipo','CARGA')
+    .order('created_at',{ascending:false}).limit(5);
+
+  const statusCard   = document.getElementById('cargaStatusCard');
+  const formCard     = document.getElementById('cargaFormCard');
+  const paso1        = document.getElementById('cargaPaso1');
+  const paso2        = document.getElementById('cargaPaso2');
+  const billetera    = document.getElementById('cargaBilletera');
 
   if(!data || !data.length){
-    document.getElementById('misSolicitudesCard')?.classList.add('hidden');
+    statusCard.classList.add('hidden');
+    formCard.classList.remove('hidden');
+    paso1.style.display=''; paso2.style.display=''; billetera.style.display='';
     return;
   }
 
-  document.getElementById('misSolicitudesCard')?.classList.remove('hidden');
+  const ultima = data[0];
+  const est    = estadoSolicitud(ultima.estado);
 
-  const estadoStyle = (estado)=>{
-    const e = String(estado||'').toUpperCase();
-    if(e==='PENDIENTE' || e==='NUEVA' || e==='EN_REVISION')
-      return {label:'⏳ Pendiente',bg:'#3d2d00',fg:'#d29922'};
-    if(['APROBADA','APROBADA_MANUAL','APROBADA_MANUAL_OK','ACREDITADA','PAGADA'].includes(e))
-      return {label:'✅ Aprobada',bg:'#0d3321',fg:'#3fb950'};
-    if(e==='RECHAZADA')
-      return {label:'❌ Rechazada',bg:'#3a1515',fg:'#f85149'};
-    return {label:e||'-',bg:'#2a2f3b',fg:'#98a2b3'};
-  };
+  if(est.esPendiente){
+    // ── Hay una carga en proceso → ocultar formulario, mostrar estado ──
+    statusCard.innerHTML = `
+      <div style="background:linear-gradient(135deg,#3d2d00,#6e4e00);border-radius:18px;padding:22px;margin-bottom:14px;text-align:center">
+        <div style="font-size:32px;margin-bottom:8px">⏳</div>
+        <div style="font-weight:900;font-size:18px;margin-bottom:6px">Tu solicitud está en proceso</div>
+        <div style="font-size:13px;opacity:.85;margin-bottom:16px">Estamos procesando tu carga de <b>$${Number(ultima.monto||0).toLocaleString('es-AR')}</b>.<br>Te avisamos por acá cuando esté lista.</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.6)">${formatFechaCorta(ultima.created_at)}</div>
+      </div>
+      <div class="alert alert-warn" style="font-size:13px;text-align:center">No podés enviar otra solicitud mientras esta está pendiente.</div>
+    `;
+    statusCard.classList.remove('hidden');
+    formCard.classList.add('hidden');
+    paso1.style.display='none'; paso2.style.display='none'; billetera.style.display='none';
 
-  const tipoIcon = (t)=>{
-    const x = String(t||'').toUpperCase();
-    if(x==='CARGA') return '💸';
-    if(x==='RETIRO') return '🏧';
-    if(x==='CAMBIO_CLAVE') return '🔑';
-    return '📄';
-  };
+  } else if(['APROBADA','ACREDITADA','PAGADA'].includes(ultima.estado?.toUpperCase())){
+    // ── Carga aprobada → mostrar "Ir al juego" ──
+    statusCard.innerHTML = `
+      <div style="background:linear-gradient(135deg,#0a3d1a,#238636);border-radius:18px;padding:22px;margin-bottom:14px;text-align:center">
+        <div style="font-size:36px;margin-bottom:8px">🎉</div>
+        <div style="font-weight:900;font-size:18px;margin-bottom:6px">¡Tu carga fue acreditada!</div>
+        <div style="font-size:13px;opacity:.9;margin-bottom:18px"><b>$${Number(ultima.monto||0).toLocaleString('es-AR')}</b> ya están disponibles en tu cuenta.</div>
+        <a href="https://www.bet-300.pw/" target="_blank" style="
+          display:block;background:#12b76a;color:#fff;border-radius:14px;padding:16px;
+          font-size:17px;font-weight:900;text-decoration:none;letter-spacing:.5px;
+          box-shadow:0 4px 20px rgba(18,183,106,.4);animation:pulse 1.8s infinite;">
+          🎮 Ir al juego →
+        </a>
+      </div>
+      <div style="text-align:center;margin-bottom:14px">
+        <button onclick="nuevaCarga()" style="background:none;border:1px solid var(--line);color:var(--muted);border-radius:12px;padding:10px 20px;font-size:13px;cursor:pointer">
+          + Hacer una nueva carga
+        </button>
+      </div>
+    `;
+    statusCard.classList.remove('hidden');
+    formCard.classList.add('hidden');
+    paso1.style.display='none'; paso2.style.display='none'; billetera.style.display='none';
+
+  } else {
+    // ── Rechazada u otro → mostrar formulario normalmente ──
+    statusCard.classList.add('hidden');
+    formCard.classList.remove('hidden');
+    paso1.style.display=''; paso2.style.display=''; billetera.style.display='';
+  }
+}
+
+function nuevaCarga(){
+  // Limpia el estado y muestra el formulario para otra carga
+  const statusCard = document.getElementById('cargaStatusCard');
+  const formCard   = document.getElementById('cargaFormCard');
+  const paso1      = document.getElementById('cargaPaso1');
+  const paso2      = document.getElementById('cargaPaso2');
+  const billetera  = document.getElementById('cargaBilletera');
+  statusCard.classList.add('hidden');
+  formCard.classList.remove('hidden');
+  paso1.style.display=''; paso2.style.display=''; billetera.style.display='';
+  document.getElementById('cargaMonto').value='';
+  msg('cargaMsg','');
+}
+
+// ── Historial completo ────────────────────────────────────────────────────────
+async function cargarHistorial(){
+  if(!usuario?.usuario) return;
+  document.getElementById('historialLista').innerHTML =
+    '<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px 0">Cargando...</div>';
+
+  const { data } = await sb.from('solicitudes').select('*')
+    .eq('usuario', usuario.usuario).eq('pc_codigo', PC)
+    .order('created_at',{ascending:false}).limit(50);
+
+  if(!data || !data.length){
+    document.getElementById('historialLista').innerHTML =
+      '<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px 0">Sin transacciones todavía.</div>';
+    return;
+  }
 
   const html = data.map(s=>{
-    const e = estadoStyle(s.estado);
-    const fecha = new Date(s.created_at).toLocaleString('es-AR',{
-      timeZone:'America/Argentina/Buenos_Aires',
-      day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false
-    });
+    const e = estadoSolicitud(s.estado);
     const monto = s.monto ? `$${Number(s.monto).toLocaleString('es-AR')}` : '';
-    const tipo = s.tipo==='CAMBIO_CLAVE'?'Cambio de clave':(s.tipo||'');
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px">
-      <div>
-        <div><b>${tipoIcon(s.tipo)} ${tipo}</b> ${monto?`<span style="color:var(--muted)">· ${monto}</span>`:''}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">${fecha}</div>
+    const tipoLabel = s.tipo==='CAMBIO_CLAVE'?'Cambio de clave':(s.tipo||'');
+    return `<div class="card" style="padding:14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div>
+          <div style="font-weight:700;font-size:15px">${tipoIcon(s.tipo)} ${tipoLabel} ${monto?`<span style="color:var(--muted)">· ${monto}</span>`:''}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">${formatFechaCorta(s.created_at)}</div>
+          ${s.billetera_nombre?`<div style="font-size:12px;color:var(--muted);margin-top:2px">💳 ${escHtml(s.billetera_nombre)}</div>`:''}
+        </div>
+        <span style="padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700;background:${e.bg};color:${e.fg};white-space:nowrap;flex-shrink:0">${e.label}</span>
       </div>
-      <span style="padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;background:${e.bg};color:${e.fg};white-space:nowrap">${e.label}</span>
+      ${s.tipo==='CARGA'&&['APROBADA','ACREDITADA'].includes(s.estado?.toUpperCase())?`
+        <div style="margin-top:12px">
+          <a href="https://www.bet-300.pw/" target="_blank" style="display:inline-block;background:#12b76a;color:#fff;border-radius:10px;padding:9px 18px;font-size:13px;font-weight:700;text-decoration:none">🎮 Ir al juego</a>
+        </div>`:''
+      }
     </div>`;
   }).join('');
 
-  document.getElementById('misSolicitudesList').innerHTML = html;
+  document.getElementById('historialLista').innerHTML = html;
 }
 
 function mostrarSeccion(sec){
-  ['inicio','chat','perfil'].forEach(s=>{
+  ['inicio','historial','chat','perfil'].forEach(s=>{
     document.getElementById('sec'+s.charAt(0).toUpperCase()+s.slice(1))?.classList.add('hidden');
     document.getElementById('nav'+s.charAt(0).toUpperCase()+s.slice(1))?.classList.remove('active');
   });
@@ -553,6 +660,7 @@ function mostrarSeccion(sec){
   document.getElementById('nav'+sec.charAt(0).toUpperCase()+sec.slice(1))?.classList.add('active');
   if(sec==='chat'){ document.getElementById('navChatBadge')?.classList.add('hidden'); scrollChat(); }
   if(sec==='perfil') rellenarFormPerfil();
+  if(sec==='historial') cargarHistorial();
 }
 
 // ── Perfil ────────────────────────────────────────────────────────────────────
@@ -711,6 +819,16 @@ async function enviarSolicitudCarga(){
   if(!monto || monto <= 0){ msg('cargaMsg','Ingresá el monto a cargar.','err'); return; }
   if(minimo && monto < minimo){
     msg('cargaMsg', `El monto mínimo es $${Number(minimo).toLocaleString('es-AR')}.`, 'err');
+    return;
+  }
+
+  // Bloqueo: no se puede enviar si ya hay una carga en proceso
+  const { data: enCola } = await sb.from('solicitudes').select('id,estado')
+    .eq('usuario', usuario.usuario).eq('pc_codigo', PC).eq('tipo','CARGA')
+    .in('estado',['PENDIENTE','NUEVA','EN_REVISION','APROBADA_MANUAL','APROBADA_MANUAL_OK'])
+    .limit(1);
+  if(enCola && enCola.length){
+    msg('cargaMsg','⏳ Ya tenés una solicitud en proceso. Esperá a que se resuelva antes de enviar otra.','warn');
     return;
   }
 
