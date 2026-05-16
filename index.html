@@ -327,11 +327,10 @@ const SUPABASE_URL = "https://gxedxuctwlkjllmayxaa.supabase.co";
 const SUPABASE_KEY = "sb_publishable_UlAN1ifdqpTj9pDIwFU0vg_S7AIU5Sg";
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CONFIGURAR: cambiá este valor por el nombre de la PC de esta franquicia
-// Cada franquicia tiene su propia copia de este archivo con su PC aquí.
-const PC = "SANCHEZ";
-// ─────────────────────────────────────────────────────────────────────────────
+// Mapa numérico → nombre interno de PC (nunca visible para el usuario)
+const PC_MAP = { "1":"CHINO", "2":"ALVAREZ", "3":"X", "4":"SANCHEZ", "5":"E" };
+const _pcParam = new URLSearchParams(window.location.search).get('pc') || "";
+const PC = PC_MAP[_pcParam] || "SANCHEZ";
 
 let usuario = null;   // objeto del usuario logueado
 let chatId   = null;  // uuid de la sesión de chat
