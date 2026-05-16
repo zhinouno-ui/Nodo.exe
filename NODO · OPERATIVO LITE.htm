@@ -271,6 +271,38 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
           </div>
         </div>
 
+        <!-- Importar CSV -->
+        <div class="card" style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <b>📥 Importar planilla CSV</b>
+            <button class="mini-btn gray" onclick="toggleImportar()" id="btnToggleImportar">Mostrar</button>
+          </div>
+          <div id="formImportarCSV" class="hidden">
+            <div class="small" style="margin-bottom:12px;color:var(--muted);line-height:1.5">
+              Importa usuarios desde una planilla CSV exportada (formato Sánchez Ofi: 22 columnas A–V).<br>
+              Si el usuario ya existe, se actualizan los campos del CSV sin tocar nombre/teléfono que cargó él mismo.
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:10px">
+              <div>
+                <label class="small">PC destino</label>
+                <input id="csvPc" placeholder="SANCHEZ" value="SANCHEZ" style="margin-top:4px">
+              </div>
+              <div>
+                <label class="small">Archivo CSV</label>
+                <input id="csvFile" type="file" accept=".csv,text/csv" style="margin-top:4px;padding:8px">
+              </div>
+            </div>
+            <div id="csvProgreso" class="hidden" style="margin:10px 0">
+              <div style="background:#1c2230;border-radius:8px;overflow:hidden;height:14px">
+                <div id="csvProgresoBar" style="height:100%;background:linear-gradient(90deg,#3d5afe,#12b76a);width:0%;transition:width .2s"></div>
+              </div>
+              <div id="csvProgresoTxt" class="small" style="margin-top:6px;text-align:center"></div>
+            </div>
+            <div id="csvMsg"></div>
+            <button class="btn btn-primary" style="max-width:240px" onclick="importarCSV()">Importar planilla</button>
+          </div>
+        </div>
+
         <!-- Filtros + tabla -->
         <div class="card">
           <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
@@ -291,6 +323,22 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
               <option value="TM">TM (06-14)</option>
               <option value="TT">TT (14-22)</option>
               <option value="TN">TN (22-06)</option>
+            </select>
+            <select id="jugFiltroEstado" onchange="filtrarJugadores()">
+              <option value="">Todos los estados</option>
+              <option value="A CONTACTAR">A contactar</option>
+              <option value="EN CONTACTO">En contacto</option>
+              <option value="REVISADO">Revisado</option>
+              <option value="NO ESTA EN WSP">No está en WSP</option>
+              <option value="promo enviada">Promo enviada</option>
+            </select>
+            <select id="jugFiltroLealtadCsv" onchange="filtrarJugadores()">
+              <option value="">Lealtad CSV: todas</option>
+              <option value="0">Lealtad 0</option>
+              <option value="1">Lealtad 1</option>
+              <option value="2">Lealtad 2</option>
+              <option value="3">Lealtad 3</option>
+              <option value="4">Lealtad 4</option>
             </select>
           </div>
           <div id="tablaJugadores"></div>
@@ -528,6 +576,140 @@ async function crearUsuarioPanel(){
   await cargarJugadores();
 }
 
+function toggleImportar(){
+  const el=document.getElementById("formImportarCSV");
+  const btn=document.getElementById("btnToggleImportar");
+  const oculto=el.classList.contains("hidden");
+  el.classList.toggle("hidden",!oculto);
+  btn.innerText=oculto?"Ocultar":"Mostrar";
+}
+
+// ── Parser CSV ────────────────────────────────────────────────────────────────
+function parseCSV(text){
+  // Saca el BOM si está
+  if(text.charCodeAt(0)===0xFEFF) text=text.slice(1);
+  const rows=[];
+  let row=[], cur="", inQuotes=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(inQuotes){
+      if(c==='"'&&text[i+1]==='"'){cur+='"';i++;}
+      else if(c==='"'){inQuotes=false;}
+      else{cur+=c;}
+    } else {
+      if(c==='"'){inQuotes=true;}
+      else if(c===','){row.push(cur);cur="";}
+      else if(c==='\n'){row.push(cur);rows.push(row);row=[];cur="";}
+      else if(c==='\r'){/* skip */}
+      else{cur+=c;}
+    }
+  }
+  if(cur||row.length){row.push(cur);rows.push(row);}
+  return rows;
+}
+
+function cleanPhone(v){
+  if(!v) return null;
+  const s=String(v).replace(/[^\d]/g,"");
+  return s||null;
+}
+function parseNumCsv(v){
+  if(v===undefined||v===null||v==="") return 0;
+  const n=Number(String(v).replace(/\./g,"").replace(",","."));
+  return Number.isFinite(n)?n:0;
+}
+function parseIntCsv(v){
+  if(v===undefined||v===null||v==="") return 0;
+  const n=parseInt(String(v).trim(),10);
+  return Number.isFinite(n)?n:0;
+}
+
+// ── Importación ───────────────────────────────────────────────────────────────
+async function importarCSV(){
+  const fileInput=document.getElementById("csvFile");
+  const file=fileInput?.files?.[0];
+  const pc=(document.getElementById("csvPc")?.value||"SANCHEZ").trim().toUpperCase();
+
+  if(!file){setBox("csvMsg",`<div class="err-box">Seleccioná un archivo CSV.</div>`);return}
+  if(!pc){setBox("csvMsg",`<div class="err-box">Indicá la PC destino.</div>`);return}
+
+  setBox("csvMsg",`<div class="alert-box">Leyendo archivo...</div>`);
+  document.getElementById("csvProgreso").classList.add("hidden");
+
+  let text;
+  try { text = await file.text(); }
+  catch(e){ setBox("csvMsg",`<div class="err-box">Error leyendo el archivo.</div>`); return; }
+
+  const rows=parseCSV(text);
+  if(rows.length<2){setBox("csvMsg",`<div class="err-box">El CSV está vacío.</div>`);return}
+
+  const headers=rows[0].map(h=>String(h||"").trim().toLowerCase());
+  // Mapa nombre header → índice
+  const idx={};
+  headers.forEach((h,i)=>idx[h]=i);
+
+  const getCol=(r,name)=>{const i=idx[name];return i===undefined?"":(r[i]??"")};
+
+  // Construye registros filtrando filas inválidas
+  const registros=[];
+  for(let i=1;i<rows.length;i++){
+    const r=rows[i];
+    if(!r||!r.length) continue;
+    const usuario=String(getCol(r,"usuarios")||"").trim();
+    if(!usuario) continue;
+    // Filtra filas con timestamps o metadatos en la columna usuarios
+    if(/^\d{4}-\d{2}-\d{2}t/i.test(usuario)) continue;
+    if(/^\d+$/.test(usuario) && usuario.length>=10) continue;
+
+    const reg={
+      usuario:          usuario.toLowerCase(),
+      alias:            String(getCol(r,"alias")||"").trim()||null,
+      estado_revision:  String(getCol(r,"estado de revision")||"").trim()||null,
+      estado_actual:    String(getCol(r,"estado actual")||"").trim()||null,
+      cargas_hist:      parseIntCsv(getCol(r,"cargas")),
+      descargas_hist:   parseIntCsv(getCol(r,"descargas")),
+      neto:             parseNumCsv(getCol(r,"neto")),
+      score_hist:       parseNumCsv(getCol(r,"score")),
+      lealtad:          parseIntCsv(getCol(r,"lealtad")),
+      ultima_actividad: String(getCol(r,"ultima actividad")||"").trim()||null,
+      contactado_por:   String(getCol(r,"ya contactados")||"").trim()||null,
+      recuperado_por:   String(getCol(r,"recuperados!")||"").trim()||null,
+      pc_codigo:        pc
+    };
+    const tel=cleanPhone(getCol(r,"telefono"));
+    if(tel) reg.telefono=tel;
+    registros.push(reg);
+  }
+
+  if(!registros.length){setBox("csvMsg",`<div class="err-box">No se encontraron filas válidas.</div>`);return}
+
+  setBox("csvMsg",`<div class="alert-box">Importando ${registros.length} usuarios para PC <b>${pc}</b>...</div>`);
+  document.getElementById("csvProgreso").classList.remove("hidden");
+
+  const BATCH=500;
+  let ok=0, err=0;
+
+  for(let i=0;i<registros.length;i+=BATCH){
+    const batch=registros.slice(i,i+BATCH);
+    const {error}=await supabaseClient.from("usuarios").upsert(batch,{onConflict:"usuario"});
+    if(error){
+      console.error("Batch error:", error);
+      err+=batch.length;
+    } else {
+      ok+=batch.length;
+    }
+    const pct=Math.round((i+batch.length)/registros.length*100);
+    const bar=document.getElementById("csvProgresoBar");
+    const txt=document.getElementById("csvProgresoTxt");
+    if(bar) bar.style.width=pct+"%";
+    if(txt) txt.textContent=`${i+batch.length} / ${registros.length} (${pct}%)`;
+  }
+
+  setBox("csvMsg",`<div class="ok-box">Importación finalizada: <b>${ok}</b> registros procesados${err?`, <b>${err}</b> con error`:""}.</div>`);
+  fileInput.value="";
+  await cargarJugadores();
+}
+
 function copiarDatosUsuario(u){
   const txt=`Usuario: ${u.usuario}\nNombre: ${u.nombre}\nTeléfono: ${u.telefono||""}\nPC: ${u.pc_codigo||""}\nClave: ${u.clave||"12345a"}`;
   navigator.clipboard?.writeText(txt).then(()=>toast("Datos copiados","green")).catch(()=>{});
@@ -548,8 +730,9 @@ async function cargarJugadores(){
 
   const lista=(data||[]).map(u=>({
     ...u,
-    lealtad:calcularLealtad(u.usuario),
-    turnos:calcularTurnos(u.usuario)
+    lealtad_csv: u.lealtad||0,                  // CSV: 0–4 (renombrado para no chocar)
+    lealtad:     calcularLealtad(u.usuario),    // calculado en base a solicitudes
+    turnos:      calcularTurnos(u.usuario)
   }));
   lista.sort((a,b)=>b.lealtad.score-a.lealtad.score);
   todosLosJugadores=lista;
@@ -571,16 +754,43 @@ async function cargarJugadores(){
 }
 
 function filtrarJugadores(){
-  const texto  =(document.getElementById("jugFiltroTexto")?.value||"").trim().toLowerCase();
-  const nivel  = document.getElementById("jugFiltroNivel")?.value||"";
-  const pc     = document.getElementById("jugFiltroPc")?.value||"";
-  const turno  = document.getElementById("jugFiltroTurno")?.value||"";
+  const texto      =(document.getElementById("jugFiltroTexto")?.value||"").trim().toLowerCase();
+  const nivel      = document.getElementById("jugFiltroNivel")?.value||"";
+  const pc         = document.getElementById("jugFiltroPc")?.value||"";
+  const turno      = document.getElementById("jugFiltroTurno")?.value||"";
+  const estado     = document.getElementById("jugFiltroEstado")?.value||"";
+  const lealtadCsv = document.getElementById("jugFiltroLealtadCsv")?.value||"";
   let lista=todosLosJugadores;
-  if(texto)  lista=lista.filter(u=>`${u.usuario} ${u.nombre} ${u.telefono}`.toLowerCase().includes(texto));
-  if(nivel)  lista=lista.filter(u=>u.lealtad.nivel===nivel);
-  if(pc)     lista=lista.filter(u=>u.pc_codigo===pc);
-  if(turno)  lista=lista.filter(u=>u.turnos.dominante===turno);
+  if(texto)      lista=lista.filter(u=>`${u.usuario} ${u.alias||""} ${u.nombre||""} ${u.telefono||""}`.toLowerCase().includes(texto));
+  if(nivel)      lista=lista.filter(u=>u.lealtad.nivel===nivel);
+  if(pc)         lista=lista.filter(u=>u.pc_codigo===pc);
+  if(turno)      lista=lista.filter(u=>u.turnos.dominante===turno);
+  if(estado)     lista=lista.filter(u=>(u.estado_actual||"").toUpperCase()===estado.toUpperCase());
+  if(lealtadCsv!=="")lista=lista.filter(u=>Number(u.lealtad_csv||0)===Number(lealtadCsv));
   renderTablaJugadores(lista);
+}
+
+function estadoColor(estado){
+  const e=(estado||"").toUpperCase();
+  if(e.includes("CONTACTAR"))      return {bg:"#3d2d00",fg:"#d29922"};
+  if(e.includes("EN CONTACTO"))    return {bg:"#16235f",fg:"#79b8ff"};
+  if(e.includes("REVISADO"))       return {bg:"#11371f",fg:"#3fb950"};
+  if(e.includes("NO ESTA"))        return {bg:"#3a1515",fg:"#f85149"};
+  if(e.includes("PROMO"))          return {bg:"#2e1a5e",fg:"#bf91ff"};
+  return {bg:"#2a2f3b",fg:"#98a2b3"};
+}
+
+function lealtadCsvBadge(n){
+  const v=Number(n||0);
+  const palette=[
+    {bg:"#2a2f3b",fg:"#667085"},   // 0
+    {bg:"#16235f",fg:"#79b8ff"},   // 1
+    {bg:"#11371f",fg:"#3fb950"},   // 2
+    {bg:"#2e1a5e",fg:"#bf91ff"},   // 3
+    {bg:"#3d2d00",fg:"#fdb022"},   // 4 - max
+  ];
+  const c=palette[Math.max(0,Math.min(4,v))];
+  return `<span title="Lealtad CSV ${v}/4" style="padding:1px 7px;border-radius:999px;font-size:10px;font-weight:800;background:${c.bg};color:${c.fg}">L${v}</span>`;
 }
 
 function renderTablaJugadores(lista){
@@ -590,11 +800,13 @@ function renderTablaJugadores(lista){
   const bg={muted:"#2a2f3b",blue:"#16235f",green:"#11371f",purple:"#2e1a5e",yellow:"#3d2d00"};
 
   let html=`<div class="table-wrap"><table><thead><tr>
-    <th>Usuario</th><th>Nombre</th><th>PC</th>
-    <th>Score</th><th>Éxito</th><th>Ops</th>
-    <th title="Turno mañana 06-14">☀ TM</th>
-    <th title="Turno tarde 14-22">🌆 TT</th>
-    <th title="Turno noche 22-06">🌙 TN</th>
+    <th>Usuario</th><th>Contacto</th><th>PC</th>
+    <th>Estado</th>
+    <th>Score / Lealtad</th>
+    <th title="Cargas históricas (CSV) + operaciones aprobadas">Cargas</th>
+    <th>Neto</th>
+    <th title="Última actividad registrada">Última act.</th>
+    <th title="TM ☀ / TT 🌆 / TN 🌙">Turnos</th>
     <th>Acciones</th>
   </tr></thead><tbody>`;
 
@@ -603,24 +815,44 @@ function renderTablaJugadores(lista){
     const c=colores[l.color]||colores.muted;
     const bgc=bg[l.color]||bg.muted;
     const id=u.id;
+    const ec=estadoColor(u.estado_actual);
+    const netoColor = (Number(u.neto)||0) >= 0 ? "var(--green)" : "var(--red)";
+    const cargasHist = Number(u.cargas_hist)||0;
+    const recup = u.recuperado_por ? `<br><span class="small" title="Recuperado por">↪ ${u.recuperado_por}</span>` : "";
+
     html+=`<tr>
-      <td><b>${u.usuario}</b><br><span class="small">${u.clave?"🔑 clave set":"🔓 sin clave"}</span></td>
-      <td>${u.nombre||"-"}<br><span class="small">${u.dni?"DNI: "+u.dni:""}</span></td>
+      <td>
+        <b>${u.usuario}</b>${u.alias && u.alias!==u.usuario?`<br><span class="small">alias: ${u.alias}</span>`:""}
+        <br><span class="small">${u.clave?"🔑":"🔓"} ${u.clave||"sin clave"}</span>
+      </td>
+      <td>
+        ${u.nombre?`<b>${u.nombre}</b><br>`:""}
+        <span class="small">${u.telefono||"sin teléfono"}</span>
+        ${u.dni?`<br><span class="small">DNI: ${u.dni}</span>`:""}
+        ${recup}
+      </td>
       <td><span class="badge badge-muted">${u.pc_codigo||"-"}</span></td>
+      <td>${u.estado_actual?`<span style="padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:${ec.bg};color:${ec.fg}">${u.estado_actual}</span>`:"-"}</td>
       <td>
         <span style="padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;background:${bgc};color:${c}">${l.nivel}</span>
-        <b style="margin-left:4px">${l.score}</b><br>
-        <span class="small" style="color:${l.tasa>=80?"var(--green)":l.tasa>=50?"var(--yellow)":"var(--red)"}">${l.tasa}% éxito</span>
+        <b style="margin-left:4px">${l.score}</b> ${lealtadCsvBadge(u.lealtad_csv)}<br>
+        <span class="small" style="color:${l.tasa>=80?"var(--green)":l.tasa>=50?"var(--yellow)":"var(--red)"}">${l.tasa}% éxito · ${l.aprobadas}✓${l.rechazadas?` ${l.rechazadas}✗`:""}</span>
       </td>
-      <td>${l.aprobadas}✓ ${l.rechazadas>0?`<span style="color:var(--red)">${l.rechazadas}✗</span>`:""}</td>
-      <td>${money(l.totalMonto)}</td>
-      <td>${turnoBar(t,"TM","#f6c90e")}</td>
-      <td>${turnoBar(t,"TT","#3d5afe")}</td>
-      <td>${turnoBar(t,"TN","#7c3aed")}</td>
+      <td>
+        ${cargasHist?`<b>${cargasHist}</b><span class="small"> hist.</span>`:`<span class="small">-</span>`}
+        ${l.aprobadas?`<br><span class="small">${l.aprobadas} ops</span>`:""}
+      </td>
+      <td><span style="color:${netoColor};font-weight:700">${money(u.neto||0)}</span></td>
+      <td><span class="small">${u.ultima_actividad||"-"}</span></td>
+      <td style="min-width:160px">
+        ${turnoBar(t,"TM","#f6c90e")}
+        ${turnoBar(t,"TT","#3d5afe")}
+        ${turnoBar(t,"TN","#7c3aed")}
+      </td>
       <td>
         <div style="display:flex;flex-direction:column;gap:4px">
           <button class="mini-btn blue" onclick='copiarDatosUsuario(${JSON.stringify({usuario:u.usuario,nombre:u.nombre,telefono:u.telefono,pc_codigo:u.pc_codigo,clave:u.clave||"12345a"})})'>📋 Copiar</button>
-          <button class="mini-btn yellow" onclick="resetearClaveUsuario('${id}','${u.usuario}')">🔑 Reset clave</button>
+          <button class="mini-btn yellow" onclick="resetearClaveUsuario('${id}','${u.usuario}')">🔑 Reset</button>
         </div>
       </td>
     </tr>`;
