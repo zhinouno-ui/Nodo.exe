@@ -632,6 +632,13 @@ async function cargarMisSolicitudes(){
     paso1.style.display='none'; paso2.style.display='none'; billetera.style.display='none';
 
   } else if(['APROBADA','ACREDITADA','PAGADA'].includes(ultima.estado?.toUpperCase())){
+    // Si el usuario presionó "nueva carga" en los últimos 35s, no revertir
+    if(_nuevaCargaForzada){
+      statusCard.classList.add('hidden');
+      formCard.classList.remove('hidden');
+      paso1.style.display=''; paso2.style.display=''; billetera.style.display='';
+      return;
+    }
     // ── Carga aprobada → mostrar "Ir al juego" ──
     statusCard.innerHTML = `
       <div style="background:linear-gradient(135deg,#0a3d1a,#238636);border-radius:18px;padding:22px;margin-bottom:14px;text-align:center">
@@ -663,8 +670,14 @@ async function cargarMisSolicitudes(){
   }
 }
 
+let _nuevaCargaForzada = false;
+let _nuevaCargaTimer   = null;
+
 function nuevaCarga(){
-  // Limpia el estado y muestra el formulario para otra carga
+  _nuevaCargaForzada = true;
+  clearTimeout(_nuevaCargaTimer);
+  _nuevaCargaTimer = setTimeout(()=>{ _nuevaCargaForzada = false; }, 35000);
+
   const statusCard = document.getElementById('cargaStatusCard');
   const formCard   = document.getElementById('cargaFormCard');
   const paso1      = document.getElementById('cargaPaso1');
@@ -1071,11 +1084,12 @@ async function cargarMensajes(silencioso=false){
   if(!silencioso || data.length !== prevLen){
     renderMensajes();
     if(silencioso && data.length > prevLen){
-      // nuevo mensaje del operador
-      const badge = document.getElementById('navChatBadge');
+      const nuevos = data.slice(prevLen).filter(m => m.tipo_emisor === 'OPERADOR');
+      const badge  = document.getElementById('navChatBadge');
       const secChat = document.getElementById('secChat');
       if(!secChat.classList.contains('hidden')) scrollChat();
       else { badge.classList.remove('hidden'); badge.textContent = data.length - prevLen; }
+      if(nuevos.length) mostrarChatBubble(nuevos[nuevos.length - 1].mensaje || '');
     }
   }
 
@@ -1180,6 +1194,40 @@ document.addEventListener('paste', e=>{
 document.getElementById('chatInput')?.addEventListener('keydown', e=>{
   if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); enviarMensaje(); }
 });
+
+// ── Chat bubble flotante ───────────────────────────────────────────────────────
+let _chatBubbleTimer = null;
+
+function mostrarChatBubble(texto){
+  const b = document.getElementById('chatFloatBubble');
+  const t = document.getElementById('chatFloatText');
+  if(!b || !t) return;
+  t.textContent = texto.length > 130 ? texto.slice(0, 127) + '…' : texto;
+  b.style.display = 'flex';
+  clearTimeout(_chatBubbleTimer);
+  _chatBubbleTimer = setTimeout(()=>{ b.style.display='none'; }, 9000);
+}
 </script>
+
+<!-- Bubble flotante de chat (visible desde cualquier sección) -->
+<div id="chatFloatBubble" style="
+  display:none;position:fixed;bottom:82px;left:50%;transform:translateX(-50%);
+  max-width:340px;width:calc(100% - 32px);
+  background:#1a2035;border:1px solid rgba(61,90,254,.6);border-radius:18px;
+  padding:14px 16px;box-shadow:0 6px 32px rgba(0,0,0,.55);z-index:9999;
+  flex-direction:column;gap:6px;
+  animation:slideUp .25s ease">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+    <span style="font-size:11px;font-weight:700;color:#7c8dff;letter-spacing:.4px">💬 MENSAJE DEL OPERADOR</span>
+    <button onclick="document.getElementById('chatFloatBubble').style.display='none'"
+      style="background:none;border:none;color:#666;font-size:18px;line-height:1;cursor:pointer;padding:0 0 0 8px">×</button>
+  </div>
+  <div id="chatFloatText" style="font-size:14px;line-height:1.45;color:#e6edf3"></div>
+  <button onclick="mostrarSeccion('chat');document.getElementById('chatFloatBubble').style.display='none'"
+    style="margin-top:4px;background:rgba(61,90,254,.18);border:none;color:#7c8dff;border-radius:10px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;align-self:flex-start">
+    Ver chat completo →
+  </button>
+</div>
+
 </body>
 </html>
