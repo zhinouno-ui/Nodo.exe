@@ -1407,24 +1407,17 @@ function abrirEditarBilletera(id){
   const b=billeteras.find(x=>x.ID_BILLETERA===id);
   if(!b) return;
   abrirModal("Editar billetera",`
-    <label>Nombre visible</label>
-    <input id="ebNombre" value="${escapeHtml(b.NOMBRE_VISIBLE||"")}">
-    <label>Tipo</label>
-    <select id="ebTipo">
-      ${["CBU","CVU","ALIAS","MP","OTRO"].map(t=>`<option value="${t}"${b.TIPO===t?" selected":""}>${t}</option>`).join("")}
-    </select>
-    <label>CBU / Alias / Número</label>
+    <label>Nombre / Titular</label>
+    <input id="ebNombre" value="${escapeHtml(b.NOMBRE_VISIBLE||"")}" placeholder="Ej: Juan García">
+    <label>CBU / CVU / Alias</label>
     <input id="ebCbu" value="${escapeHtml(b.CBU_ALIAS||"")}" placeholder="Ej: 0000003100...">
-    <label>Titular</label>
-    <input id="ebTitular" value="${escapeHtml(b.TITULAR||"")}" placeholder="Ej: Juan García">
     <label>Saldo actual (ajuste manual)</label>
     <input id="ebSaldo" type="number" value="${b.SALDO||0}">
   `,async()=>{
     const {error}=await supabaseClient.from("billeteras").update({
       nombre_visible:val("ebNombre"),
-      tipo:val("ebTipo"),
       cbu_alias:val("ebCbu"),
-      titular:val("ebTitular"),
+      titular:val("ebNombre"),
       saldo:Number(val("ebSaldo")||0)
     }).eq("id",id);
     if(error){alert(error.message);return}
@@ -1436,16 +1429,10 @@ function abrirEditarBilletera(id){
 
 function abrirNuevaBilletera(){
   abrirModal("Nueva billetera",`
-    <label>Nombre visible</label>
-    <input id="nbNombre" placeholder="Ej: Mercado Pago CHINO">
-    <label>Tipo</label>
-    <select id="nbTipo">
-      ${["CBU","CVU","ALIAS","MP","OTRO"].map(t=>`<option value="${t}">${t}</option>`).join("")}
-    </select>
-    <label>CBU / Alias / Número</label>
+    <label>Nombre / Titular</label>
+    <input id="nbNombre" placeholder="Ej: Juan García">
+    <label>CBU / CVU / Alias</label>
     <input id="nbCbu" placeholder="Ej: 0000003100...">
-    <label>Titular</label>
-    <input id="nbTitular" placeholder="Ej: Juan García">
     <label>Saldo inicial</label>
     <input id="nbSaldo" type="number" value="0">
   `,async()=>{
@@ -1453,9 +1440,8 @@ function abrirNuevaBilletera(){
     if(!nombre){alert("El nombre es obligatorio.");return}
     const {error}=await supabaseClient.from("billeteras").insert({
       nombre_visible:nombre,
-      tipo:val("nbTipo"),
       cbu_alias:val("nbCbu"),
-      titular:val("nbTitular"),
+      titular:nombre,
       saldo:Number(val("nbSaldo")||0),
       pc_codigo:pcOperativa,
       activa:true,

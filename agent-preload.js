@@ -58,13 +58,16 @@ function nativeSetValue(input, value) {
 
 function setReactInputValue(input, value) {
   if (!input) throw new Error('No se encontró el input requerido.');
+  const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+  const set = v => nativeSetter ? nativeSetter.call(input, v) : (input.value = v);
+  input.click();
   input.focus();
-  nativeSetValue(input, '');
-  input.dispatchEvent(new Event('input', { bubbles: true }));
-  input.dispatchEvent(new Event('change', { bubbles: true }));
-  nativeSetValue(input, String(value));
-  input.dispatchEvent(new Event('input', { bubbles: true }));
-  input.dispatchEvent(new Event('change', { bubbles: true }));
+  set('');
+  input.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true }));
+  set(String(value));
+  input.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, data: String(value), inputType: 'insertText' }));
+  input.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
   input.dispatchEvent(new Event('blur', { bubbles: true }));
 }
 
@@ -94,14 +97,14 @@ function normalizeText(text) {
 }
 
 function parseMoney(value) {
-  // Formato argentino: "ARS 1.000,50" → 1000.50
-  let s = String(value || '').replace(/ /g, ' ').replace(/[^\d,.]/g, '');
-  if (s.includes(',')) {
-    // punto = separador de miles, coma = decimal
-    s = s.replace(/\./g, '').replace(',', '.');
-  }
-  const number = Number.parseFloat(s);
-  return Number.isFinite(number) ? number : 0;
+  let s = String(value || '').replace(/[\u00a0\u202f\s]/g, '').replace(/[^\d,.]/g, '');
+  if (!s) return 0;
+  const lastDot   = s.lastIndexOf('.');
+  const lastComma = s.lastIndexOf(',');
+  if (lastDot > lastComma)        s = s.replace(/,/g, '');
+  else if (lastComma > lastDot)   s = s.replace(/\./g, '').replace(',', '.');
+  const n = Number.parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
 }
 
 function findActiveModal() {
@@ -109,13 +112,13 @@ function findActiveModal() {
   return firstVisible(sels);
 }
 
-// Saldo del USUARIO buscado — sólo válido dentro del modal de carga/retiro
+// Saldo del USUARIO — busca inputs disabled con "ARS" en toda la página
+// El saldo del agente es un SPAN (.hideUserBalance), nunca un input → sin conflicto
 function readUserBalance() {
-  const modal = findActiveModal();
-  if (!modal) return null;
-  const inputs = Array.from(modal.querySelectorAll('input.Mui-disabled[disabled], input:disabled, input[readonly]')).filter(isVisible);
-  // Sólo strings con "ARS" o "$" — no matchea el campo de monto (sólo dígitos)
-  const bal = inputs.find(el => /ARS|^\$/.test(el.value || ''));
+  const inputs = Array.from(document.querySelectorAll(
+    'input.Mui-disabled, input[disabled], input[readonly]'
+  )).filter(isVisible);
+  const bal = inputs.find(el => /ARS/.test(el.value || ''));
   if (bal) return { raw: bal.value, value: parseMoney(bal.value) };
   return null;
 }
@@ -342,13 +345,8 @@ async function buscarUsuario(usuario, options = {}) {
     };
   }
 
-  // 1 intenta leer el saldo directo de la fila (columna Cantidad)
-  let balance = player ? readBalanceFromPlayerRow(player) : null;
-
-  // 2 si no hay nada, abre el modal de deposito, lee y lo cierra
-  if (!balance || (!balance.raw && balance.value === 0)) {
-    balance = await leerSaldoViaModal();
-  }
+  // Lee saldo abriendo el modal de depósito (más confiable que leer de la fila)
+  const balance = await leerSaldoViaModal();
 
   return { ok: true, exists: true, user: playerAlias, balance };
 }
@@ -482,33 +480,38 @@ async function crearUsuario(alias, password, options = {}) {
   await cerrarModalSesionInvalida();
   if (pageNeedsLogin()) return status();
 
+  await delay(800);
+
   const aliasInput = await waitFor(() => firstVisible('input[name="alias"]'), options.timeout || DEFAULT_TIMEOUT);
+  aliasInput.click(); await delay(150);
   setReactInputValue(aliasInput, String(alias).trim());
-  await delay();
+  await delay(400);
 
   const passInput = await waitFor(() => firstVisible('input[name="password"][type="password"]'), options.timeout || DEFAULT_TIMEOUT);
+  passInput.click(); await delay(150);
   setReactInputValue(passInput, String(password));
-  await delay();
+  await delay(400);
 
-  const registrarBtn = findActionButton(/^registrar$/i);
+  if (!aliasInput.value) throw new Error('No se pudo completar el campo alias (React no tomó el valor).');
+
+  const registrarBtn = findActionButton(/registrar/i);
   if (!registrarBtn) throw new Error('No se encontró el botón "Registrar".');
+  await delay(200);
   clickElement(registrarBtn);
 
-  // Espera resultado: éxito o error
-  await waitFor(() => /se ha registrado correctamente|duplicated alias/i.test(document.body.textContent || ''),
-                options.timeout || DEFAULT_TIMEOUT);
+  await waitFor(
+    () => /registrado correctamente|duplicated alias|already exists|alias ya existe/i.test(document.body.textContent || ''),
+    options.timeout || DEFAULT_TIMEOUT
+  );
 
-  if (/duplicated alias/i.test(document.body.textContent || '')) {
-    return { ok: false, alias, error: 'duplicado', message: 'El alias ya existe en el backoffice.' };
-  }
+  if (/duplicated alias|already exists|alias ya existe/i.test(document.body.textContent || ''))
+    return { ok: false, alias, error: 'duplicado', message: 'El alias ya existe.' };
 
-  // Éxito → click "Guardar" para confirmar
-  await delay(500);
-  const guardarBtn = findActionButton(/^guardar$/i);
-  if (guardarBtn) clickElement(guardarBtn);
-  await delay(500);
+  await delay(400);
+  const guardarBtn = findActionButton(/guardar/i);
+  if (guardarBtn) { clickElement(guardarBtn); await delay(600); }
 
-  return { ok: true, alias, password, message: 'Usuario creado correctamente en el backoffice.' };
+  return { ok: true, alias, password, message: 'Usuario creado correctamente.' };
 }
 
 // Devuelve el saldo del AGENTE (operador) sin tocar nada del usuario
