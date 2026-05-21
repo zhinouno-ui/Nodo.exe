@@ -127,7 +127,6 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
       <button id="navAuto" class="nav-btn hidden" onclick="mostrarVista('auto')" style="border:1px solid rgba(124,58,237,.5)">⚡ Automatización</button>
       <button id="navVerificaciones" class="nav-btn hidden" onclick="mostrarVista('verificaciones')" style="border:1px solid rgba(61,90,254,.4)">🔍 Verificaciones <span id="badgeVerif" class="badge-alert hidden">0</span></button>
       <button id="navBoPanel" class="nav-btn hidden" onclick="toggleBoPanel()" style="border:1px solid rgba(18,183,106,.4)">🖥 Panel cargas</button>
-      <button id="navExtPage" class="nav-btn hidden" onclick="abrirPaginaExterna()" style="border:1px solid rgba(212,160,23,.4)">📋 Página registros</button>
 
       <button class="nav-btn" onclick="cerrarSesion()">🚪 Cerrar sesión</button>
     </aside>
@@ -141,7 +140,6 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
           <button class="mini-btn gray" style="font-size:11px;padding:3px 7px" onclick="boPanelNav('search')" title="Búsqueda">🔍</button>
           <button class="mini-btn gray" style="font-size:11px;padding:3px 7px" onclick="boPanelNav('new')" title="Nuevo usuario">➕</button>
           <button class="mini-btn gray" style="font-size:11px;padding:3px 7px" onclick="document.getElementById('boWebview').reload()" title="Recargar">🔄</button>
-          <button class="mini-btn gray" style="font-size:11px;padding:3px 7px" onclick="boPanelNav('ext')" title="Página externa">📋</button>
         </div>
         <button class="mini-btn red" style="font-size:11px;padding:3px 7px" onclick="toggleBoPanel()">✕</button>
       </div>
@@ -1919,7 +1917,6 @@ if(enElectron){
   document.getElementById("agentBalanceCard")?.classList.remove("hidden");
   document.getElementById("navVerificaciones")?.classList.remove("hidden");
   document.getElementById("navBoPanel")?.classList.remove("hidden");
-  document.getElementById("navExtPage")?.classList.remove("hidden");
 }
 
 // ── Panel lateral de backoffice ───────────────────────────────────────────────
@@ -1956,10 +1953,8 @@ function toggleBoPanel(){
 function boPanelNav(dest){
   const wv = document.getElementById("boWebview");
   if(!wv) return;
-  const EXT_URL = localStorage.getItem('ext_page_url') || '';
-  if(dest === 'new')       wv.src = BO_NEW_URL;
-  else if(dest === 'ext')  wv.src = EXT_URL || BO_SEARCH_URL;
-  else                     wv.src = BO_SEARCH_URL;
+  if(dest === 'new') wv.src = BO_NEW_URL;
+  else               wv.src = BO_SEARCH_URL;
 }
 
 // Resize handle drag
@@ -1987,32 +1982,6 @@ function boPanelNav(dest){
     document.addEventListener('mouseup', onUp);
   });
 })();
-
-// ── Página externa (registros) ────────────────────────────────────────────────
-function abrirPaginaExterna(){
-  const saved = localStorage.getItem('ext_page_url') || '';
-  abrirModal("Página de registros", `
-    <div class="alert-box" style="margin-bottom:12px">Esta página se abre en el panel lateral. Al cerrar sesión en NODO se recarga para el nuevo operador.</div>
-    <label>URL de la página</label>
-    <input id="extPageUrl" value="${escapeHtml(saved)}" placeholder="https://...">
-  `, ()=>{
-    const url = val('extPageUrl').trim();
-    if(!url){ alert('Ingresá una URL válida.'); return; }
-    localStorage.setItem('ext_page_url', url);
-    cerrarModal();
-    if(!_boPanelOpen) toggleBoPanel();
-    boPanelNav('ext');
-  }, "Abrir");
-}
-
-// Al cerrar sesión, recargar la página externa si está abierta
-const _origCerrarSesion = cerrarSesion;
-cerrarSesion = function(){
-  const wv = document.getElementById('boWebview');
-  const extUrl = localStorage.getItem('ext_page_url');
-  if(wv && extUrl && wv.src === extUrl) wv.reload();
-  _origCerrarSesion();
-};
 
 // ── Saldo del agente (widget del sidebar) ─────────────────────────────────────
 async function refrescarSaldoAgente(){
