@@ -172,15 +172,30 @@ function readBalanceFromPlayerRow(playerEl) {
 }
 
 async function leerSaldoViaModal() {
-  // Abre el modal de depósito, lee el saldo mostrado, cierra el modal
   try {
+    // Snapshot de inputs disabled con ARS que ya existen ANTES de abrir el modal
+    const snapshots = new Set(
+      Array.from(document.querySelectorAll('input[disabled], input.Mui-disabled, input[readonly]'))
+        .filter(isVisible)
+        .filter(el => /ARS/.test(el.value || ''))
+        .map(el => el.value.trim())
+    );
+
     clickButtonByIcon('circle-plus');
-    await delay(600);
-    const balance = readVisibleBalance();
-    // Cierra el modal con Escape
+    await delay(700);
+
+    // El saldo del USUARIO es el input con ARS que NO estaba antes de abrir el modal
+    const allArs = Array.from(document.querySelectorAll('input[disabled], input.Mui-disabled, input[readonly]'))
+      .filter(isVisible)
+      .filter(el => /ARS/.test(el.value || ''));
+
+    const newInput = allArs.find(el => !snapshots.has(el.value.trim()));
+    const balance = newInput
+      ? { raw: newInput.value, value: parseMoney(newInput.value) }
+      : { raw: '', value: 0 };
+
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true, cancelable: true }));
     await delay(400);
-    // Fallback: busca botón de cancelar en el modal
     const cancelBtn = Array.from(visibleElements('button')).find(b => /cancelar|cancel|cerrar|close/i.test(b.textContent || ''));
     if (cancelBtn) { clickElement(cancelBtn); await delay(300); }
     return balance;
