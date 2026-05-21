@@ -547,3 +547,16 @@ ipcRenderer.on('drex:automation:run', async (event, request = {}) => {
     ipcRenderer.send('drex:automation:result', { requestId, ok: false, error: error.message || String(error) });
   }
 });
+// Canal separado para verificación de login (verifyWindow)
+ipcRenderer.on('drex:verify:run', async (event, request = {}) => {
+  const { requestId, method, args = [] } = request;
+  try {
+    if (!Object.prototype.hasOwnProperty.call(api, method)) {
+      throw new Error('Método no permitido: ' + method);
+    }
+    const result = await api[method](...args);
+    ipcRenderer.send('drex:verify:result', { requestId, ok: true, result });
+  } catch (error) {
+    ipcRenderer.send('drex:verify:result', { requestId, ok: false, error: error.message || String(error) });
+  }
+});

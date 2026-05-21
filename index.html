@@ -97,6 +97,45 @@ input::placeholder{color:#484f58}
 .profile-row .label{color:var(--muted);font-size:12px}
 
 @media(max-width:500px){.wrap{padding:16px 12px 90px}}
+
+/* ── Pantalla de verificación ── */
+.verify-screen{
+  position:fixed;inset:0;background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  z-index:200;padding:24px;text-align:center;
+}
+.verify-orb-wrap{position:relative;width:130px;height:130px;margin:0 auto 32px}
+.verify-ring{
+  position:absolute;inset:0;border-radius:50%;
+  border:2px solid rgba(61,90,254,.5);
+  animation:vRing 2.4s ease-out infinite;
+}
+.verify-ring.r2{animation-delay:.8s;border-color:rgba(61,90,254,.3)}
+.verify-ring.r3{animation-delay:1.6s;border-color:rgba(61,90,254,.15)}
+.verify-icon-inner{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:44px;animation:vFloat 3.2s ease-in-out infinite;
+}
+.verify-title{font-size:22px;font-weight:900;margin-bottom:10px;color:#fff}
+.verify-sub{font-size:14px;color:var(--muted);max-width:280px;line-height:1.6;margin:0 auto 24px}
+.verify-dots{display:flex;gap:10px;justify-content:center;margin-bottom:28px}
+.verify-dots span{
+  width:9px;height:9px;border-radius:50%;background:var(--blue);
+  animation:vBounce 1.4s ease-in-out infinite;
+}
+.verify-dots span:nth-child(2){animation-delay:.22s}
+.verify-dots span:nth-child(3){animation-delay:.44s}
+.verify-progress{
+  width:200px;height:3px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden;margin:0 auto;
+}
+.verify-progress-bar{
+  height:100%;background:linear-gradient(90deg,var(--blue),#7c8dff);
+  border-radius:4px;width:0%;animation:vProgress 45s linear forwards;
+}
+@keyframes vRing{0%{transform:scale(1);opacity:.7}100%{transform:scale(2.6);opacity:0}}
+@keyframes vFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes vBounce{0%,80%,100%{transform:scale(.75);opacity:.5}40%{transform:scale(1.2);opacity:1}}
+@keyframes vProgress{0%{width:0%}80%{width:90%}100%{width:90%}}
 </style>
 </head>
 
@@ -119,6 +158,24 @@ input::placeholder{color:#484f58}
       <div id="loginMsg"></div>
       <button class="btn btn-primary" onclick="identificar()">Continuar</button>
     </div>
+  </div>
+</div>
+
+<!-- ═══ VIEW: VERIFICANDO ═══ -->
+<div id="viewVerificando" class="hidden verify-screen">
+  <div class="verify-orb-wrap">
+    <div class="verify-ring"></div>
+    <div class="verify-ring r2"></div>
+    <div class="verify-ring r3"></div>
+    <div class="verify-icon-inner">🎮</div>
+  </div>
+  <div id="verifyTitle" class="verify-title">Verificando tu cuenta</div>
+  <div id="verifySub" class="verify-sub">Estamos confirmando tu usuario en el sistema de juego.</div>
+  <div class="verify-dots"><span></span><span></span><span></span></div>
+  <div class="verify-progress"><div class="verify-progress-bar"></div></div>
+  <div id="verifyTimeoutMsg" class="hidden" style="margin-top:28px">
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Está tardando más de lo esperado...</p>
+    <button onclick="cancelarVerificacion()" class="btn btn-ghost" style="max-width:200px">Cancelar</button>
   </div>
 </div>
 
@@ -481,11 +538,101 @@ window.addEventListener('load', async ()=>{
   show('viewLogin');
 });
 
+// ── Verificación de login ─────────────────────────────────────────────────────
+let _verifyPolling = null;
+let _verifyTimeout = null;
+let _verifyMsgTimer = null;
+
+const VERIFY_MSGS = [
+  ['Verificando tu cuenta',    'Estamos confirmando tu usuario en el sistema de juego.'],
+  ['Casi listo',               'Validando datos con el casino...'],
+  ['Un momento más',           'El sistema está procesando tu solicitud.'],
+  ['Conectando al servidor',   'Gracias por tu paciencia, ya casi terminamos.'],
+];
+let _verifyMsgIdx = 0;
+
+function _cycleVerifyMsg(){
+  _verifyMsgIdx = (_verifyMsgIdx + 1) % VERIFY_MSGS.length;
+  const el = document.getElementById('verifyTitle');
+  const sub = document.getElementById('verifySub');
+  if(el) el.textContent = VERIFY_MSGS[_verifyMsgIdx][0];
+  if(sub) sub.textContent = VERIFY_MSGS[_verifyMsgIdx][1];
+}
+
+function _mostrarVerificando(){
+  _verifyMsgIdx = 0;
+  document.getElementById('verifyTitle').textContent = VERIFY_MSGS[0][0];
+  document.getElementById('verifySub').textContent   = VERIFY_MSGS[0][1];
+  document.getElementById('verifyTimeoutMsg')?.classList.add('hidden');
+  // Reinicia la barra de progreso
+  const bar = document.querySelector('.verify-progress-bar');
+  if(bar){ bar.style.animation='none'; bar.offsetHeight; bar.style.animation=''; }
+  hide('viewLogin'); hide('viewRegistro');
+  show('viewVerificando');
+  clearInterval(_verifyMsgTimer);
+  _verifyMsgTimer = setInterval(_cycleVerifyMsg, 7000);
+  clearTimeout(_verifyTimeout);
+  _verifyTimeout = setTimeout(()=>{
+    document.getElementById('verifyTimeoutMsg')?.classList.remove('hidden');
+  }, 50000);
+}
+
+async function _pollearVerificacion(verifId, usuarioStr, datosRegistro){
+  const { data } = await sb.from('verificaciones').select('estado,nombre_casino').eq('id', verifId).single();
+  if(!data) return;
+
+  if(data.estado === 'VERIFICADO'){
+    clearInterval(_verifyPolling); clearTimeout(_verifyTimeout); clearInterval(_verifyMsgTimer);
+    // Upsert usuario con verificado=true (mantiene datos si ya existía)
+    const upsertData = { usuario: usuarioStr, verificado: true, pc_codigo: PC };
+    if(datosRegistro) Object.assign(upsertData, datosRegistro);
+    const { data: u } = await sb.from('usuarios').upsert(upsertData, { onConflict:'usuario' }).select().single();
+    usuario = u || { usuario: usuarioStr, verificado: true, pc_codigo: PC };
+    localStorage.setItem('nodo_usuario_landing', JSON.stringify(usuario));
+    hide('viewVerificando');
+    await entrarApp();
+
+  } else if(data.estado === 'NO_EXISTE'){
+    clearInterval(_verifyPolling); clearTimeout(_verifyTimeout); clearInterval(_verifyMsgTimer);
+    // Si registramos datos nuevos, borrar el usuario creado
+    if(datosRegistro) await sb.from('usuarios').delete().eq('usuario', usuarioStr);
+    hide('viewVerificando'); show('viewLogin');
+    msg('loginMsg','❌ No encontramos tu usuario en el sistema de juego. Verificá que esté bien escrito.','err');
+
+  } else if(data.estado === 'ERROR'){
+    clearInterval(_verifyPolling); clearTimeout(_verifyTimeout); clearInterval(_verifyMsgTimer);
+    hide('viewVerificando'); show('viewLogin');
+    msg('loginMsg','⚠️ Error al verificar tu cuenta. Intentá de nuevo.','err');
+  }
+}
+
+async function _enviarAVerificacion(usuarioStr, datosRegistro){
+  // Limpia verificaciones previas sin completar
+  await sb.from('verificaciones').delete()
+    .eq('usuario', usuarioStr).eq('pc_codigo', PC)
+    .in('estado', ['PENDIENTE','ERROR','NO_EXISTE']);
+
+  const { data: verif } = await sb.from('verificaciones')
+    .insert({ usuario: usuarioStr, pc_codigo: PC, estado: 'PENDIENTE' })
+    .select().single();
+
+  if(!verif){ msg('loginMsg','Error al iniciar verificación.','err'); show('viewLogin'); return; }
+
+  _mostrarVerificando();
+  clearInterval(_verifyPolling);
+  _verifyPolling = setInterval(() => _pollearVerificacion(verif.id, usuarioStr, datosRegistro), 2500);
+}
+
+function cancelarVerificacion(){
+  clearInterval(_verifyPolling); clearTimeout(_verifyTimeout); clearInterval(_verifyMsgTimer);
+  hide('viewVerificando'); show('viewLogin');
+}
+
 // ── Identificación ────────────────────────────────────────────────────────────
 async function identificar(){
   const u = val('inUsuario').toLowerCase().replace(/\s+/g,'');
   if(!u || u.length < 3){ msg('loginMsg','El usuario debe tener al menos 3 caracteres.','err'); return; }
-  msg('loginMsg','<span class="spinner"></span>Buscando...','info');
+  msg('loginMsg','<span class="spinner"></span>Conectando...','info');
 
   const { data, error } = await sb.from('usuarios').select('*').eq('usuario', u).single();
 
@@ -494,12 +641,18 @@ async function identificar(){
     return;
   }
 
-  if(data){
+  if(data && data.verificado){
+    // Usuario ya verificado → acceso directo
     usuario = data;
     localStorage.setItem('nodo_usuario_landing', JSON.stringify(usuario));
+    msg('loginMsg','');
     await entrarApp();
+  } else if(data && !data.verificado){
+    // Existe pero no verificado (caso edge) → reenviar a cola
+    msg('loginMsg','');
+    await _enviarAVerificacion(u, null);
   } else {
-    // Nuevo usuario → registro
+    // Usuario nuevo → mostrar registro
     hide('viewLogin');
     setVal('regUsuario', u);
     show('viewRegistro');
@@ -520,14 +673,16 @@ async function registrar(){
 
   msg('regMsg','<span class="spinner"></span>Creando cuenta...','info');
 
-  const { data, error } = await sb.from('usuarios').insert({
+  // Guarda datos con verificado=false — se activa después de confirmar en el casino
+  const { error } = await sb.from('usuarios').upsert({
     usuario: usuarioReg,
     nombre,
     telefono,
     dni: dni || null,
     nombre_transferencia: nombreTransferencia || null,
-    pc_codigo: PC
-  }).select().single();
+    pc_codigo: PC,
+    verificado: false
+  }, { onConflict: 'usuario' });
 
   if(error){
     if(error.code === '23505') msg('regMsg','Ese usuario ya existe. Volvé e intentá con otro.','err');
@@ -535,9 +690,9 @@ async function registrar(){
     return;
   }
 
-  usuario = data;
-  localStorage.setItem('nodo_usuario_landing', JSON.stringify(usuario));
-  await entrarApp();
+  // Enviar a cola de verificación en lugar de entrar directamente
+  const datosRegistro = { nombre, telefono, dni: dni||null, nombre_transferencia: nombreTransferencia||null, pc_codigo: PC };
+  await _enviarAVerificacion(usuarioReg, datosRegistro);
 }
 
 function volverLogin(){

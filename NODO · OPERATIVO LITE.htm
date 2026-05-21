@@ -2367,6 +2367,53 @@ async function ejecutarAutoCarga(id){
 function abrirMenuMobile(){const menu=document.getElementById("mobileMenu");menu.classList.add("open");menu.innerHTML="";const clone=document.getElementById("sidebar").cloneNode(true);clone.style.display="block";menu.appendChild(clone)}
 function cerrarMenuMobile(e){if(!e||e.target.id==="mobileMenu"){const menu=document.getElementById("mobileMenu");menu.classList.remove("open");menu.innerHTML=""}}
 function cerrarSesion(){localStorage.removeItem("nodo_operador_lite");localStorage.removeItem("nodo_pc_operativa_lite");location.reload()}
+
+// ── Cola de verificación de login ─────────────────────────────────────────────
+let _verifActivo = false;
+
+async function procesarColaVerificacion(){
+  if(!window.ctrlElectron || _verifActivo) return;
+  const {data} = await supabaseClient
+    .from("verificaciones")
+    .select("*")
+    .eq("pc_codigo", pcOperativa)
+    .eq("estado", "PENDIENTE")
+    .order("created_at", {ascending:true})
+    .limit(1);
+  if(!data || !data.length) return;
+
+  const v = data[0];
+  _verifActivo = true;
+  try {
+    const result = await window.ctrlElectron.verifyUser(v.usuario);
+    const nuevoEstado = result.exists ? "VERIFICADO" : "NO_EXISTE";
+    await supabaseClient.from("verificaciones").update({
+      estado: nuevoEstado,
+      nombre_casino: result.user || null,
+      updated_at: new Date().toISOString()
+    }).eq("id", v.id);
+    if(result.exists){
+      // Marcar como verificado en usuarios también
+      await supabaseClient.from("usuarios").update({verificado:true}).eq("usuario", v.usuario);
+      toast(`✅ Verificado: ${v.usuario}`, "green");
+    } else {
+      toast(`❌ No existe: ${v.usuario}`, "red");
+    }
+  } catch(e) {
+    await supabaseClient.from("verificaciones").update({
+      estado: "ERROR",
+      updated_at: new Date().toISOString()
+    }).eq("id", v.id);
+    console.error("Error verificando:", v.usuario, e);
+  } finally {
+    _verifActivo = false;
+  }
+}
+
+// Arranca el procesador automático cuando hay Electron
+if(window.ctrlElectron){
+  setInterval(procesarColaVerificacion, 5000);
+}
 </script>
 
 

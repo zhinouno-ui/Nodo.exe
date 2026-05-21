@@ -19,5 +19,6 @@ contextBridge.exposeInMainWorld('ctrlElectron', {
       return Promise.reject(new Error(`Método no permitido: ${method}`));
     }
     return ipcRenderer.invoke('drex:automation', { method, args });
-  }
+  },
+  verifyUser: (usuario) => ipcRenderer.invoke('drex:verify-user', { usuario })
 });

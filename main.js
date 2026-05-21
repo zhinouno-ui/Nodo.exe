@@ -4,9 +4,11 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const AGENT_URL    = 'https://bo.casinodrex.com/agents/user_search';
 const NEW_USER_URL = 'https://bo.casinodrex.com/agents/new_user';
 
-let mainWindow  = null;
-let agentWindow = null;
-const pendingAutomation = new Map();
+let mainWindow   = null;
+let agentWindow  = null;
+let verifyWindow = null;
+const pendingAutomation   = new Map();
+const pendingVerification = new Map();
 
 // ── Ventana principal (NODO panel) ────────────────────────────────────────────
 function createMainWindow() {
@@ -93,6 +95,54 @@ function sendAutomation(method, ...args) {
   });
 }
 
+// ── Ventana de verificación (separada, corre en background) ──────────────────
+function createVerifyWindow() {
+  verifyWindow = new BrowserWindow({
+    width:  1200,
+    height: 800,
+    title:  'Verificación — Login usuarios',
+    show:   false,
+    webPreferences: {
+      preload:          path.join(__dirname, 'agent-preload.js'),
+      contextIsolation: true,
+      nodeIntegration:  false,
+      sandbox:          true,
+    }
+  });
+  verifyWindow.loadURL(AGENT_URL);
+  verifyWindow.on('closed', () => { verifyWindow = null; pendingVerification.clear(); });
+  return verifyWindow;
+}
+
+function getVerifyWindow() {
+  if (verifyWindow && !verifyWindow.isDestroyed()) return verifyWindow;
+  return createVerifyWindow();
+}
+
+async function sendVerification(usuario) {
+  const win = getVerifyWindow();
+  const currentUrl = win.webContents.getURL();
+  if (!currentUrl.includes('user_search')) {
+    win.loadURL(AGENT_URL);
+    await whenAgentReady(win);
+    await new Promise(r => setTimeout(r, 900));
+  } else {
+    await whenAgentReady(win);
+  }
+  const requestId = `v-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendingVerification.delete(requestId);
+      reject(new Error('Timeout en verificación.'));
+    }, 30000);
+    pendingVerification.set(requestId, {
+      resolve: v => { clearTimeout(timer); resolve(v); },
+      reject:  e => { clearTimeout(timer); reject(e);  }
+    });
+    win.webContents.send('drex:verify:run', { requestId, method: 'buscarUsuario', args: [usuario] });
+  });
+}
+
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   createMainWindow();
@@ -134,4 +184,18 @@ ipcMain.on('drex:automation:result', (_event, response = {}) => {
   pendingAutomation.delete(response.requestId);
   if (response.ok !== false) pending.resolve(response.result ?? response);
   else pending.reject(new Error(response.error || 'Error en automatización.'));
+});
+
+// Verifica si un usuario existe en el casino (ventana separada, no interfiere con cargas)
+ipcMain.handle('drex:verify-user', async (_event, { usuario } = {}) => {
+  return sendVerification(usuario);
+});
+
+// Recibe resultado de verificación desde la verifyWindow
+ipcMain.on('drex:verify:result', (_event, response = {}) => {
+  const pending = pendingVerification.get(response.requestId);
+  if (!pending) return;
+  pendingVerification.delete(response.requestId);
+  if (response.ok !== false) pending.resolve(response.result ?? response);
+  else pending.reject(new Error(response.error || 'Error en verificación.'));
 });

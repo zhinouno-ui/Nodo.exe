@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\PC\\\\Desktop\\\\Nodo.exe\" -Recurse -Force)",
+      "Bash(Select-Object FullName, PSIsContainer)",
+      "PowerShell(head -100)",
+      "Bash(python3 -c ' *)",
+      "Bash(node -e \"const fs=require\\('fs'\\);const c=fs.readFileSync\\('c:/Users/PC/Desktop/Nodo.exe/agent-preload.js','utf8'\\);const i=c.indexOf\\('const exactMatch'\\);console.log\\(JSON.stringify\\(c.slice\\(i,i+350\\)\\)\\)\")",
+      "Bash(node -e ' *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git commit *)",
+      "Bash(node -e \"const fs=require\\('fs'\\);const c=fs.readFileSync\\('c:/Users/PC/Desktop/Nodo.exe/agent-preload.js','utf8'\\);const i=c.indexOf\\('function parseMoney'\\);console.log\\(JSON.stringify\\(c.slice\\(i,i+250\\)\\)\\)\")",
+      "Bash(node -e \"const fs=require\\('fs'\\);const t=fs.readFileSync\\('c:/Users/PC/Desktop/Nodo.exe/agent-preload.js','utf8'\\);console.log\\('parseMoney line:', t.indexOf\\('function parseMoney'\\)\\);console.log\\('readUserBalance line:', t.indexOf\\('function readUserBalance'\\)\\);console.log\\('crearUsuario line:', t.indexOf\\('async function crearUsuario'\\)\\);console.log\\('setReactInputValue line:', t.indexOf\\('function setReactInputValue'\\)\\);\")"
+    ]
+  }
+}
