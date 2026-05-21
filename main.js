@@ -22,6 +22,7 @@ function createMainWindow() {
       preload:          path.join(__dirname, 'app-preload.js'),
       contextIsolation: true,
       nodeIntegration:  false,
+      webviewTag:       true,
     }
   });
 
