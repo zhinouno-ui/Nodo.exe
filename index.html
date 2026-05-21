@@ -583,7 +583,7 @@ async function _pollearVerificacion(verifId, usuarioStr, datosRegistro){
 
   if(data.estado === 'VERIFICADO'){
     clearInterval(_verifyPolling); clearTimeout(_verifyTimeout); clearInterval(_verifyMsgTimer);
-    // Upsert usuario con verificado=true (mantiene datos si ya existía)
+    // Recién ahora guardamos en Supabase (solo si se verificó)
     const upsertData = { usuario: usuarioStr, verificado: true, pc_codigo: PC };
     if(datosRegistro) Object.assign(upsertData, datosRegistro);
     const { data: u } = await sb.from('usuarios').upsert(upsertData, { onConflict:'usuario' }).select().single();
@@ -594,8 +594,7 @@ async function _pollearVerificacion(verifId, usuarioStr, datosRegistro){
 
   } else if(data.estado === 'NO_EXISTE'){
     clearInterval(_verifyPolling); clearTimeout(_verifyTimeout); clearInterval(_verifyMsgTimer);
-    // Si registramos datos nuevos, borrar el usuario creado
-    if(datosRegistro) await sb.from('usuarios').delete().eq('usuario', usuarioStr);
+    // No guardamos nada — el usuario nunca se persistió
     hide('viewVerificando'); show('viewLogin');
     msg('loginMsg','❌ No encontramos tu usuario en el sistema de juego. Verificá que esté bien escrito.','err');
 
@@ -671,26 +670,10 @@ async function registrar(){
   if(!nombre){ msg('regMsg','Ingresá tu nombre.','err'); return; }
   if(!telefono || telefono.length < 10){ msg('regMsg','Ingresá un número de teléfono válido (formato internacional).','err'); return; }
 
-  msg('regMsg','<span class="spinner"></span>Creando cuenta...','info');
+  msg('regMsg','<span class="spinner"></span>Verificando usuario...','info');
 
-  // Guarda datos con verificado=false — se activa después de confirmar en el casino
-  const { error } = await sb.from('usuarios').upsert({
-    usuario: usuarioReg,
-    nombre,
-    telefono,
-    dni: dni || null,
-    nombre_transferencia: nombreTransferencia || null,
-    pc_codigo: PC,
-    verificado: false
-  }, { onConflict: 'usuario' });
-
-  if(error){
-    if(error.code === '23505') msg('regMsg','Ese usuario ya existe. Volvé e intentá con otro.','err');
-    else msg('regMsg','Error al crear la cuenta. Intentá de nuevo.','err');
-    return;
-  }
-
-  // Enviar a cola de verificación en lugar de entrar directamente
+  // No guardamos nada todavía — solo mandamos a la cola de verificación
+  // Si pasa → guardamos. Si no → nada queda en DB.
   const datosRegistro = { nombre, telefono, dni: dni||null, nombre_transferencia: nombreTransferencia||null, pc_codigo: PC };
   await _enviarAVerificacion(usuarioReg, datosRegistro);
 }

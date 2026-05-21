@@ -118,6 +118,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
       <button id="navChat" class="nav-btn" onclick="mostrarVista('chat')">💬 Chat <span id="badgeChat" class="badge-alert badge-chat hidden">0</span></button>
       <button id="navJugadores" class="nav-btn" onclick="mostrarVista('jugadores')">🏅 Jugadores</button>
       <button id="navAuto" class="nav-btn hidden" onclick="mostrarVista('auto')" style="border:1px solid rgba(124,58,237,.5)">⚡ Automatización</button>
+      <button id="navVerificaciones" class="nav-btn hidden" onclick="mostrarVista('verificaciones')" style="border:1px solid rgba(61,90,254,.4)">🔍 Verificaciones <span id="badgeVerif" class="badge-alert hidden">0</span></button>
 
       <button class="nav-btn" onclick="cerrarSesion()">🚪 Cerrar sesión</button>
     </aside>
@@ -399,6 +400,37 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
 
         </div>
       </section>
+
+      <!-- ── Verificaciones de login ── -->
+      <section id="viewVerificaciones" class="hidden">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+          <div>
+            <h1 style="font-size:26px">🔍 Verificaciones</h1>
+            <div class="small">Cola de login de usuarios · se procesa automáticamente en Electron.</div>
+          </div>
+          <button class="mini-btn blue" onclick="cargarVerificaciones()">🔄 Actualizar</button>
+        </div>
+
+        <div class="card" style="margin-bottom:14px">
+          <div id="verifEstadoWidget" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+            <div><span class="small" style="color:var(--muted)">Procesador</span><br>
+              <span id="verifProcStatus" style="font-weight:700">—</span></div>
+            <div><span class="small" style="color:var(--muted)">Pendientes</span><br>
+              <span id="verifPendCount" style="font-weight:700;color:var(--yellow)">0</span></div>
+            <div><span class="small" style="color:var(--muted)">Verificados hoy</span><br>
+              <span id="verifOkCount" style="font-weight:700;color:var(--green)">0</span></div>
+            <div><span class="small" style="color:var(--muted)">Rechazados hoy</span><br>
+              <span id="verifFailCount" style="font-weight:700;color:var(--red)">0</span></div>
+          </div>
+        </div>
+
+        <div class="card" style="overflow-x:auto">
+          <div id="tablaVerificaciones">
+            <div class="small" style="color:var(--muted);text-align:center;padding:20px 0">Cargando...</div>
+          </div>
+        </div>
+      </section>
+
     </main>
   </div>
 </div>
@@ -1228,6 +1260,7 @@ function mostrarVista(vista){
   if(vista==="chat")cargarChats();
   if(vista==="jugadores")cargarJugadores();
   if(vista==="auto")verificarEstadoBackoffice();
+  if(vista==="verificaciones")cargarVerificaciones();
   cerrarMenuMobile();
 }
 
@@ -1859,6 +1892,7 @@ const enElectron = !!window.ctrlElectron;
 if(enElectron){
   document.getElementById("navAuto")?.classList.remove("hidden");
   document.getElementById("agentBalanceCard")?.classList.remove("hidden");
+  document.getElementById("navVerificaciones")?.classList.remove("hidden");
 }
 
 // ── Saldo del agente (widget del sidebar) ─────────────────────────────────────
@@ -2368,6 +2402,84 @@ function abrirMenuMobile(){const menu=document.getElementById("mobileMenu");menu
 function cerrarMenuMobile(e){if(!e||e.target.id==="mobileMenu"){const menu=document.getElementById("mobileMenu");menu.classList.remove("open");menu.innerHTML=""}}
 function cerrarSesion(){localStorage.removeItem("nodo_operador_lite");localStorage.removeItem("nodo_pc_operativa_lite");location.reload()}
 
+// ── Panel de verificaciones ───────────────────────────────────────────────────
+async function cargarVerificaciones(){
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const { data } = await supabaseClient
+    .from("verificaciones")
+    .select("*")
+    .eq("pc_codigo", pcOperativa)
+    .order("created_at", { ascending: false })
+    .limit(60);
+
+  if(!data){ setBox("tablaVerificaciones",'<div class="small" style="color:var(--muted);text-align:center;padding:20px">Error al cargar.</div>'); return; }
+
+  const pendientes  = data.filter(v=>v.estado==="PENDIENTE");
+  const okHoy       = data.filter(v=>v.estado==="VERIFICADO" && new Date(v.created_at)>=hoy);
+  const failHoy     = data.filter(v=>v.estado==="NO_EXISTE"  && new Date(v.created_at)>=hoy);
+
+  setBox("verifPendCount",  pendientes.length);
+  setBox("verifOkCount",    okHoy.length);
+  setBox("verifFailCount",  failHoy.length);
+  setBox("verifProcStatus", _verifActivo ? '⚙️ Procesando...' : (window.ctrlElectron ? '✅ Activo' : '⚠️ Sin Electron'));
+
+  const badge = document.getElementById("badgeVerif");
+  if(pendientes.length){ badge.classList.remove("hidden"); badge.textContent=pendientes.length; }
+  else badge.classList.add("hidden");
+
+  if(!data.length){
+    setBox("tablaVerificaciones",'<div class="small" style="color:var(--muted);text-align:center;padding:20px">Sin registros.</div>');
+    return;
+  }
+
+  const colores = { PENDIENTE:'var(--yellow)', VERIFICADO:'var(--green)', NO_EXISTE:'var(--red)', ERROR:'#f97316' };
+  const iconos  = { PENDIENTE:'⏳', VERIFICADO:'✅', NO_EXISTE:'❌', ERROR:'⚠️' };
+
+  const rows = data.map(v=>{
+    const c = colores[v.estado]||'var(--muted)';
+    const i = iconos[v.estado]||'?';
+    const hace = (() => {
+      const s = Math.floor((Date.now()-new Date(v.created_at))/1000);
+      if(s<60) return `${s}s`;
+      if(s<3600) return `${Math.floor(s/60)}m`;
+      return `${Math.floor(s/3600)}h`;
+    })();
+    return `<tr>
+      <td style="font-weight:700">${escapeHtml(v.usuario)}</td>
+      <td style="color:${c};font-weight:700">${i} ${v.estado}</td>
+      <td style="color:var(--muted)">${v.nombre_casino||'—'}</td>
+      <td style="color:var(--muted);font-size:12px">hace ${hace}</td>
+      <td>
+        ${v.estado==='PENDIENTE'?`<button class="mini-btn red" onclick="cancelarVerificacionPanel('${v.id}')">✕ Cancelar</button>`:''}
+        ${v.estado==='NO_EXISTE'||v.estado==='ERROR'?`<button class="mini-btn blue" onclick="reintentarVerificacion('${v.id}','${escapeHtml(v.usuario)}')">↩ Reintentar</button>`:''}
+      </td>
+    </tr>`;
+  }).join('');
+
+  setBox("tablaVerificaciones",`
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="font-size:12px;color:var(--muted)">
+        <th style="text-align:left;padding:6px 8px">Usuario</th>
+        <th style="text-align:left;padding:6px 8px">Estado</th>
+        <th style="text-align:left;padding:6px 8px">Casino alias</th>
+        <th style="text-align:left;padding:6px 8px">Tiempo</th>
+        <th></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`);
+}
+
+async function cancelarVerificacionPanel(id){
+  await supabaseClient.from("verificaciones").update({ estado:"ERROR", updated_at:new Date().toISOString() }).eq("id",id);
+  await cargarVerificaciones();
+}
+
+async function reintentarVerificacion(id, usuario){
+  await supabaseClient.from("verificaciones").update({ estado:"PENDIENTE", updated_at:new Date().toISOString() }).eq("id",id);
+  toast(`Reenviado a cola: ${usuario}`, "blue");
+  await cargarVerificaciones();
+}
+
 // ── Cola de verificación de login ─────────────────────────────────────────────
 let _verifActivo = false;
 
@@ -2407,12 +2519,25 @@ async function procesarColaVerificacion(){
     console.error("Error verificando:", v.usuario, e);
   } finally {
     _verifActivo = false;
+    // Refresca el panel si está abierto
+    const secVerif = document.getElementById("viewVerificaciones");
+    if(secVerif && !secVerif.classList.contains("hidden")) cargarVerificaciones();
   }
 }
 
 // Arranca el procesador automático cuando hay Electron
 if(window.ctrlElectron){
   setInterval(procesarColaVerificacion, 5000);
+  // Actualiza badge de pendientes cada 10s
+  setInterval(async ()=>{
+    const { count } = await supabaseClient.from("verificaciones")
+      .select("id", { count:"exact", head:true })
+      .eq("pc_codigo", pcOperativa).eq("estado","PENDIENTE");
+    const badge = document.getElementById("badgeVerif");
+    if(!badge) return;
+    if(count){ badge.classList.remove("hidden"); badge.textContent=count; }
+    else badge.classList.add("hidden");
+  }, 10000);
 }
 </script>
 
