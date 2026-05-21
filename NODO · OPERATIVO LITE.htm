@@ -15,6 +15,11 @@
 body{background:var(--bg);color:#fff;overflow:hidden}
 .hidden{display:none!important}
 .layout{display:grid;grid-template-columns:280px 1fr;height:100vh}
+/* Chunior section ocupa todo el main sin padding */
+.main.chunior-active{padding:0;overflow:hidden}
+#chuniorWrap{display:flex;flex-direction:column;height:100%}
+#chuniorBar{display:flex;align-items:center;gap:8px;padding:7px 12px;background:#161b22;border-bottom:1px solid #2e3444;flex-shrink:0}
+#chuniorWebview{flex:1;width:100%;border:none}
 .layout.bo-open{grid-template-columns:280px var(--bo-w,820px) 1fr}
 #boPanel{display:none;flex-direction:column;border-right:2px solid #3d5afe;background:#0e1118;height:100vh;overflow:hidden;position:relative}
 .layout.bo-open #boPanel{display:flex}
@@ -127,6 +132,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
       <button id="navAuto" class="nav-btn hidden" onclick="mostrarVista('auto')" style="border:1px solid rgba(124,58,237,.5)">⚡ Automatización</button>
       <button id="navVerificaciones" class="nav-btn hidden" onclick="mostrarVista('verificaciones')" style="border:1px solid rgba(61,90,254,.4)">🔍 Verificaciones <span id="badgeVerif" class="badge-alert hidden">0</span></button>
       <button id="navBoPanel" class="nav-btn hidden" onclick="toggleBoPanel()" style="border:1px solid rgba(18,183,106,.4)">🖥 Panel cargas</button>
+      <button id="navChunior" class="nav-btn hidden" onclick="mostrarVista('chunior')" style="border:1px solid rgba(240,160,23,.4)">📋 Chunior <span id="chuniorStatus" style="font-size:10px">⚪</span></button>
 
       <button class="nav-btn" onclick="cerrarSesion()">🚪 Cerrar sesión</button>
     </aside>
@@ -451,6 +457,22 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
           <div id="tablaVerificaciones">
             <div class="small" style="color:var(--muted);text-align:center;padding:20px 0">Cargando...</div>
           </div>
+        </div>
+      </section>
+
+      <!-- ── Chunior ── -->
+      <section id="viewChunior" class="hidden" style="height:100%;margin:-18px;overflow:hidden">
+        <div id="chuniorWrap">
+          <div id="chuniorBar">
+            <span style="font-size:12px;font-weight:700;color:#f0a017">📋 Chunior</span>
+            <span id="chuniorStatusBar" style="font-size:11px;color:var(--muted)">—</span>
+            <div style="display:flex;gap:4px;margin-left:auto">
+              <button class="mini-btn gray" style="font-size:11px;padding:3px 7px" onclick="chuniorNav('/transacciones/')" title="Transacciones">📋</button>
+              <button class="mini-btn gray" style="font-size:11px;padding:3px 7px" onclick="document.getElementById('chuniorWebview').reload()" title="Recargar">🔄</button>
+              <button class="mini-btn gray" style="font-size:11px;padding:3px 7px" onclick="chuniorLoginManual()" title="Forzar login">🔑</button>
+            </div>
+          </div>
+          <webview id="chuniorWebview" src="about:blank" style="flex:1;width:100%;border:none"></webview>
         </div>
       </section>
 
@@ -1284,6 +1306,9 @@ function mostrarVista(vista){
   if(vista==="jugadores")cargarJugadores();
   if(vista==="auto")verificarEstadoBackoffice();
   if(vista==="verificaciones")cargarVerificaciones();
+  if(vista==="chunior")activarChunior();
+  // Quitar clase chunior-active del main cuando no es chunior
+  document.querySelector(".main")?.classList.toggle("chunior-active", vista==="chunior");
   cerrarMenuMobile();
 }
 
@@ -1917,6 +1942,7 @@ if(enElectron){
   document.getElementById("agentBalanceCard")?.classList.remove("hidden");
   document.getElementById("navVerificaciones")?.classList.remove("hidden");
   document.getElementById("navBoPanel")?.classList.remove("hidden");
+  document.getElementById("navChunior")?.classList.remove("hidden");
 }
 
 // ── Panel lateral de backoffice ───────────────────────────────────────────────
@@ -2566,6 +2592,115 @@ async function reintentarVerificacion(id, usuario){
   await supabaseClient.from("verificaciones").update({ estado:"PENDIENTE", updated_at:new Date().toISOString() }).eq("id",id);
   toast(`Reenviado a cola: ${usuario}`, "blue");
   await cargarVerificaciones();
+}
+
+// ── Chunior ───────────────────────────────────────────────────────────────────
+const CHUNIOR_BASE    = 'https://bo.chunior.com';
+const CHUNIOR_HOME    = CHUNIOR_BASE + '/transacciones/';
+const CHUNIOR_LOGIN   = CHUNIOR_BASE + '/login/';
+let _chuniorClave     = null;   // solo en memoria, nunca persiste
+let _chuniorLoggedIn  = false;
+let _chuniorInited    = false;
+let _chuniorPoller    = null;
+
+function activarChunior(){
+  const wv = document.getElementById('chuniorWebview');
+  if(!wv) return;
+  if(!_chuniorInited){
+    _chuniorInited = true;
+    _setupChuniorWebview(wv);
+  }
+  if(wv.src === 'about:blank' || !wv.src) wv.src = CHUNIOR_HOME;
+  // Poller: detecta expiración de sesión cada 30s
+  clearInterval(_chuniorPoller);
+  _chuniorPoller = setInterval(_chuniorCheckSession, 30000);
+}
+
+function _setupChuniorWebview(wv){
+  wv.addEventListener('did-finish-load', async ()=>{
+    const url = wv.getURL ? wv.getURL() : wv.src;
+    if(url && url.includes('/login/')){
+      _chuniorLoggedIn = false;
+      _setChuniorStatus(false);
+      await _chuniorDoLogin(wv);
+    } else if(url && !url.includes('about:blank')){
+      _chuniorLoggedIn = true;
+      _setChuniorStatus(true);
+    }
+  });
+  wv.addEventListener('did-navigate', e=>{
+    if(e.url && e.url.includes('/login/')){
+      _chuniorLoggedIn = false;
+      _setChuniorStatus(false);
+    }
+  });
+}
+
+async function _chuniorDoLogin(wv){
+  // Si no tenemos la clave, pedirla al operador (se guarda solo en memoria)
+  if(!_chuniorClave){
+    abrirModal('Chunior — Ingresá tu clave',`
+      <div class="alert-box" style="margin-bottom:12px">La sesión de Chunior requiere login. Ingresá tu clave (no se guarda en ningún lado).</div>
+      <label>Usuario</label>
+      <input id="chkUser" value="${escapeHtml(operador?.usuario||'')}" readonly style="opacity:.7">
+      <label>Clave</label>
+      <input id="chkPass" type="password" placeholder="Tu clave de Chunior" autofocus>
+    `, async ()=>{
+      _chuniorClave = val('chkPass');
+      cerrarModal();
+      if(_chuniorClave) await _chuniorFillForm(wv);
+    }, 'Ingresar');
+    return;
+  }
+  await _chuniorFillForm(wv);
+}
+
+async function _chuniorFillForm(wv){
+  if(!operador?.usuario || !_chuniorClave) return;
+  const u = JSON.stringify(operador.usuario);
+  const p = JSON.stringify(_chuniorClave);
+  try {
+    await wv.executeJavaScript(`
+      (function(){
+        const u=document.getElementById('id_username');
+        const p=document.getElementById('id_password');
+        const b=document.querySelector('input[type="submit"]');
+        if(u&&p&&b){u.value=${u};p.value=${p};b.click();return 'ok';}
+        return 'not_found';
+      })()
+    `);
+  } catch(e) { console.warn('chunior login inject:', e); }
+}
+
+async function _chuniorCheckSession(){
+  const wv = document.getElementById('chuniorWebview');
+  if(!wv || !_chuniorInited) return;
+  try {
+    const url = await wv.executeJavaScript('window.location.href');
+    if(url && url.includes('/login/')){
+      _chuniorLoggedIn = false;
+      _setChuniorStatus(false);
+      await _chuniorDoLogin(wv);
+    }
+  } catch(_){}
+}
+
+function _setChuniorStatus(loggedIn){
+  const dot = document.getElementById('chuniorStatus');
+  const bar = document.getElementById('chuniorStatusBar');
+  if(dot) dot.textContent = loggedIn ? '🟢' : '🔴';
+  if(bar) bar.textContent = loggedIn ? `Sesión activa · ${operador?.usuario||''}` : 'Sesión cerrada — relogueo automático';
+}
+
+function chuniorNav(path){
+  const wv = document.getElementById('chuniorWebview');
+  if(wv) wv.src = CHUNIOR_BASE + path;
+}
+
+function chuniorLoginManual(){
+  _chuniorClave = null; // limpia la clave para pedir de nuevo
+  const wv = document.getElementById('chuniorWebview');
+  if(wv) wv.src = CHUNIOR_HOME; // el redirect a /login/ dispara el flow
 }
 
 // ── Cola de verificación de login ─────────────────────────────────────────────
