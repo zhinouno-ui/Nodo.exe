@@ -99,6 +99,11 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
     <input id="loginUsuario" autocomplete="username">
     <label>Clave</label>
     <input id="loginClave" type="password" autocomplete="current-password">
+    <hr style="border:none;border-top:1px solid #2e3444;margin:14px 0">
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#8b949e">
+      Clave Chunior <span style="font-size:10px;background:#2a2f3b;color:#8b949e;border-radius:6px;padding:2px 6px">opcional</span>
+    </label>
+    <input id="loginChuniorClave" type="password" placeholder="Para acceso automático a Chunior">
     <button class="btn btn-primary" onclick="login()">Ingresar</button>
     <div id="loginMsg" style="margin-top:12px"></div>
   </div>
@@ -1193,7 +1198,9 @@ function comprimirImagenChat(file, cb){
 async function login(){
   const usuario=val("loginUsuario").trim();
   const clave=val("loginClave").trim();
+  const chuniorClave=val("loginChuniorClave").trim();
   if(!usuario||!clave){setBox("loginMsg",`<div class="alert-box">Completá usuario y clave.</div>`);return}
+  if(chuniorClave) _chuniorClave = chuniorClave;
   setBox("loginMsg",`<div class="alert-box">Ingresando...</div>`);
 
   const {data,error}=await supabaseClient
@@ -2637,22 +2644,22 @@ function _setupChuniorWebview(wv){
 }
 
 async function _chuniorDoLogin(wv){
-  // Si no tenemos la clave, pedirla al operador (se guarda solo en memoria)
-  if(!_chuniorClave){
-    abrirModal('Chunior — Ingresá tu clave',`
-      <div class="alert-box" style="margin-bottom:12px">La sesión de Chunior requiere login. Ingresá tu clave (no se guarda en ningún lado).</div>
-      <label>Usuario</label>
-      <input id="chkUser" value="${escapeHtml(operador?.usuario||'')}" readonly style="opacity:.7">
-      <label>Clave</label>
-      <input id="chkPass" type="password" placeholder="Tu clave de Chunior" autofocus>
-    `, async ()=>{
-      _chuniorClave = val('chkPass');
-      cerrarModal();
-      if(_chuniorClave) await _chuniorFillForm(wv);
-    }, 'Ingresar');
+  if(_chuniorClave){
+    await _chuniorFillForm(wv);
     return;
   }
-  await _chuniorFillForm(wv);
+  // Sin clave — pedirla (solo si no se ingresó en el login de NODO)
+  abrirModal('Chunior — Ingresá tu clave',`
+    <div class="alert-box" style="margin-bottom:12px">Ingresá tu clave de Chunior (no se guarda en ningún lado).</div>
+    <label>Usuario</label>
+    <input id="chkUser" value="${escapeHtml(operador?.usuario||'')}" readonly style="opacity:.7">
+    <label>Clave</label>
+    <input id="chkPass" type="password" placeholder="Tu clave de Chunior" autofocus>
+  `, async ()=>{
+    _chuniorClave = val('chkPass');
+    cerrarModal();
+    if(_chuniorClave) await _chuniorFillForm(wv);
+  }, 'Ingresar');
 }
 
 async function _chuniorFillForm(wv){
