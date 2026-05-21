@@ -196,36 +196,18 @@ input::placeholder{color:#484f58}
       </div>
 
       <div class="field">
-        <label>Nombre y apellido</label>
-        <input id="regNombre" type="text" placeholder="Como te conocen" autocapitalize="words">
+        <label>¿Cómo te conocen?</label>
+        <input id="regNombre" type="text" placeholder="Tu nombre o apodo" autocapitalize="words">
       </div>
 
       <div class="field">
-        <label>Número de WhatsApp / Teléfono</label>
-        <input id="regTelefono" type="tel" placeholder="Ej: 5491123456789">
-        <div class="field-hint">
-          📱 <b>Formato internacional:</b> 54 + 9 + código de área + número<br><br>
-          <b>Ejemplos:</b><br>
-          • AMBA / Buenos Aires: <b>5491112345678</b><br>
-          • Córdoba: <b>5493512345678</b><br>
-          • Rosario: <b>5493412345678</b><br>
-          • Mendoza: <b>5492612345678</b><br>
-          • Tucumán: <b>5493812345678</b><br>
-          • La Plata: <b>5492212345678</b><br>
-          • Mar del Plata: <b>5492232345678</b><br>
-          • Salta: <b>5493872345678</b><br>
-          • Santa Fe: <b>5493422345678</b><br>
-          • Neuquén: <b>5492992345678</b><br>
-          • Bahía Blanca: <b>5492912345678</b><br><br>
-          ℹ️ Siempre empieza con <b>549</b> seguido del código de área sin el 0 y el número sin el 15.
-        </div>
+        <label>WhatsApp</label>
+        <input id="regTelefono" type="tel" placeholder="549 + código de área + número" maxlength="13" oninput="this.value=this.value.replace(/\D/g,'')">
+        <div class="field-hint">Ej: <b>5491123456789</b> · sin el 0 ni el 15</div>
       </div>
 
       <hr class="divider">
       <div class="section-label">Datos de retiro <span class="optional-tag">opcional</span></div>
-      <div class="alert alert-info" style="margin-bottom:14px">
-        Completá estos datos para agilizar tus retiros. Si no los tenés ahora, podés agregarlos después.
-      </div>
 
       <div class="field">
         <label>DNI <span class="optional-tag">opcional</span></label>
@@ -233,15 +215,12 @@ input::placeholder{color:#484f58}
       </div>
 
       <div class="field">
-        <label>Nombre en transferencia <span class="optional-tag">opcional</span></label>
-        <input id="regNombreTransferencia" type="text" placeholder="Tal cual figura en tu CBU/CVU/alias" autocapitalize="words">
-        <div class="field-warn">
-          ⚠️ Ingresá el nombre <b>exactamente</b> como figura en tus transferencias bancarias. Si difiere, puede demorar o rechazar tus operaciones.
-        </div>
+        <label>Nombre en tu billetera virtual <span class="optional-tag">opcional</span></label>
+        <input id="regNombreTransferencia" type="text" placeholder="Ingresá tu nombre tal cual figura en tu billetera virtual" autocapitalize="words">
       </div>
 
       <div id="regMsg"></div>
-      <button class="btn btn-green" onclick="registrar()">Crear cuenta</button>
+      <button id="btnCrearCuenta" class="btn btn-green" onclick="registrar()">Crear cuenta</button>
       <button class="btn btn-ghost" onclick="volverLogin()">← Volver</button>
     </div>
   </div>
@@ -531,11 +510,22 @@ window.addEventListener('load', async ()=>{
   if(saved){
     try{
       usuario = JSON.parse(saved);
+      // Refresca datos del usuario desde Supabase para tener info actualizada
+      const { data } = await sb.from('usuarios').select('*').eq('usuario', usuario.usuario).single();
+      if(data){ usuario = data; localStorage.setItem('nodo_usuario_landing', JSON.stringify(data)); }
       await entrarApp();
       return;
     }catch(e){ localStorage.removeItem('nodo_usuario_landing'); }
   }
   show('viewLogin');
+});
+
+// Refresca la sesión cuando el usuario vuelve a la pestaña (evita cierres por datos viejos)
+document.addEventListener('visibilitychange', async ()=>{
+  if(document.visibilityState === 'visible' && usuario?.usuario){
+    const { data } = await sb.from('usuarios').select('*').eq('usuario', usuario.usuario).single();
+    if(data){ usuario = data; localStorage.setItem('nodo_usuario_landing', JSON.stringify(data)); }
+  }
 });
 
 // ── Verificación de login ─────────────────────────────────────────────────────
@@ -668,14 +658,18 @@ async function registrar(){
   const usuarioReg = val('regUsuario').toLowerCase();
 
   if(!nombre){ msg('regMsg','Ingresá tu nombre.','err'); return; }
-  if(!telefono || telefono.length < 10){ msg('regMsg','Ingresá un número de teléfono válido (formato internacional).','err'); return; }
+  if(!telefono || !/^549d{10}$/.test(telefono)){
+    msg('regMsg','El número debe tener 13 dígitos y empezar con 549 (ej: 5491123456789).','err'); return;
+  }
 
-  msg('regMsg','<span class="spinner"></span>Verificando usuario...','info');
+  const btn = document.getElementById('btnCrearCuenta');
+  btn.disabled = true; btn.textContent = 'Verificando...';
+  msg('regMsg','');
 
   // No guardamos nada todavía — solo mandamos a la cola de verificación
-  // Si pasa → guardamos. Si no → nada queda en DB.
   const datosRegistro = { nombre, telefono, dni: dni||null, nombre_transferencia: nombreTransferencia||null, pc_codigo: PC };
   await _enviarAVerificacion(usuarioReg, datosRegistro);
+  btn.disabled = false; btn.textContent = 'Crear cuenta';
 }
 
 function volverLogin(){
