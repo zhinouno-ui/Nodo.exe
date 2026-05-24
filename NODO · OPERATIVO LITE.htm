@@ -14,6 +14,8 @@
 }
 body{background:var(--bg);color:#fff;overflow:hidden}
 .hidden{display:none!important}
+/* La sección Chunior queda renderizada off-screen cuando está "oculta", para que el webview siga vivo y pueda usarse como validador del login */
+#viewChunior.hidden{display:block!important;visibility:hidden;position:fixed!important;left:-99999px!important;top:0!important;width:1200px!important;height:800px!important;pointer-events:none!important;overflow:hidden!important;margin:0!important}
 .layout{display:grid;grid-template-columns:280px 1fr;height:100vh}
 /* Chunior section ocupa todo el main sin padding */
 .main.chunior-active{padding:0;overflow:hidden}
@@ -58,7 +60,9 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
 .table-wrap{max-height:520px;overflow:auto;border-radius:14px;border:1px solid #2d3342}
 .filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px}
 .alert-box{background:#38280d;color:#ffd98f;padding:14px;border-radius:14px;margin-bottom:14px}.err-box{background:#3a1515;color:#ffd0d0;padding:14px;border-radius:14px;margin-bottom:14px}.ok-box{background:#123322;color:#b9f7cb;padding:14px;border-radius:14px;margin-bottom:14px}
-.login-wrap{display:flex;align-items:center;justify-content:center;height:100vh;padding:20px}.login-card{width:100%;max-width:420px;background:var(--card);border:1px solid #2d3342;border-radius:20px;padding:22px}
+.login-wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--bg);z-index:9000}
+.login-wrap.hidden{display:none}
+.login-card{width:100%;max-width:420px;background:var(--card);border:1px solid #2d3342;border-radius:20px;padding:22px}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;z-index:9999;padding:14px}
 .modal{width:100%;max-width:560px;max-height:92vh;overflow:auto;background:var(--card);border:1px solid #2e3444;border-radius:22px;padding:20px}
 .modal-title{font-size:22px;font-weight:900;margin-bottom:18px}.modal-actions{display:flex;gap:10px;margin-top:10px}.modal-actions button{flex:1}
@@ -136,17 +140,18 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
 <div id="loginView" class="login-wrap">
   <div class="login-card">
     <img src="NODO%20%C2%B7%20OPERATIVO%20LITE_files/logo-nodo.png" class="logo" alt="NODO">
-    <h2 style="margin-bottom:18px">PANEL OPERATIVO LITE</h2>
+    <h2 style="margin-bottom:6px">PANEL OPERATIVO LITE</h2>
+    <div class="small" style="margin-bottom:18px;color:var(--muted)">Usá tus credenciales del backoffice. NODO valida con Chunior.</div>
     <label>Usuario</label>
-    <input id="loginUsuario" autocomplete="username">
+    <input id="loginUsuario" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('loginClave').focus()">
     <label>Clave</label>
-    <input id="loginClave" type="password" autocomplete="current-password">
+    <input id="loginClave" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()">
     <button class="btn btn-primary" onclick="login()">Ingresar</button>
     <div id="loginMsg" style="margin-top:12px"></div>
   </div>
 </div>
 
-<div id="appView" class="hidden">
+<div id="appView">
   <div class="mobile-top">
     <button class="mini-btn blue" onclick="abrirMenuMobile()">☰ Menú</button>
     <b>NODO Operativo</b>
@@ -642,31 +647,8 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
             </div>
           </div>
 
-          <!-- Panel de login de NODO para Chunior (se muestra cuando la sesión no está activa) -->
-          <div id="chuniorLoginPanel" style="display:none;flex:1;align-items:center;justify-content:center;background:var(--bg)">
-            <div style="background:var(--card);border:1px solid #2e3444;border-radius:20px;padding:28px;width:100%;max-width:380px">
-              <div style="text-align:center;margin-bottom:18px">
-                <div style="font-size:24px;margin-bottom:6px">📋</div>
-                <h2 style="font-size:20px;font-weight:900">Iniciar sesión en Chunior</h2>
-                <div class="small" style="margin-top:4px">Los datos se envían directo a la sesión en segundo plano</div>
-              </div>
-              <label style="font-size:12px;color:var(--muted);font-weight:700">NOMBRE DE USUARIO</label>
-              <input id="chkUser" placeholder="Usuario de Chunior" autocomplete="username"
-                oninput="chuniorInjectField('id_username', this.value)"
-                onkeydown="if(event.key==='Enter')document.getElementById('chkPass').focus()"
-                style="margin-top:4px;margin-bottom:12px">
-              <label style="font-size:12px;color:var(--muted);font-weight:700">CONTRASEÑA</label>
-              <input id="chkPass" type="password" placeholder="Contraseña de Chunior" autocomplete="current-password"
-                oninput="chuniorInjectField('id_password', this.value)"
-                onkeydown="if(event.key==='Enter')chuniorSubmitLogin()"
-                style="margin-top:4px;margin-bottom:18px">
-              <button class="btn btn-primary" onclick="chuniorSubmitLogin()">Identificarse</button>
-              <div id="chkMsg" style="margin-top:10px"></div>
-            </div>
-          </div>
-
-          <!-- Webview de Chunior (se muestra cuando hay sesión activa) -->
-          <webview id="chuniorWebview" src="about:blank" style="flex:1;width:100%;border:none;display:none"></webview>
+          <!-- Webview de Chunior (sesión iniciada desde el login de NODO) -->
+          <webview id="chuniorWebview" src="about:blank" style="flex:1;width:100%;border:none"></webview>
         </div>
       </section>
 
@@ -725,6 +707,12 @@ window.addEventListener("load",()=>{
       localStorage.removeItem("nodo_pc_operativa_lite");
     }
   }
+
+  // Pre-cargar el webview de Chunior en background para que el login sea inmediato
+  // y adjuntar listeners (puesto de trabajo, status) desde el inicio
+  setTimeout(function(){
+    activarChunior();
+  }, 300);
 });
 
 function money(v){return Number(v||0).toLocaleString("es-AR",{style:"currency",currency:"ARS",maximumFractionDigits:0})}
@@ -1501,18 +1489,32 @@ async function login(){
   const usuario=val("loginUsuario").trim();
   const clave=val("loginClave").trim();
   if(!usuario||!clave){setBox("loginMsg",`<div class="alert-box">Completá usuario y clave.</div>`);return}
-  setBox("loginMsg",`<div class="alert-box">Ingresando...</div>`);
+  setBox("loginMsg",`<div class="alert-box">Validando en backoffice...</div>`);
 
+  // 1) Validar credenciales contra Chunior (sin guardar la clave en NODO)
+  let okBackoffice = false;
+  try {
+    okBackoffice = await validarLoginChunior(usuario, clave);
+  } catch(e){
+    setBox("loginMsg",`<div class="err-box">No se pudo conectar con el backoffice. ${escapeHtml(e.message||"")}</div>`);
+    return;
+  }
+  if(!okBackoffice){
+    setBox("loginMsg",`<div class="err-box">Usuario o clave incorrectos (rechazado por backoffice).</div>`);
+    return;
+  }
+
+  // 2) Buscar metadata del operador en Supabase (rol, PC, etc.) — sin chequear clave
+  setBox("loginMsg",`<div class="alert-box">Cargando perfil de operador...</div>`);
   const {data,error}=await supabaseClient
     .from("operadores")
     .select("*")
     .eq("usuario",usuario)
-    .eq("clave",clave)
     .eq("activo",true)
     .single();
 
   if(error||!data){
-    setBox("loginMsg",`<div class="err-box">Usuario o clave incorrectos.</div>`);
+    setBox("loginMsg",`<div class="err-box">Backoffice OK, pero el operador "<b>${escapeHtml(usuario)}</b>" no está registrado en NODO. Avisá al admin.</div>`);
     return;
   }
 
@@ -1533,6 +1535,78 @@ async function login(){
   }
   pcOperativa=operador.pc||"";
   finalizarLogin(true);
+}
+
+// Inyecta usuario/clave en el webview de Chunior y verifica si fue aceptado
+async function validarLoginChunior(usuario, clave){
+  const wv = document.getElementById('chuniorWebview');
+  if(!wv) throw new Error('Webview de Chunior no disponible.');
+
+  // Asegurar que estamos en la página de login de Chunior
+  const currentUrl = (wv.getURL && wv.getURL()) || wv.src || '';
+  if(!currentUrl || currentUrl.includes('about:blank') || !currentUrl.includes('chunior')){
+    wv.src = CHUNIOR_HOME;
+    await _waitWebview(wv, 12000);
+  } else if(!currentUrl.includes('/login/')){
+    // Si ya hay sesión activa con OTRO usuario, cerrar primero
+    wv.src = CHUNIOR_BASE + '/accounts/logout/';
+    await _waitWebview(wv, 8000);
+    wv.src = CHUNIOR_HOME;
+    await _waitWebview(wv, 12000);
+  }
+
+  // Inyectar credenciales y enviar
+  await wv.executeJavaScript(
+    '(function(){'
+    + 'var u=document.getElementById("id_username");'
+    + 'var p=document.getElementById("id_password");'
+    + 'var b=document.querySelector("input[type=\'submit\'],button[type=\'submit\']");'
+    + 'if(u&&p&&b){'
+    + '  u.value='+JSON.stringify(usuario)+';'
+    + '  p.value='+JSON.stringify(clave)+';'
+    + '  u.dispatchEvent(new Event("input",{bubbles:true}));'
+    + '  p.dispatchEvent(new Event("input",{bubbles:true}));'
+    + '  b.click();'
+    + '  return true;'
+    + '} return false;'
+    + '})()'
+  );
+
+  // Esperar respuesta: si navega fuera de /login/ → OK
+  return new Promise(function(resolve){
+    let done = false;
+    const finish = function(ok){ if(done) return; done = true; cleanup(); resolve(ok); };
+    const onNav = function(e){
+      const u = (e && e.url) || (wv.getURL ? wv.getURL() : '');
+      if(!u) return;
+      if(u.includes('/login/')) return; // todavía en login
+      finish(true);
+    };
+    const onFinish = function(){
+      const u = wv.getURL ? wv.getURL() : '';
+      if(!u || u.includes('/login/')) finish(false);
+      else finish(true);
+    };
+    const cleanup = function(){
+      try { wv.removeEventListener('did-navigate', onNav); } catch(e){}
+      try { wv.removeEventListener('did-finish-load', onFinish); } catch(e){}
+      clearTimeout(timer);
+    };
+    wv.addEventListener('did-navigate', onNav);
+    wv.addEventListener('did-finish-load', onFinish);
+    const timer = setTimeout(function(){ finish(false); }, 12000);
+  });
+}
+
+function _waitWebview(wv, ms){
+  return new Promise(function(resolve){
+    let done = false;
+    const finish = function(){ if(done) return; done = true; cleanup(); resolve(); };
+    const onFin = function(){ finish(); };
+    const cleanup = function(){ try { wv.removeEventListener('did-finish-load', onFin); } catch(e){} clearTimeout(timer); };
+    wv.addEventListener('did-finish-load', onFin);
+    const timer = setTimeout(finish, ms || 10000);
+  });
 }
 
 function abrirSelectorPc(lista){
@@ -3139,7 +3213,16 @@ async function ejecutarAutoCarga(id){
 
 function abrirMenuMobile(){const menu=document.getElementById("mobileMenu");menu.classList.add("open");menu.innerHTML="";const clone=document.getElementById("sidebar").cloneNode(true);clone.style.display="block";menu.appendChild(clone)}
 function cerrarMenuMobile(e){if(!e||e.target.id==="mobileMenu"){const menu=document.getElementById("mobileMenu");menu.classList.remove("open");menu.innerHTML=""}}
-function cerrarSesion(){localStorage.removeItem("nodo_operador_lite");localStorage.removeItem("nodo_pc_operativa_lite");location.reload()}
+function cerrarSesion(){
+  localStorage.removeItem("nodo_operador_lite");
+  localStorage.removeItem("nodo_pc_operativa_lite");
+  // Cerrar también sesión de Chunior antes de recargar
+  try {
+    const wv = document.getElementById('chuniorWebview');
+    if(wv) wv.src = CHUNIOR_BASE + '/accounts/logout/';
+  } catch(e){}
+  setTimeout(function(){ location.reload(); }, 400);
+}
 
 // ── Panel de verificaciones ───────────────────────────────────────────────────
 async function cargarVerificaciones(){
@@ -3220,7 +3303,8 @@ async function reintentarVerificacion(id, usuario){
 }
 
 // ── Chunior ───────────────────────────────────────────────────────────────────
-// El operador inicia sesión manualmente. No hay auto-fill de credenciales.
+// La autenticación ocurre en el login principal de NODO (validarLoginChunior).
+// La sección Chunior es sólo un visor de la sesión ya iniciada.
 const CHUNIOR_BASE = 'https://bo.chunior.com';
 const CHUNIOR_HOME = CHUNIOR_BASE + '/transacciones/';
 let _chuniorInited = false;
@@ -3230,12 +3314,11 @@ function activarChunior(){
   if(!wv) return;
   if(!_chuniorInited){
     _chuniorInited = true;
-
     wv.addEventListener('did-finish-load', async ()=>{
       const url = wv.getURL ? wv.getURL() : wv.src;
       if(!url || url.includes('about:blank')) return;
 
-      // ── Página de selección de Puesto de trabajo ───────────────────────────
+      // Si Chunior nos pidió elegir puesto de trabajo, mostrar modal
       try {
         const ptData = await wv.executeJavaScript(
           '(function(){var s=document.getElementById("id_pt");if(!s)return null;var o=Array.from(s.options).filter(function(x){return x.value!=="";}).map(function(x){return{value:x.value,text:x.text.trim()};});return{isPt:true,opts:o};})()'
@@ -3246,84 +3329,34 @@ function activarChunior(){
         }
       } catch(e){}
 
-      // ── Página de login → mostrar panel de NODO ────────────────────────────
-      if(url.includes('/login/')){
-        _chuniorMostrarLogin(true);
-        return;
-      }
-
-      // ── Sesión activa ──────────────────────────────────────────────────────
-      _chuniorMostrarLogin(false);
-      _setChuniorStatus(true, url);
+      _setChuniorStatus(!url.includes('/login/'), url);
     });
 
     wv.addEventListener('did-navigate', function(e){
       if(!e.url || e.url.includes('about:blank')) return;
-      if(e.url.includes('/login/')){
-        _chuniorMostrarLogin(true);
-        _setChuniorStatus(false, e.url);
-      } else {
-        _chuniorMostrarLogin(false);
-        _setChuniorStatus(true, e.url);
-      }
+      _setChuniorStatus(!e.url.includes('/login/'), e.url);
     });
   }
-  if(wv.src === 'about:blank' || !wv.src) wv.src = CHUNIOR_HOME;
-}
-
-function _chuniorMostrarLogin(mostrar){
-  const panel = document.getElementById('chuniorLoginPanel');
-  const wv    = document.getElementById('chuniorWebview');
-  if(panel) panel.style.display = mostrar ? 'flex' : 'none';
-  if(wv)    wv.style.display    = mostrar ? 'none' : 'flex';
-  if(mostrar){
-    // Limpia campos pero mantiene el usuario si ya lo ingresaron
-    const p = document.getElementById('chkPass');
-    if(p) p.value = '';
-    setBox('chkMsg','');
-    setTimeout(()=>{ document.getElementById('chkUser')?.focus(); }, 80);
-  }
-}
-
-async function chuniorInjectField(fieldId, value){
-  const wv = document.getElementById('chuniorWebview');
-  if(!wv) return;
-  try {
-    await wv.executeJavaScript(
-      '(function(){var f=document.getElementById('+JSON.stringify(fieldId)+');if(f){f.value='+JSON.stringify(value)+';f.dispatchEvent(new Event("input",{bubbles:true}));}})()'
-    );
-  } catch(e){}
-}
-
-async function chuniorSubmitLogin(){
-  const wv = document.getElementById('chuniorWebview');
-  if(!wv) return;
-  setBox('chkMsg','<div class="alert-box" style="font-size:12px">Conectando...</div>');
-  try {
-    // Asegurar que los valores actuales están en el webview
-    const u = document.getElementById('chkUser')?.value || '';
-    const p = document.getElementById('chkPass')?.value || '';
-    await chuniorInjectField('id_username', u);
-    await chuniorInjectField('id_password', p);
-    await new Promise(function(r){setTimeout(r,120);});
-    await wv.executeJavaScript(
-      '(function(){var b=document.querySelector("input[type=\'submit\'],button[type=\'submit\']");if(b)b.click();})()'
-    );
-  } catch(e){
-    setBox('chkMsg','<div class="err-box" style="font-size:12px">Error: '+(e.message||'')+'</div>');
-  }
+  // Si quedó en /login/ (sesión caduca), volver a la home
+  const cur = wv.getURL ? wv.getURL() : wv.src;
+  if(!cur || cur === 'about:blank' || cur.includes('/login/')) wv.src = CHUNIOR_HOME;
 }
 
 function chuniorCerrarSesion(){
+  if(!confirm('¿Cerrar sesión de Chunior?\n\nEsto también te va a deslogear de NODO.')) return;
   const wv = document.getElementById('chuniorWebview');
   if(wv){ wv.src = CHUNIOR_BASE + '/accounts/logout/'; }
+  // Cerrar NODO también
+  localStorage.removeItem('nodo_operador_lite');
+  localStorage.removeItem('nodo_pc_operativa_lite');
+  setTimeout(function(){ location.reload(); }, 600);
 }
 
 function _setChuniorStatus(loggedIn, url){
   const dot = document.getElementById('chuniorStatus');
   const bar = document.getElementById('chuniorStatusBar');
   if(dot) dot.textContent = loggedIn ? '🟢' : '🔴';
-  if(bar) bar.textContent = loggedIn ? 'Sesión activa' : 'Iniciá sesión en Chunior';
+  if(bar) bar.textContent = loggedIn ? 'Sesión activa' : 'Sin sesión';
 }
 
 function _chuniorElegirPuesto(wv, opts){
@@ -3335,7 +3368,6 @@ function _chuniorElegirPuesto(wv, opts){
     '<div style="display:flex;flex-direction:column;gap:4px">'+optsHtml+'</div>',
     null, null
   );
-  // guardamos la webview en variable global temporaria para usarla en la confirmación
   window._chuniorWvPendiente = wv;
 }
 
@@ -3348,7 +3380,6 @@ async function _chuniorConfirmarPuesto(value, text){
     await wv.executeJavaScript(
       '(function(){var s=document.getElementById("id_pt");var b=document.querySelector("input[type=\'submit\'],button[type=\'submit\'],.btn");if(s&&b){s.value='+JSON.stringify(value)+';b.click();}})()'
     );
-    _setChuniorStatus(true, '');
     toast('Chunior: puesto '+text+' seleccionado', 'green');
   } catch(e){
     toast('Error al seleccionar puesto: '+(e.message||''), 'red');
@@ -3358,11 +3389,6 @@ async function _chuniorConfirmarPuesto(value, text){
 function chuniorNav(path){
   const wv = document.getElementById('chuniorWebview');
   if(wv) wv.src = CHUNIOR_BASE + path;
-}
-
-function chuniorLoginManual(){
-  const wv = document.getElementById('chuniorWebview');
-  if(wv) wv.src = CHUNIOR_HOME;
 }
 
 // ── Macros del chat ───────────────────────────────────────────────────────────
