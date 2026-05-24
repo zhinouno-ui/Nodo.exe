@@ -136,6 +136,15 @@ input::placeholder{color:#484f58}
 @keyframes vFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
 @keyframes vBounce{0%,80%,100%{transform:scale(.75);opacity:.5}40%{transform:scale(1.2);opacity:1}}
 @keyframes vProgress{0%{width:0%}80%{width:90%}100%{width:90%}}
+/* ── Billetera card (mensaje del operador) ─────────────────────────── */
+.bil-card{background:#1a2035;border:1px solid #d4a017;border-radius:14px;padding:14px;margin:2px 0;min-width:220px;max-width:300px}
+.bil-nombre{font-weight:900;font-size:15px;color:#d4a017;margin-bottom:10px}
+.bil-field{background:#0e1525;border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.bil-label{font-size:10px;font-weight:700;color:#888;display:block;margin-bottom:4px;letter-spacing:.5px;text-transform:uppercase}
+.bil-val{font-size:14px;font-weight:700;display:block;margin-bottom:6px;word-break:break-all;color:#e2e8f0}
+.bil-copy{width:100%;background:#2a2a2a;border:1px solid #3a3a3a;color:#fff;border-radius:8px;padding:7px;font-size:12px;cursor:pointer;transition:background .15s}
+.bil-copy:active,.bil-copy:focus{background:#3d5afe;outline:none}
+.bil-footer{margin-top:10px;font-size:12px;color:#d4a017;font-style:italic}
 </style>
 </head>
 
@@ -1127,6 +1136,12 @@ function copiar(texto){
   navigator.clipboard?.writeText(texto).then(()=>mostrarToast('CBU copiado ✓')).catch(()=>{});
 }
 
+function copiarBil(texto, btn, label){
+  navigator.clipboard?.writeText(texto)
+    .then(()=>{ if(btn){ btn.textContent='✓ Copiado'; setTimeout(()=>{ btn.textContent=label; },2200); } mostrarToast(label+' copiado ✓'); })
+    .catch(()=>{ if(btn){ btn.select?.(); } });
+}
+
 function mostrarToast(msj){
   const t = document.createElement('div');
   t.textContent = msj;
@@ -1234,6 +1249,44 @@ async function cargarMensajes(silencioso=false){
   }
 }
 
+function renderBilleteraCard(texto){
+  const lines = texto.split('\n');
+  const nombre = (lines[0]||'').replace(/^💳\s*/,'').trim();
+  let html = '<div class="bil-card"><div class="bil-nombre">💳 '+escHtml(nombre)+'</div>';
+  let footer = '';
+  lines.slice(1).forEach(function(line){
+    line = line.trim();
+    if(!line) return;
+    if(/^Alias:/i.test(line)){
+      const v = line.replace(/^Alias:\s*/i,'').trim();
+      html += '<div class="bil-field"><span class="bil-label">Alias</span><span class="bil-val">'+escHtml(v)+'</span>'
+        +'<button class="bil-copy" data-val="'+escHtml(v)+'" onclick="copiarBil(this.dataset.val,this,\'Copiar alias\')">Copiar alias</button></div>';
+    } else if(/^CBU\/CVU:/i.test(line)){
+      const v = line.replace(/^CBU\/CVU:\s*/i,'').trim();
+      html += '<div class="bil-field"><span class="bil-label">CBU / CVU</span><span class="bil-val" style="font-size:12px">'+escHtml(v)+'</span>'
+        +'<button class="bil-copy" data-val="'+escHtml(v)+'" onclick="copiarBil(this.dataset.val,this,\'Copiar CBU/CVU\')">Copiar CBU/CVU</button></div>';
+    } else if(/^Titular:/i.test(line)){
+      const v = line.replace(/^Titular:\s*/i,'').trim();
+      html += '<div class="bil-field"><span class="bil-label">Titular</span><span class="bil-val">'+escHtml(v)+'</span></div>';
+    } else if(/^Banco:/i.test(line)){
+      const v = line.replace(/^Banco:\s*/i,'').trim();
+      html += '<div style="margin:4px 0 6px;font-size:12px;color:#bbb">Banco: '+escHtml(v)+'</div>';
+    } else if(line.length > 4){
+      footer = line;
+    }
+  });
+  if(footer) html += '<div class="bil-footer">'+escHtml(footer)+'</div>';
+  html += '</div>';
+  return html;
+}
+
+function renderBubbleContent(m){
+  if(m.tipo_emisor==='OPERADOR' && /^💳/.test(m.mensaje||'') && /CBU\/CVU:|Alias:/i.test(m.mensaje||'')){
+    return renderBilleteraCard(m.mensaje);
+  }
+  return escHtml(m.mensaje||'').replace(/\n/g,'<br>');
+}
+
 function renderMensajes(){
   if(!chatMsgs.length){
     setHtml('chatBody','<div style="text-align:center;color:var(--muted);font-size:13px;padding:30px 0">Sin mensajes todavía. Escribinos tu consulta.</div>');
@@ -1243,7 +1296,7 @@ function renderMensajes(){
     const esUser = m.tipo_emisor === 'USUARIO';
     return `<div class="msg ${esUser?'user':'op'}">
       <div class="bubble">
-        ${escHtml(m.mensaje||'')}
+        ${renderBubbleContent(m)}
         ${m.imagen_url?`<img src="${m.imagen_url}" alt="imagen">`:''}
       </div>
       <div class="msg-meta">${esUser?'Vos':'Soporte'} · ${formatTs(m.created_at)}</div>
