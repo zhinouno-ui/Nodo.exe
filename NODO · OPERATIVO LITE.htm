@@ -3214,19 +3214,8 @@ function activarChunior(){
         `);
 
         if(ptData && ptData.isPt && ptData.opts.length > 0){
-          // Auto-seleccionar la primera opción disponible y enviar
-          await wv.executeJavaScript(`
-            (function(){
-              const sel = document.getElementById('id_pt');
-              const btn = document.querySelector('input[type="submit"],button[type="submit"],.btn');
-              if(sel && btn){
-                const first = Array.from(sel.options).find(function(o){return o.value!=='';});
-                if(first){ sel.value = first.value; btn.click(); }
-              }
-            })()
-          `);
-          _setChuniorStatus(true, url);
-          toast('Chunior: puesto '+ptData.opts[0].text+' seleccionado', 'green');
+          // Mostrar modal con los puestos disponibles para que el operador elija
+          _chuniorElegirPuesto(wv, ptData.opts);
           return;
         }
       } catch(e){}
@@ -3250,6 +3239,35 @@ function _setChuniorStatus(loggedIn, url){
   const bar = document.getElementById('chuniorStatusBar');
   if(dot) dot.textContent = loggedIn ? '🟢' : '🔴';
   if(bar) bar.textContent = loggedIn ? 'Sesión activa' : 'Iniciá sesión en Chunior';
+}
+
+function _chuniorElegirPuesto(wv, opts){
+  const optsHtml = opts.map(function(o){
+    return '<button class="btn btn-primary" style="margin-bottom:8px" onclick="_chuniorConfirmarPuesto('+JSON.stringify(o.value)+','+JSON.stringify(o.text)+')">'+escapeHtml(o.text)+'</button>';
+  }).join('');
+  abrirModal('📋 Chunior — Seleccioná tu puesto',
+    '<div class="small" style="margin-bottom:14px;color:var(--muted)">Elegí el puesto de trabajo para esta sesión:</div>'+
+    '<div style="display:flex;flex-direction:column;gap:4px">'+optsHtml+'</div>',
+    null, null
+  );
+  // guardamos la webview en variable global temporaria para usarla en la confirmación
+  window._chuniorWvPendiente = wv;
+}
+
+async function _chuniorConfirmarPuesto(value, text){
+  cerrarModal();
+  const wv = window._chuniorWvPendiente;
+  window._chuniorWvPendiente = null;
+  if(!wv) return;
+  try {
+    await wv.executeJavaScript(
+      '(function(){var s=document.getElementById("id_pt");var b=document.querySelector("input[type=\'submit\'],button[type=\'submit\'],.btn");if(s&&b){s.value='+JSON.stringify(value)+';b.click();}})()'
+    );
+    _setChuniorStatus(true, '');
+    toast('Chunior: puesto '+text+' seleccionado', 'green');
+  } catch(e){
+    toast('Error al seleccionar puesto: '+(e.message||''), 'red');
+  }
 }
 
 function chuniorNav(path){
