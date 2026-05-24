@@ -3195,13 +3195,50 @@ function activarChunior(){
   if(!wv) return;
   if(!_chuniorInited){
     _chuniorInited = true;
-    wv.addEventListener('did-finish-load', ()=>{
+
+    wv.addEventListener('did-finish-load', async ()=>{
       const url = wv.getURL ? wv.getURL() : wv.src;
-      const loggedIn = url && !url.includes('/login/') && !url.includes('about:blank');
+      if(!url || url.includes('about:blank')) return;
+
+      // ── Detectar página de selección de Puesto de trabajo ──────────────────
+      try {
+        const ptData = await wv.executeJavaScript(`
+          (function(){
+            const sel = document.getElementById('id_pt');
+            if(!sel) return null;
+            const opts = Array.from(sel.options)
+              .filter(function(o){ return o.value !== ''; })
+              .map(function(o){ return {value: o.value, text: o.text.trim()}; });
+            return {isPt: true, opts: opts};
+          })()
+        `);
+
+        if(ptData && ptData.isPt && ptData.opts.length > 0){
+          // Auto-seleccionar la primera opción disponible y enviar
+          await wv.executeJavaScript(`
+            (function(){
+              const sel = document.getElementById('id_pt');
+              const btn = document.querySelector('input[type="submit"],button[type="submit"],.btn');
+              if(sel && btn){
+                const first = Array.from(sel.options).find(function(o){return o.value!=='';});
+                if(first){ sel.value = first.value; btn.click(); }
+              }
+            })()
+          `);
+          _setChuniorStatus(true, url);
+          toast('Chunior: puesto '+ptData.opts[0].text+' seleccionado', 'green');
+          return;
+        }
+      } catch(e){}
+
+      // ── Estado de sesión normal ─────────────────────────────────────────────
+      const loggedIn = !url.includes('/login/');
       _setChuniorStatus(loggedIn, url);
     });
-    wv.addEventListener('did-navigate', e=>{
-      const loggedIn = e.url && !e.url.includes('/login/');
+
+    wv.addEventListener('did-navigate', function(e){
+      if(!e.url || e.url.includes('about:blank')) return;
+      const loggedIn = !e.url.includes('/login/');
       _setChuniorStatus(loggedIn, e.url);
     });
   }
