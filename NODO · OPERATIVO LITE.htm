@@ -221,6 +221,8 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
 
             <div class="card" style="margin-bottom:0">
               <h2 class="card-title">⚡ Operación manual automatizada</h2>
+              <span class="manual-label">Billetera destino</span>
+              <select id="manualBilletera" style="margin-top:4px;margin-bottom:8px"></select>
               <div class="manual-grid" style="margin-bottom:10px">
                 <div class="manual-input-wrap">
                   <span class="manual-label">Usuario</span>
@@ -231,8 +233,6 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
                   <input id="manualMonto" type="number" placeholder="Ej: 5000  ·  -3000  ·  vacío" style="margin:0">
                 </div>
               </div>
-              <span class="manual-label">Billetera destino</span>
-              <select id="manualBilletera" style="margin-top:4px;margin-bottom:6px"></select>
               <div class="clave-row">
                 <label class="clave-toggle">
                   <input type="checkbox" id="manualResetClave" onchange="toggleClaveCustom(this)">
@@ -676,13 +676,15 @@ let lastPendientesIds=new Set(), lastChatUnread=0;
 let chatActualId="", chatImagenBase64="", chatImagenNombre="";
 
 window.addEventListener("load",()=>{
+  // Siempre mostramos el login para capturar la clave (= clave Chunior).
+  // Solo pre-rellenamos el usuario si hay sesión guardada.
   const saved=localStorage.getItem("nodo_operador_lite");
-  const pc=localStorage.getItem("nodo_pc_operativa_lite");
-  if(saved && pc){
+  if(saved){
     try{
-      operador=JSON.parse(saved);
-      pcOperativa=pc;
-      finalizarLogin(false);
+      const op=JSON.parse(saved);
+      const userInput=document.getElementById("loginUsuario");
+      if(userInput && op?.usuario) userInput.value=op.usuario;
+      setBox("loginMsg",'<div class="alert-box" style="font-size:12px">Sesión guardada · ingresá tu clave para continuar.</div>');
     }catch(e){
       localStorage.removeItem("nodo_operador_lite");
       localStorage.removeItem("nodo_pc_operativa_lite");
@@ -3231,18 +3233,9 @@ async function _chuniorDoLogin(wv){
     await _chuniorFillForm(wv);
     return;
   }
-  // Sin clave — pedirla (solo si no se ingresó en el login de NODO)
-  abrirModal('Chunior — Ingresá tu clave',`
-    <div class="alert-box" style="margin-bottom:12px">Ingresá tu clave de Chunior (no se guarda en ningún lado).</div>
-    <label>Usuario</label>
-    <input id="chkUser" value="${escapeHtml(operador?.usuario||'')}" readonly style="opacity:.7">
-    <label>Clave</label>
-    <input id="chkPass" type="password" placeholder="Tu clave de Chunior" autofocus>
-  `, async ()=>{
-    _chuniorClave = val('chkPass');
-    cerrarModal();
-    if(_chuniorClave) await _chuniorFillForm(wv);
-  }, 'Ingresar');
+  // Sin clave (sesión expirada / relogueo) → cerrar NODO
+  toast("Sesión de Chunior expirada — cerrando NODO...","red");
+  setTimeout(()=>{ cerrarSesion(); }, 2500);
 }
 
 async function _chuniorFillForm(wv){

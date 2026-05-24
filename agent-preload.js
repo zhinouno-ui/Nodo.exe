@@ -172,33 +172,74 @@ function readBalanceFromPlayerRow(playerEl) {
 }
 
 async function leerSaldoViaModal() {
-  try {
-    // Snapshot de inputs disabled con ARS que ya existen ANTES de abrir el modal
-    const snapshots = new Set(
-      Array.from(document.querySelectorAll('input[disabled], input.Mui-disabled, input[readonly]'))
-        .filter(isVisible)
-        .filter(el => /ARS/.test(el.value || ''))
-        .map(el => el.value.trim())
-    );
-
-    clickButtonByIcon('circle-plus');
-    await delay(700);
-
-    // El saldo del USUARIO es el input con ARS que NO estaba antes de abrir el modal
-    const allArs = Array.from(document.querySelectorAll('input[disabled], input.Mui-disabled, input[readonly]'))
-      .filter(isVisible)
-      .filter(el => /ARS/.test(el.value || ''));
-
-    const newInput = allArs.find(el => !snapshots.has(el.value.trim()));
-    const balance = newInput
-      ? { raw: newInput.value, value: parseMoney(newInput.value) }
-      : { raw: '', value: 0 };
-
+  async function cerrarModal() {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true, cancelable: true }));
     await delay(400);
     const cancelBtn = Array.from(visibleElements('button')).find(b => /cancelar|cancel|cerrar|close/i.test(b.textContent || ''));
     if (cancelBtn) { clickElement(cancelBtn); await delay(300); }
-    return balance;
+  }
+
+  try {
+    clickButtonByIcon('circle-plus');
+    await delay(800); // margen extra para que React monte los inputs
+
+    // ── Estrategia 1: buscar por label "Balance Jugador" / "Jugador" ──────────
+    // El modal tiene dos inputs ARS: "Balance Agente" y "Balance Jugador"
+    // Recorremos todos los labels/fieldsets para encontrar el de jugador
+    const allLabels = Array.from(document.querySelectorAll(
+      'label, .MuiInputLabel-root, .MuiFormLabel-root, legend, [class*="InputLabel"], [class*="label"], p, span'
+    )).filter(isVisible);
+
+    for (const label of allLabels) {
+      const text = (label.textContent || label.innerText || '').trim();
+      if (!/jugador/i.test(text)) continue;
+      // Sube al contenedor del campo (MuiFormControl, MuiTextField, etc.)
+      const container = label.closest(
+        '.MuiFormControl-root, .MuiTextField-root, .MuiOutlinedInput-root, fieldset, .form-group, .MuiInputBase-root'
+      ) || label.parentElement;
+      if (!container) continue;
+      // Busca el input deshabilitado con ARS dentro del contenedor o cerca
+      const inp = container.querySelector('input[disabled], input.Mui-disabled, input[readonly]');
+      if (inp && isVisible(inp) && /ARS/.test(inp.value || '')) {
+        const balance = { raw: inp.value, value: parseMoney(inp.value) };
+        await cerrarModal();
+        return balance;
+      }
+      // También busca en el padre del label o el siguiente sibling de la forma MUI
+      const formControl = label.closest('.MuiFormControl-root') || label.parentElement?.closest('.MuiFormControl-root');
+      if (formControl) {
+        const inp2 = formControl.querySelector('input[disabled], input.Mui-disabled, input[readonly]');
+        if (inp2 && isVisible(inp2) && /ARS/.test(inp2.value || '')) {
+          const balance = { raw: inp2.value, value: parseMoney(inp2.value) };
+          await cerrarModal();
+          return balance;
+        }
+      }
+    }
+
+    // ── Estrategia 2: todos los ARS inputs → elegir el de MENOR valor ─────────
+    // El saldo del jugador siempre es << saldo del agente
+    const arsInputs = Array.from(document.querySelectorAll(
+      'input[disabled], input.Mui-disabled, input[readonly]'
+    ))
+      .filter(isVisible)
+      .filter(el => /ARS/.test(el.value || ''));
+
+    if (arsInputs.length >= 2) {
+      const sorted = arsInputs.slice().sort((a, b) => parseMoney(a.value) - parseMoney(b.value));
+      const playerInput = sorted[0]; // menor valor = jugador
+      const balance = { raw: playerInput.value, value: parseMoney(playerInput.value) };
+      await cerrarModal();
+      return balance;
+    }
+    if (arsInputs.length === 1) {
+      const balance = { raw: arsInputs[0].value, value: parseMoney(arsInputs[0].value) };
+      await cerrarModal();
+      return balance;
+    }
+
+    await cerrarModal();
+    return { raw: '', value: 0 };
   } catch (_) {
     return { raw: '', value: 0 };
   }

@@ -28,6 +28,24 @@ function createMainWindow() {
 
   mainWindow.loadFile('NODO · OPERATIVO LITE.htm');
   mainWindow.on('closed', () => { mainWindow = null; });
+
+  // Zoom Ctrl+= / Ctrl+- / Ctrl+0
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (!input.control || input.type !== 'keyDown') return;
+    const key = input.key;
+    if (key === '=' || key === '+') {
+      const f = mainWindow.webContents.getZoomFactor();
+      mainWindow.webContents.setZoomFactor(Math.min(parseFloat((f + 0.1).toFixed(1)), 3.0));
+      event.preventDefault();
+    } else if (key === '-') {
+      const f = mainWindow.webContents.getZoomFactor();
+      mainWindow.webContents.setZoomFactor(Math.max(parseFloat((f - 0.1).toFixed(1)), 0.3));
+      event.preventDefault();
+    } else if (key === '0') {
+      mainWindow.webContents.setZoomFactor(1.0);
+      event.preventDefault();
+    }
+  });
 }
 
 // ── Ventana del backoffice del casino ─────────────────────────────────────────
