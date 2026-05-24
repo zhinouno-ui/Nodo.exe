@@ -628,7 +628,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
             <div style="display:flex;gap:4px;margin-left:auto">
               <button class="mini-btn gray" style="font-size:11px;padding:3px 7px" onclick="chuniorNav('/transacciones/')" title="Transacciones">📋</button>
               <button class="mini-btn gray" style="font-size:11px;padding:3px 7px" onclick="document.getElementById('chuniorWebview').reload()" title="Recargar">🔄</button>
-              <button class="mini-btn gray" style="font-size:11px;padding:3px 7px" onclick="chuniorLoginManual()" title="Forzar login">🔑</button>
+              <button class="mini-btn gray" style="font-size:11px;padding:3px 7px" onclick="chuniorNav('/login/')" title="Ir al login">🔑 Login</button>
             </div>
           </div>
           <webview id="chuniorWebview" src="about:blank" style="flex:1;width:100%;border:none"></webview>
@@ -1466,8 +1466,6 @@ async function login(){
   const usuario=val("loginUsuario").trim();
   const clave=val("loginClave").trim();
   if(!usuario||!clave){setBox("loginMsg",`<div class="alert-box">Completá usuario y clave.</div>`);return}
-  // La clave ingresada ES la clave de Chunior — la guardamos en memoria
-  _chuniorClave = clave;
   setBox("loginMsg",`<div class="alert-box">Ingresando...</div>`);
 
   const {data,error}=await supabaseClient
@@ -3187,92 +3185,34 @@ async function reintentarVerificacion(id, usuario){
 }
 
 // ── Chunior ───────────────────────────────────────────────────────────────────
-const CHUNIOR_BASE    = 'https://bo.chunior.com';
-const CHUNIOR_HOME    = CHUNIOR_BASE + '/transacciones/';
-const CHUNIOR_LOGIN   = CHUNIOR_BASE + '/login/';
-let _chuniorClave     = null;   // solo en memoria, nunca persiste
-let _chuniorLoggedIn  = false;
-let _chuniorInited    = false;
-let _chuniorPoller    = null;
+// El operador inicia sesión manualmente. No hay auto-fill de credenciales.
+const CHUNIOR_BASE = 'https://bo.chunior.com';
+const CHUNIOR_HOME = CHUNIOR_BASE + '/transacciones/';
+let _chuniorInited = false;
 
 function activarChunior(){
   const wv = document.getElementById('chuniorWebview');
   if(!wv) return;
   if(!_chuniorInited){
     _chuniorInited = true;
-    _setupChuniorWebview(wv);
+    wv.addEventListener('did-finish-load', ()=>{
+      const url = wv.getURL ? wv.getURL() : wv.src;
+      const loggedIn = url && !url.includes('/login/') && !url.includes('about:blank');
+      _setChuniorStatus(loggedIn, url);
+    });
+    wv.addEventListener('did-navigate', e=>{
+      const loggedIn = e.url && !e.url.includes('/login/');
+      _setChuniorStatus(loggedIn, e.url);
+    });
   }
   if(wv.src === 'about:blank' || !wv.src) wv.src = CHUNIOR_HOME;
-  // Poller: detecta expiración de sesión cada 30s
-  clearInterval(_chuniorPoller);
-  _chuniorPoller = setInterval(_chuniorCheckSession, 30000);
 }
 
-function _setupChuniorWebview(wv){
-  wv.addEventListener('did-finish-load', async ()=>{
-    const url = wv.getURL ? wv.getURL() : wv.src;
-    if(url && url.includes('/login/')){
-      _chuniorLoggedIn = false;
-      _setChuniorStatus(false);
-      await _chuniorDoLogin(wv);
-    } else if(url && !url.includes('about:blank')){
-      _chuniorLoggedIn = true;
-      _setChuniorStatus(true);
-    }
-  });
-  wv.addEventListener('did-navigate', e=>{
-    if(e.url && e.url.includes('/login/')){
-      _chuniorLoggedIn = false;
-      _setChuniorStatus(false);
-    }
-  });
-}
-
-async function _chuniorDoLogin(wv){
-  if(_chuniorClave){
-    await _chuniorFillForm(wv);
-    return;
-  }
-  // Sin clave (sesión expirada / relogueo) → cerrar NODO
-  toast("Sesión de Chunior expirada — cerrando NODO...","red");
-  setTimeout(()=>{ cerrarSesion(); }, 2500);
-}
-
-async function _chuniorFillForm(wv){
-  if(!operador?.usuario || !_chuniorClave) return;
-  const u = JSON.stringify(operador.usuario);
-  const p = JSON.stringify(_chuniorClave);
-  try {
-    await wv.executeJavaScript(`
-      (function(){
-        const u=document.getElementById('id_username');
-        const p=document.getElementById('id_password');
-        const b=document.querySelector('input[type="submit"]');
-        if(u&&p&&b){u.value=${u};p.value=${p};b.click();return 'ok';}
-        return 'not_found';
-      })()
-    `);
-  } catch(e) { console.warn('chunior login inject:', e); }
-}
-
-async function _chuniorCheckSession(){
-  const wv = document.getElementById('chuniorWebview');
-  if(!wv || !_chuniorInited) return;
-  try {
-    const url = await wv.executeJavaScript('window.location.href');
-    if(url && url.includes('/login/')){
-      _chuniorLoggedIn = false;
-      _setChuniorStatus(false);
-      await _chuniorDoLogin(wv);
-    }
-  } catch(_){}
-}
-
-function _setChuniorStatus(loggedIn){
+function _setChuniorStatus(loggedIn, url){
   const dot = document.getElementById('chuniorStatus');
   const bar = document.getElementById('chuniorStatusBar');
   if(dot) dot.textContent = loggedIn ? '🟢' : '🔴';
-  if(bar) bar.textContent = loggedIn ? `Sesión activa · ${operador?.usuario||''}` : 'Sesión cerrada — relogueo automático';
+  if(bar) bar.textContent = loggedIn ? 'Sesión activa' : 'Iniciá sesión en Chunior';
 }
 
 function chuniorNav(path){
@@ -3281,9 +3221,8 @@ function chuniorNav(path){
 }
 
 function chuniorLoginManual(){
-  _chuniorClave = null; // limpia la clave para pedir de nuevo
   const wv = document.getElementById('chuniorWebview');
-  if(wv) wv.src = CHUNIOR_HOME; // el redirect a /login/ dispara el flow
+  if(wv) wv.src = CHUNIOR_HOME;
 }
 
 // ── Cola de verificación de login ─────────────────────────────────────────────
