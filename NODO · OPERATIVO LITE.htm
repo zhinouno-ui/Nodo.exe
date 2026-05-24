@@ -226,7 +226,10 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
             <div class="card" style="margin-bottom:0">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
                 <h2 class="card-title" style="margin-bottom:0">💳 Billeteras</h2>
-                <button class="mini-btn gray" onclick="mostrarVista('billeteras')" style="font-size:11px">Administrar</button>
+                <div style="display:flex;gap:6px">
+                  <button class="mini-btn gray" onclick="sincronizarBilleterasChunior()" style="font-size:11px" title="Leer saldos y nombres desde Chunior">🔄 Sincronizar</button>
+                  <button class="mini-btn gray" onclick="mostrarVista('billeteras')" style="font-size:11px">Administrar</button>
+                </div>
               </div>
               <div id="billerasInicioGrid" class="bil-mini-grid"></div>
             </div>
@@ -1732,7 +1735,8 @@ async function cargarBilleteras(render=true){
     SELECCIONADA_MANUAL:b.seleccionada_manual?"SI":"NO",
     SALDO:Number(b.saldo||0),
     CBU_ALIAS:b.cbu_alias||"",
-    TITULAR:b.titular||""
+    TITULAR:b.titular||"",
+    CHUNIOR_UID:b.chunior_uid||""
   }));
 
   if(render)renderBilleteras();
@@ -1949,12 +1953,13 @@ let _historialData = [];
 let _historialCargado = false;
 
 async function registrarEnHistorial(op){
-  const {usuario, tipo, monto=0, billetera_id=null, billetera_nombre=null, origen='MANUAL', estado='OK', notas=null, solicitud_id=null, reversion_de=null} = op;
+  const {usuario, tipo, monto=0, billetera_id=null, billetera_nombre=null, origen='MANUAL', estado='OK', notas=null, solicitud_id=null, reversion_de=null, chunior_movimiento_id=null} = op;
   try {
     await supabaseClient.from("historial_ops").insert({
       usuario, tipo, monto, billetera_id, billetera_nombre,
       operador: operador?.usuario || operador?.nombre || "",
       origen, estado, notas, solicitud_id, reversion_de,
+      chunior_movimiento_id,
       pc_codigo: pcOperativa
     });
   } catch(e){ console.warn("historial_ops write failed:", e); }
@@ -3206,7 +3211,23 @@ async function ejecutarAutoCarga(id){
     `✅ Tu carga fue acreditada: $${monto.toLocaleString("es-AR")}. ¡Ya podés jugar!`);
 
   toast(`Carga automática completada · ${usuario} · ${monto.toLocaleString("es-AR")}`, "green");
-  { const bilL=getBilleraLanding(); await registrarEnHistorial({usuario, tipo:'CARGA', monto, billetera_id:bilL?bilL.ID_BILLETERA:null, billetera_nombre:bilL?bilL.NOMBRE_VISIBLE:null, origen:'AUTO', estado:'OK', solicitud_id:id}); }
+
+  // Registrar el movimiento en Chunior (solo si la billetera tiene chunior_uid configurado)
+  let movimientoChunior = null;
+  const bilL = getBilleraLanding();
+  if(bilL && bilL.CHUNIOR_UID){
+    try {
+      const rChu = await registrarCargaEnChunior(bilL.CHUNIOR_UID, monto, usuario);
+      if(rChu.ok && rChu.movimientoId){
+        movimientoChunior = rChu.movimientoId;
+        toast(`📋 Movimiento Chunior N° ${rChu.movimientoId}`, 'blue');
+      } else if(rChu.error){
+        toast('⚠️ Carga OK en casino pero falló en Chunior: '+rChu.error, 'red');
+      }
+    } catch(e){ toast('⚠️ Error registrando en Chunior: '+(e.message||''), 'red'); }
+  }
+
+  await registrarEnHistorial({usuario, tipo:'CARGA', monto, billetera_id:bilL?bilL.ID_BILLETERA:null, billetera_nombre:bilL?bilL.NOMBRE_VISIBLE:null, origen:'AUTO', estado:'OK', solicitud_id:id, chunior_movimiento_id:movimientoChunior});
   await window.ctrlElectron.navigateAgent();
   await refrescarTodo(false);
 }
@@ -3364,14 +3385,38 @@ function _chuniorElegirPuesto(wv, opts){
     return '<button class="btn btn-primary" style="margin-bottom:8px" onclick="_chuniorConfirmarPuesto('+JSON.stringify(o.value)+','+JSON.stringify(o.text)+')">'+escapeHtml(o.text)+'</button>';
   }).join('');
   abrirModal('📋 Chunior — Seleccioná tu puesto',
-    '<div class="small" style="margin-bottom:14px;color:var(--muted)">Elegí el puesto de trabajo para esta sesión:</div>'+
+    '<div class="small" style="margin-bottom:14px;color:var(--muted)">Elegí el puesto de trabajo para esta sesión. Si cancelás, NODO se reinicia.</div>'+
     '<div style="display:flex;flex-direction:column;gap:4px">'+optsHtml+'</div>',
     null, null
   );
   window._chuniorWvPendiente = wv;
+  // Sobrescribir el botón Cancelar para que recargue la app (evita quedar trabados en la selección de puesto)
+  const cancelBtn = document.querySelector('#modalOverlay .btn-gray');
+  if(cancelBtn){
+    cancelBtn._origOnclick = cancelBtn.onclick;
+    cancelBtn.onclick = function(){
+      cerrarModal();
+      toast('Reiniciando NODO...', 'blue');
+      setTimeout(function(){ location.reload(); }, 600);
+    };
+  }
+  // Ocultar el botón Guardar (no aplica acá)
+  const saveBtn = document.getElementById('modalSaveBtn');
+  if(saveBtn) saveBtn.style.display = 'none';
+}
+
+function _restaurarBotonesModal(){
+  const cancelBtn = document.querySelector('#modalOverlay .btn-gray');
+  if(cancelBtn && cancelBtn._origOnclick){
+    cancelBtn.onclick = cancelBtn._origOnclick;
+    delete cancelBtn._origOnclick;
+  }
+  const saveBtn = document.getElementById('modalSaveBtn');
+  if(saveBtn) saveBtn.style.display = '';
 }
 
 async function _chuniorConfirmarPuesto(value, text){
+  _restaurarBotonesModal();
   cerrarModal();
   const wv = window._chuniorWvPendiente;
   window._chuniorWvPendiente = null;
@@ -3381,8 +3426,202 @@ async function _chuniorConfirmarPuesto(value, text){
       '(function(){var s=document.getElementById("id_pt");var b=document.querySelector("input[type=\'submit\'],button[type=\'submit\'],.btn");if(s&&b){s.value='+JSON.stringify(value)+';b.click();}})()'
     );
     toast('Chunior: puesto '+text+' seleccionado', 'green');
+    // Sincronizar billeteras desde Chunior al confirmar puesto
+    setTimeout(function(){ sincronizarBilleterasChunior(true).catch(function(){}); }, 2500);
   } catch(e){
     toast('Error al seleccionar puesto: '+(e.message||''), 'red');
+  }
+}
+
+// ── Sincronización de billeteras con Chunior ──────────────────────────────────
+// Lee /transacciones/movimientoficha/add/ y extrae:
+//   • opciones del select id_cuenta_destino (uid + nombre)
+//   • saldos reales del breadcrumb (.billetera spans)
+// Resultado: actualiza saldos en NODO y agrega billeteras nuevas si las encuentra.
+async function sincronizarBilleterasChunior(silencioso){
+  const wv = document.getElementById('chuniorWebview');
+  if(!wv){ if(!silencioso) toast('Webview de Chunior no disponible.','red'); return; }
+
+  if(!silencioso) toast('Sincronizando con Chunior...','blue');
+
+  const addUrl = CHUNIOR_BASE + '/transacciones/movimientoficha/add/';
+  const cur = wv.getURL ? wv.getURL() : '';
+  if(!cur.includes('/movimientoficha/add')){
+    wv.src = addUrl;
+    await _waitWebview(wv, 12000);
+    await new Promise(function(r){setTimeout(r,500);});
+  }
+
+  let data = null;
+  try {
+    data = await wv.executeJavaScript(
+      '(function(){' +
+      'var sel=document.getElementById("id_cuenta_destino");' +
+      'if(!sel)return null;' +
+      'var opts=Array.from(sel.options).filter(function(o){return o.value;}).map(function(o){' +
+      '  var t=(o.textContent||o.text||"").trim();' +
+      '  var m=t.match(/^(\\d+)\\s*-\\s*(.+)$/);' +
+      '  return {uid:o.value, nombre:(m?m[2].trim():t)};' +
+      '});' +
+      'var balances={};' +
+      'document.querySelectorAll(".breadcrumbs .billetera").forEach(function(sp){' +
+      '  var uid=sp.id;' +
+      '  var txt=(sp.textContent||"").trim();' +
+      '  var mm=txt.match(/^(.+?):\\s*\\$?([\\d.,]+)/);' +
+      '  if(mm){balances[uid]={nombre:mm[1].trim(), saldo:parseFloat(mm[2].replace(/\\./g,"").replace(",","."))};}' +
+      '});' +
+      'return {opts:opts, balances:balances};' +
+      '})()'
+    );
+  } catch(e){
+    if(!silencioso) toast('Error leyendo Chunior: '+(e.message||''), 'red');
+    return;
+  }
+
+  if(!data || !data.opts || !data.opts.length){
+    if(!silencioso) toast('No se pudieron leer billeteras de Chunior. ¿Estás en la página correcta?', 'red');
+    return;
+  }
+
+  // Combinar uid + nombre + saldo
+  const walletsChunior = data.opts.map(function(o){
+    const b = data.balances[o.uid];
+    return { uid: o.uid, nombre: (b && b.nombre) || o.nombre, saldo: b ? b.saldo : 0 };
+  });
+
+  // Recargar billeteras locales por si cambiaron
+  await cargarBilleteras(false);
+
+  const matchByUid = {};
+  const noEnBase  = [];
+  walletsChunior.forEach(function(w){
+    // Buscar en billeteras locales por chunior_uid o por nombre (fallback)
+    const local = billeteras.find(function(b){
+      if(b.CHUNIOR_UID && String(b.CHUNIOR_UID) === String(w.uid)) return true;
+      return false;
+    });
+    if(local){ matchByUid[w.uid] = local; }
+    else { noEnBase.push(w); }
+  });
+
+  // Si tres o más billeteras no están en la base, asumimos oficina nueva
+  if(noEnBase.length >= 3){
+    const lista = noEnBase.map(function(w){ return '• '+w.uid+' — '+w.nombre+' ('+money(w.saldo)+')'; }).join('\n');
+    const msg = '🆕 Oficina nueva detectada\n\n'+noEnBase.length+' billeteras de Chunior no están en NODO:\n\n'+lista+'\n\n¿Crearlas ahora? (vas a tener que cargar CBU, titular y alias después)';
+    if(!confirm(msg)){
+      if(!silencioso) toast('Sincronización cancelada.', 'blue');
+      return;
+    }
+    await _crearBilleterasNuevasChunior(noEnBase);
+  } else if(noEnBase.length > 0){
+    // Pocas billeteras nuevas: las creamos automáticamente
+    await _crearBilleterasNuevasChunior(noEnBase);
+  }
+
+  // Actualizar saldos de las que ya existen
+  let actualizadas = 0;
+  for(const w of walletsChunior){
+    const local = matchByUid[w.uid];
+    if(local && Math.abs(Number(local.SALDO||0) - w.saldo) > 0.01){
+      await supabaseClient.from('billeteras').update({ saldo: w.saldo }).eq('id', local.ID_BILLETERA);
+      actualizadas++;
+    }
+  }
+
+  await cargarBilleteras(false);
+  if(!silencioso) toast('Sincronización OK · '+actualizadas+' saldo(s) actualizado(s)', 'green');
+}
+
+// Registra una carga en Chunior (movimiento de fichas) y devuelve el número de movimiento.
+// chunior_uid: ID de la billetera en Chunior (string, ej "918")
+// monto: positivo (acreditación al jugador)
+// usuario: nombre del usuario para escribir en notas
+// Retorna: { ok:boolean, movimientoId:string|null, error:string|null }
+async function registrarCargaEnChunior(chunior_uid, monto, usuario){
+  const wv = document.getElementById('chuniorWebview');
+  if(!wv) return { ok:false, movimientoId:null, error:'Webview no disponible' };
+  if(!chunior_uid) return { ok:false, movimientoId:null, error:'La billetera no tiene chunior_uid configurado' };
+
+  const addUrl = CHUNIOR_BASE + '/transacciones/movimientoficha/add/';
+  wv.src = addUrl;
+  await _waitWebview(wv, 12000);
+  await new Promise(function(r){setTimeout(r,500);});
+
+  try {
+    // Setear select de cuenta_destino, monto y notas. Luego submit con _addanother (mantiene en la misma página y se ve el mensaje de éxito).
+    await wv.executeJavaScript(
+      '(function(){' +
+      'var s=document.getElementById("id_cuenta_destino");' +
+      'var m=document.getElementById("id_monto");' +
+      'var n=document.getElementById("id_notas");' +
+      'if(s){s.value='+JSON.stringify(String(chunior_uid))+'; s.dispatchEvent(new Event("change",{bubbles:true}));}' +
+      'if(m){m.value='+JSON.stringify(String(monto))+'; m.dispatchEvent(new Event("input",{bubbles:true}));}' +
+      'if(n){n.value='+JSON.stringify(String(usuario||""))+'; n.dispatchEvent(new Event("input",{bubbles:true}));}' +
+      'var btn=document.querySelector("input[name=\'_addanother\']");' +
+      'if(btn){btn.click();return true;}' +
+      'return false;' +
+      '})()'
+    );
+  } catch(e){
+    return { ok:false, movimientoId:null, error:e.message||'Error inyectando datos' };
+  }
+
+  // Esperar la respuesta de Chunior (recarga la página con mensaje de éxito)
+  await _waitWebview(wv, 12000);
+  await new Promise(function(r){setTimeout(r,400);});
+
+  let movimientoId = null;
+  let errorMsg = null;
+  try {
+    const res = await wv.executeJavaScript(
+      '(function(){' +
+      'var ok=document.querySelector("li.success");' +
+      'if(ok){' +
+      '  var a=ok.querySelector("a[href*=\'/movimientoficha/\']");' +
+      '  if(a){var m=a.href.match(/movimientoficha\\/(\\d+)/); if(m) return {ok:true, id:m[1]};}' +
+      '  var t=ok.textContent||"";' +
+      '  var m2=t.match(/N°\\s*(\\d+)/);' +
+      '  if(m2) return {ok:true, id:m2[1]};' +
+      '  return {ok:true, id:null};' +
+      '}' +
+      'var err=document.querySelector("ul.errorlist") || document.querySelector(".errornote");' +
+      'if(err) return {ok:false, error:(err.textContent||"Error en formulario").trim().substring(0,200)};' +
+      'return {ok:false, error:"Respuesta inesperada de Chunior"};' +
+      '})()'
+    );
+    if(res && res.ok){ movimientoId = res.id; }
+    else { errorMsg = (res && res.error) || 'Sin respuesta'; }
+  } catch(e){
+    errorMsg = e.message||'Error leyendo respuesta';
+  }
+
+  return { ok: !!movimientoId || !errorMsg, movimientoId: movimientoId, error: errorMsg };
+}
+
+async function _crearBilleterasNuevasChunior(nuevas){
+  const inserts = nuevas.map(function(w){
+    return {
+      nombre_visible: w.nombre,
+      chunior_uid: String(w.uid),
+      saldo: w.saldo,
+      pc_codigo: pcOperativa,
+      activa: true,
+      cbu_alias: '',
+      titular: '',
+      tipo: ''
+    };
+  });
+  const { error } = await supabaseClient.from('billeteras').insert(inserts);
+  if(error){
+    toast('Error al crear billeteras: '+error.message, 'red');
+    return;
+  }
+  toast('🆕 '+nuevas.length+' billetera(s) agregada(s). Completá CBU, titular y alias en Administrar billeteras.', 'blue');
+  // Mostrar también una notificación más visible
+  const alertas = document.getElementById('alertas');
+  if(alertas){
+    const lista = nuevas.map(function(w){ return escapeHtml(w.nombre); }).join(', ');
+    alertas.innerHTML += '<div class="alert-box" style="background:#1a3a5a;color:#cde0ff">⚠️ Nuevas billeteras de Chunior: <b>'+lista+'</b>. Falta cargar CBU, titular y alias en Administrar billeteras.</div>';
   }
 }
 
