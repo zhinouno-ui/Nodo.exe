@@ -628,10 +628,35 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
             <div style="display:flex;gap:4px;margin-left:auto">
               <button class="mini-btn gray" style="font-size:11px;padding:3px 7px" onclick="chuniorNav('/transacciones/')" title="Transacciones">📋</button>
               <button class="mini-btn gray" style="font-size:11px;padding:3px 7px" onclick="document.getElementById('chuniorWebview').reload()" title="Recargar">🔄</button>
-              <button class="mini-btn gray" style="font-size:11px;padding:3px 7px" onclick="chuniorNav('/login/')" title="Ir al login">🔑 Login</button>
+              <button class="mini-btn red"  style="font-size:11px;padding:3px 7px" onclick="chuniorCerrarSesion()" title="Cerrar sesión">🚪 Salir</button>
             </div>
           </div>
-          <webview id="chuniorWebview" src="about:blank" style="flex:1;width:100%;border:none"></webview>
+
+          <!-- Panel de login de NODO para Chunior (se muestra cuando la sesión no está activa) -->
+          <div id="chuniorLoginPanel" style="display:none;flex:1;align-items:center;justify-content:center;background:var(--bg)">
+            <div style="background:var(--card);border:1px solid #2e3444;border-radius:20px;padding:28px;width:100%;max-width:380px">
+              <div style="text-align:center;margin-bottom:18px">
+                <div style="font-size:24px;margin-bottom:6px">📋</div>
+                <h2 style="font-size:20px;font-weight:900">Iniciar sesión en Chunior</h2>
+                <div class="small" style="margin-top:4px">Los datos se envían directo a la sesión en segundo plano</div>
+              </div>
+              <label style="font-size:12px;color:var(--muted);font-weight:700">NOMBRE DE USUARIO</label>
+              <input id="chkUser" placeholder="Usuario de Chunior" autocomplete="username"
+                oninput="chuniorInjectField('id_username', this.value)"
+                onkeydown="if(event.key==='Enter')document.getElementById('chkPass').focus()"
+                style="margin-top:4px;margin-bottom:12px">
+              <label style="font-size:12px;color:var(--muted);font-weight:700">CONTRASEÑA</label>
+              <input id="chkPass" type="password" placeholder="Contraseña de Chunior" autocomplete="current-password"
+                oninput="chuniorInjectField('id_password', this.value)"
+                onkeydown="if(event.key==='Enter')chuniorSubmitLogin()"
+                style="margin-top:4px;margin-bottom:18px">
+              <button class="btn btn-primary" onclick="chuniorSubmitLogin()">Identificarse</button>
+              <div id="chkMsg" style="margin-top:10px"></div>
+            </div>
+          </div>
+
+          <!-- Webview de Chunior (se muestra cuando hay sesión activa) -->
+          <webview id="chuniorWebview" src="about:blank" style="flex:1;width:100%;border:none;display:none"></webview>
         </div>
       </section>
 
@@ -3200,38 +3225,88 @@ function activarChunior(){
       const url = wv.getURL ? wv.getURL() : wv.src;
       if(!url || url.includes('about:blank')) return;
 
-      // ── Detectar página de selección de Puesto de trabajo ──────────────────
+      // ── Página de selección de Puesto de trabajo ───────────────────────────
       try {
-        const ptData = await wv.executeJavaScript(`
-          (function(){
-            const sel = document.getElementById('id_pt');
-            if(!sel) return null;
-            const opts = Array.from(sel.options)
-              .filter(function(o){ return o.value !== ''; })
-              .map(function(o){ return {value: o.value, text: o.text.trim()}; });
-            return {isPt: true, opts: opts};
-          })()
-        `);
-
+        const ptData = await wv.executeJavaScript(
+          '(function(){var s=document.getElementById("id_pt");if(!s)return null;var o=Array.from(s.options).filter(function(x){return x.value!=="";}).map(function(x){return{value:x.value,text:x.text.trim()};});return{isPt:true,opts:o};})()'
+        );
         if(ptData && ptData.isPt && ptData.opts.length > 0){
-          // Mostrar modal con los puestos disponibles para que el operador elija
           _chuniorElegirPuesto(wv, ptData.opts);
           return;
         }
       } catch(e){}
 
-      // ── Estado de sesión normal ─────────────────────────────────────────────
-      const loggedIn = !url.includes('/login/');
-      _setChuniorStatus(loggedIn, url);
+      // ── Página de login → mostrar panel de NODO ────────────────────────────
+      if(url.includes('/login/')){
+        _chuniorMostrarLogin(true);
+        return;
+      }
+
+      // ── Sesión activa ──────────────────────────────────────────────────────
+      _chuniorMostrarLogin(false);
+      _setChuniorStatus(true, url);
     });
 
     wv.addEventListener('did-navigate', function(e){
       if(!e.url || e.url.includes('about:blank')) return;
-      const loggedIn = !e.url.includes('/login/');
-      _setChuniorStatus(loggedIn, e.url);
+      if(e.url.includes('/login/')){
+        _chuniorMostrarLogin(true);
+        _setChuniorStatus(false, e.url);
+      } else {
+        _chuniorMostrarLogin(false);
+        _setChuniorStatus(true, e.url);
+      }
     });
   }
   if(wv.src === 'about:blank' || !wv.src) wv.src = CHUNIOR_HOME;
+}
+
+function _chuniorMostrarLogin(mostrar){
+  const panel = document.getElementById('chuniorLoginPanel');
+  const wv    = document.getElementById('chuniorWebview');
+  if(panel) panel.style.display = mostrar ? 'flex' : 'none';
+  if(wv)    wv.style.display    = mostrar ? 'none' : 'flex';
+  if(mostrar){
+    // Limpia campos pero mantiene el usuario si ya lo ingresaron
+    const p = document.getElementById('chkPass');
+    if(p) p.value = '';
+    setBox('chkMsg','');
+    setTimeout(()=>{ document.getElementById('chkUser')?.focus(); }, 80);
+  }
+}
+
+async function chuniorInjectField(fieldId, value){
+  const wv = document.getElementById('chuniorWebview');
+  if(!wv) return;
+  try {
+    await wv.executeJavaScript(
+      '(function(){var f=document.getElementById('+JSON.stringify(fieldId)+');if(f){f.value='+JSON.stringify(value)+';f.dispatchEvent(new Event("input",{bubbles:true}));}})()'
+    );
+  } catch(e){}
+}
+
+async function chuniorSubmitLogin(){
+  const wv = document.getElementById('chuniorWebview');
+  if(!wv) return;
+  setBox('chkMsg','<div class="alert-box" style="font-size:12px">Conectando...</div>');
+  try {
+    // Asegurar que los valores actuales están en el webview
+    const u = document.getElementById('chkUser')?.value || '';
+    const p = document.getElementById('chkPass')?.value || '';
+    await chuniorInjectField('id_username', u);
+    await chuniorInjectField('id_password', p);
+    await new Promise(function(r){setTimeout(r,120);});
+    await wv.executeJavaScript(
+      '(function(){var b=document.querySelector("input[type=\'submit\'],button[type=\'submit\']");if(b)b.click();})()'
+    );
+  } catch(e){
+    setBox('chkMsg','<div class="err-box" style="font-size:12px">Error: '+(e.message||'')+'</div>');
+  }
+}
+
+function chuniorCerrarSesion(){
+  const wv = document.getElementById('chuniorWebview');
+  if(wv){ wv.src = CHUNIOR_BASE + '/accounts/logout/'; }
 }
 
 function _setChuniorStatus(loggedIn, url){
