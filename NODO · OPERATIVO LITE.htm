@@ -134,11 +134,6 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
     <input id="loginUsuario" autocomplete="username">
     <label>Clave</label>
     <input id="loginClave" type="password" autocomplete="current-password">
-    <hr style="border:none;border-top:1px solid #2e3444;margin:14px 0">
-    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#8b949e">
-      Clave Chunior <span style="font-size:10px;background:#2a2f3b;color:#8b949e;border-radius:6px;padding:2px 6px">opcional</span>
-    </label>
-    <input id="loginChuniorClave" type="password" placeholder="Para acceso automático a Chunior">
     <button class="btn btn-primary" onclick="login()">Ingresar</button>
     <div id="loginMsg" style="margin-top:12px"></div>
   </div>
@@ -1468,9 +1463,9 @@ function comprimirImagenChat(file, cb){
 async function login(){
   const usuario=val("loginUsuario").trim();
   const clave=val("loginClave").trim();
-  const chuniorClave=val("loginChuniorClave").trim();
   if(!usuario||!clave){setBox("loginMsg",`<div class="alert-box">Completá usuario y clave.</div>`);return}
-  if(chuniorClave) _chuniorClave = chuniorClave;
+  // La clave ingresada ES la clave de Chunior — la guardamos en memoria
+  _chuniorClave = clave;
   setBox("loginMsg",`<div class="alert-box">Ingresando...</div>`);
 
   const {data,error}=await supabaseClient
@@ -1937,7 +1932,7 @@ function renderHistorial(lista){
     const notasTd = (h.notas && (h.tipo==='CONSULTA'||h.tipo==='RESET_CLAVE'))
       ? '<br><span class="small">'+escapeHtml(h.notas)+'</span>' : '';
     const undoBtn = canUndo
-      ? '<button class="mini-btn yellow" onclick="deshacerOperacion(''+h.id+'',''+escapeHtml(h.usuario||'')+'',''+h.tipo+'',''+h.monto+'',''+(h.billetera_id||'')+'')" style="font-size:11px">↩ Deshacer</button>'
+      ? '<button class="mini-btn yellow" onclick="deshacerOperacion(\x27'+h.id+'\x27,\x27'+escapeHtml(h.usuario||'')+'\x27,\x27'+h.tipo+'\x27,\x27'+h.monto+'\x27,\x27'+(h.billetera_id||'')+'\x27)" style="font-size:11px">&#8629; Deshacer</button>'
       : '-';
     html += '<tr class="'+rowClass+'">'+
       '<td style="font-size:12px;white-space:nowrap">'+formatFecha(h.created_at)+'</td>'+
