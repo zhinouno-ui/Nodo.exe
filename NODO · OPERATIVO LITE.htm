@@ -87,6 +87,41 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
 .toast{position:fixed;top:20px;right:20px;background:var(--blue);color:#fff;padding:14px 18px;border-radius:14px;z-index:99999;font-weight:bold;box-shadow:0 10px 30px rgba(0,0,0,.35)}
 .mobile-top{display:none;background:#151821;border-bottom:1px solid #272b36;padding:12px;align-items:center;justify-content:space-between}.mobile-menu{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1200}.mobile-menu .sidebar{display:block;width:280px;height:100%;position:absolute;left:0;top:0}
 @media(max-width:900px){body{overflow:auto}.layout{display:block;height:auto;min-height:100vh}.sidebar{display:none}.main{padding:12px}.mobile-top{display:flex}.top-grid{grid-template-columns:repeat(2,1fr);gap:10px}.stat-value{font-size:21px}th,td{font-size:11px;padding:8px}.mobile-menu.open{display:block}.chat-layout{grid-template-columns:1fr}.chat-body{max-height:420px}}
+
+/* ── Inicio redesign ─────────────────────────────────────────────────────── */
+.inicio-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+@media(max-width:1100px){.inicio-grid{grid-template-columns:1fr}}
+.inicio-col{display:flex;flex-direction:column;gap:14px}
+.bil-mini-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:4px}
+.bil-mini-card{background:var(--card2);border:1px solid #30384a;border-radius:14px;padding:12px;position:relative;cursor:default}
+.bil-mini-card.en-landing{border-color:rgba(61,90,254,.7);box-shadow:0 0 0 1px rgba(61,90,254,.25)}
+.bil-mini-saldo{font-size:21px;font-weight:900;color:#12b76a;margin-top:6px;letter-spacing:-.5px}
+.bil-mini-nombre{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bil-mini-tipo{font-size:11px;color:var(--muted);margin-top:2px}
+.bil-landing-badge{position:absolute;top:8px;right:8px;font-size:9px;background:rgba(61,90,254,.2);color:#7d8dff;border-radius:5px;padding:2px 5px;font-weight:700;letter-spacing:.4px}
+.manual-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.manual-label{color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;display:block}
+.manual-input-wrap{display:flex;flex-direction:column}
+.manual-input-wrap input,.manual-input-wrap select{margin:0}
+.clave-row{display:flex;align-items:center;gap:8px;margin:6px 0 10px;flex-wrap:wrap}
+.clave-toggle{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;font-size:13px;color:var(--muted);flex:1}
+.clave-toggle input[type=checkbox]{width:16px;height:16px;cursor:pointer;margin:0}
+.hist-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.hist-filters{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.hist-filters select,.hist-filters input{margin:0;padding:7px 10px;font-size:12px;flex:1;min-width:120px}
+.hrow-manual td{background:rgba(124,58,237,.06)}
+.hrow-auto td{background:rgba(18,183,106,.06)}
+.hrow-panel td{background:rgba(61,90,254,.06)}
+.hrow-landing td{background:rgba(253,176,34,.04)}
+.hrow-revertida td{opacity:.55}
+.hrow-error td{background:rgba(240,68,56,.08)}
+.origen-pill{display:inline-block;padding:2px 7px;border-radius:5px;font-size:10px;font-weight:700;letter-spacing:.3px}
+.op-manual{background:#2a1f50;color:#a78bfa}
+.op-auto{background:#122516;color:#6ee7b7}
+.op-panel{background:#162040;color:#93c5fd}
+.op-landing{background:#2a2205;color:#fde68a}
+.op-revert{background:#331515;color:#fca5a5}
+
 </style>
 </head>
 
@@ -162,7 +197,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
           <div>
             <h1 style="font-size:26px">Inicio operativo</h1>
-            <div class="small">Solicitudes pendientes, chats y billetera activa de landing.</div>
+            <div class="small">Billeteras, operaciones y solicitudes pendientes.</div>
           </div>
           <button class="mini-btn blue" onclick="refrescarTodo(true)">🔄 Actualizar</button>
         </div>
@@ -175,10 +210,100 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
           <div class="stat-card"><div class="stat-title">Billetera en landing</div><div class="stat-value" id="statBilletera">-</div><div class="stat-sub" id="statBilleteraTipo">-</div></div>
         </div>
 
-        <div class="card">
-          <h2 class="card-title">Solicitudes pendientes</h2>
-          <div id="tablaSolicitudesInicio"></div>
+        <!-- Grid: manual form + solicitudes -->
+        <div class="inicio-grid">
+
+          <!-- Columna izquierda: billeteras + operacion manual -->
+          <div class="inicio-col">
+
+            <div class="card" style="margin-bottom:0">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <h2 class="card-title" style="margin-bottom:0">💳 Billeteras</h2>
+                <button class="mini-btn gray" onclick="mostrarVista('billeteras')" style="font-size:11px">Administrar</button>
+              </div>
+              <div id="billerasInicioGrid" class="bil-mini-grid"></div>
+            </div>
+
+            <div class="card" style="margin-bottom:0">
+              <h2 class="card-title">⚡ Operación manual automatizada</h2>
+              <div class="manual-grid" style="margin-bottom:10px">
+                <div class="manual-input-wrap">
+                  <span class="manual-label">Usuario</span>
+                  <input id="manualUsuario" placeholder="Ej: juan777" style="margin:0">
+                </div>
+                <div class="manual-input-wrap">
+                  <span class="manual-label">Monto <span style="font-weight:400;text-transform:none">( + carga &nbsp;·&nbsp; − retiro &nbsp;·&nbsp; vacío = consulta )</span></span>
+                  <input id="manualMonto" type="number" placeholder="Ej: 5000  ·  -3000  ·  vacío" style="margin:0">
+                </div>
+              </div>
+              <span class="manual-label">Billetera destino</span>
+              <select id="manualBilletera" style="margin-top:4px;margin-bottom:6px"></select>
+              <div class="clave-row">
+                <label class="clave-toggle">
+                  <input type="checkbox" id="manualResetClave" onchange="toggleClaveCustom(this)">
+                  Resetear clave también
+                </label>
+                <div id="claveCustomWrap" class="hidden" style="flex:2;min-width:160px">
+                  <input id="manualClaveCustom" placeholder="Nueva clave (vacío = 12345a)" style="margin:0;font-size:13px">
+                </div>
+              </div>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn-primary" onclick="ejecutarOperacionManual()" style="flex:2">Ejecutar</button>
+                <button class="mini-btn gray" onclick="soloConsultarUsuario()" title="Solo consultar saldo" style="padding:10px 14px">👁 Consultar</button>
+              </div>
+              <div id="manualResultado" style="margin-top:10px"></div>
+            </div>
+
+          </div>
+
+          <!-- Columna derecha: solicitudes pendientes -->
+          <div class="inicio-col">
+            <div class="card" style="margin-bottom:0">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <h2 class="card-title" style="margin-bottom:0">📋 Solicitudes pendientes</h2>
+                <button class="mini-btn gray" onclick="mostrarVista('solicitudes')" style="font-size:11px">Ver todas</button>
+              </div>
+              <div id="tablaSolicitudesInicio"></div>
+            </div>
+          </div>
+
         </div>
+
+        <!-- Historial de operaciones -->
+        <div class="card">
+          <div class="hist-head">
+            <h2 class="card-title" style="margin-bottom:0">📊 Historial de operaciones</h2>
+            <button class="mini-btn gray" onclick="cargarHistorial()" style="font-size:11px">🔄 Recargar</button>
+          </div>
+          <div class="hist-filters">
+            <select id="filtHistTipo" onchange="filtrarHistorial()">
+              <option value="">Todos los tipos</option>
+              <option value="CARGA">Cargas</option>
+              <option value="RETIRO">Retiros</option>
+              <option value="CONSULTA">Consultas</option>
+              <option value="RESET_CLAVE">Reset clave</option>
+            </select>
+            <select id="filtHistEstado" onchange="filtrarHistorial()">
+              <option value="">Todos los estados</option>
+              <option value="OK">Exitosas</option>
+              <option value="ERROR">Fallidas</option>
+              <option value="REVERTIDA">Revertidas</option>
+            </select>
+            <select id="filtHistOrigen" onchange="filtrarHistorial()">
+              <option value="">Todos los orígenes</option>
+              <option value="MANUAL">Manuales</option>
+              <option value="PANEL">Panel</option>
+              <option value="AUTO">Automáticas</option>
+              <option value="LANDING">Landing</option>
+            </select>
+            <select id="filtHistBilletera" onchange="filtrarHistorial()">
+              <option value="">Todas las billeteras</option>
+            </select>
+            <input id="filtHistUsuario" placeholder="Buscar usuario..." oninput="filtrarHistorial()" style="margin:0">
+          </div>
+          <div id="historialTable"><div class="small" style="text-align:center;padding:20px;color:var(--muted)">Cargando historial...</div></div>
+        </div>
+
       </section>
 
       <section id="viewSolicitudes" class="hidden">
@@ -336,6 +461,40 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
             </div>
             <div id="csvMsg"></div>
             <button class="btn btn-primary" style="max-width:240px" onclick="importarCSV()">Importar planilla</button>
+          </div>
+        </div>
+
+        <!-- Importar operaciones del agente (agent_operations CSV) -->
+        <div class="card" style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <b>📊 Importar operaciones del agente</b>
+            <button class="mini-btn gray" onclick="toggleOpsCsv()" id="btnToggleOpsCsv">Mostrar</button>
+          </div>
+          <div id="formOpsCsv" class="hidden">
+            <div class="small" style="margin-bottom:12px;color:var(--muted);line-height:1.5">
+              Importa el CSV de operaciones del backoffice (<b>agent_operations*.csv</b>).<br>
+              Formato: <code style="background:#0e1525;padding:2px 6px;border-radius:4px">sep=,</code> en línea 1, encabezados en línea 2 (Fecha, Estado, Cantidad, Tipo, Alias, Balance).<br>
+              Los <b>aliases</b> únicos se agregan a la base de usuarios como verificados (bypass de verificación).<br>
+              Los usuarios con <b>retiro en las últimas 24hs</b> se agregan al chequeo de blacklist automáticamente.
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:10px">
+              <div>
+                <label class="small">PC destino</label>
+                <input id="opsCsvPc" placeholder="SANCHEZ" style="margin-top:4px">
+              </div>
+              <div>
+                <label class="small">Archivo CSV de operaciones</label>
+                <input id="opsCsvFile" type="file" accept=".csv,text/csv" style="margin-top:4px;padding:8px">
+              </div>
+            </div>
+            <div id="opsCsvProgreso" class="hidden" style="margin:10px 0">
+              <div style="background:#1c2230;border-radius:8px;overflow:hidden;height:14px">
+                <div id="opsCsvProgresoBar" style="height:100%;background:linear-gradient(90deg,#7c3aed,#3d5afe);width:0%;transition:width .2s"></div>
+              </div>
+              <div id="opsCsvProgresoTxt" class="small" style="margin-top:6px;text-align:center"></div>
+            </div>
+            <div id="opsCsvMsg"></div>
+            <button class="btn btn-primary" style="max-width:280px" onclick="importarOperacionesCSV()">Importar operaciones</button>
           </div>
         </div>
 
@@ -685,6 +844,117 @@ function toggleImportar(){
   const oculto=el.classList.contains("hidden");
   el.classList.toggle("hidden",!oculto);
   btn.innerText=oculto?"Ocultar":"Mostrar";
+}
+function toggleOpsCsv(){
+  const el=document.getElementById("formOpsCsv");
+  const btn=document.getElementById("btnToggleOpsCsv");
+  el.classList.toggle("hidden");
+  btn.textContent=el.classList.contains("hidden")?"Mostrar":"Ocultar";
+}
+
+async function importarOperacionesCSV(){
+  const fileInput = document.getElementById("opsCsvFile");
+  const file = fileInput?.files?.[0];
+  const pc = (document.getElementById("opsCsvPc")?.value||pcOperativa||"").trim().toUpperCase();
+
+  if(!file){ setBox("opsCsvMsg",'<div class="err-box">Seleccioná un archivo CSV de operaciones.</div>'); return; }
+  if(!pc){ setBox("opsCsvMsg",'<div class="err-box">Indicá la PC destino.</div>'); return; }
+
+  setBox("opsCsvMsg",'<div class="alert-box">Leyendo archivo...</div>');
+  document.getElementById("opsCsvProgreso").classList.add("hidden");
+
+  let text;
+  try { text = await file.text(); }
+  catch(e){ setBox("opsCsvMsg",'<div class="err-box">Error leyendo el archivo.</div>'); return; }
+
+  // Skip line 1 if it's "sep=,"
+  let lines = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+  if(lines[0].trim().toLowerCase()==='sep=,') lines = lines.slice(1);
+  if(!lines.length){ setBox("opsCsvMsg",'<div class="err-box">Archivo vacío.</div>'); return; }
+
+  // Parse headers (line 0 after skip)
+  const headers = lines[0].split(',').map(function(h){ return h.replace(/^"|"$/g,'').trim().toLowerCase(); });
+  const idx = {};
+  headers.forEach(function(h,i){ idx[h]=i; });
+  const getCol = function(row, name){ const i=idx[name]; return i===undefined?'':(row[i]||''); };
+
+  const hace24h = new Date(Date.now() - 24*60*60*1000);
+
+  const aliasSet = new Set();
+  const retiros24h = []; // {alias, fecha}
+  let totalRows = 0, errorRows = 0;
+
+  for(let i=1; i<lines.length; i++){
+    const line = lines[i].trim();
+    if(!line) continue;
+    // Simple CSV parse (handles quoted fields)
+    const row = [];
+    let inQ=false, cur='';
+    for(let c=0; c<line.length; c++){
+      if(line[c]==='"'){ inQ=!inQ; }
+      else if(line[c]===','&&!inQ){ row.push(cur.replace(/^"|"$/g,'').trim()); cur=''; }
+      else cur+=line[c];
+    }
+    row.push(cur.replace(/^"|"$/g,'').trim());
+
+    const fecha  = getCol(row,'fecha');
+    const cant   = parseFloat(String(getCol(row,'cantidad')).replace(/,/g,'.')||'0');
+    const tipo   = String(getCol(row,'tipo')||'').trim();
+    const alias  = String(getCol(row,'alias')||'').trim().toLowerCase();
+
+    if(!alias || alias==='donplata') continue; // skip system accounts
+    totalRows++;
+    aliasSet.add(alias);
+
+    // Track retiros in last 24h
+    if(tipo==='Deposito de un jugador' && cant<0 && fecha){
+      try {
+        const fechaDate = new Date(fecha);
+        if(!isNaN(fechaDate) && fechaDate >= hace24h){
+          retiros24h.push({ alias, fecha: fechaDate.toISOString(), monto: Math.abs(cant) });
+        }
+      } catch(e){}
+    }
+  }
+
+  const allAliases = [...aliasSet];
+  if(!allAliases.length){ setBox("opsCsvMsg",'<div class="err-box">No se encontraron aliases válidos.</div>'); return; }
+
+  setBox("opsCsvMsg",'<div class="alert-box">Importando '+allAliases.length+' usuarios únicos...</div>');
+  document.getElementById("opsCsvProgreso").classList.remove("hidden");
+
+  const BATCH = 200;
+  let ok=0, err=0;
+
+  for(let i=0; i<allAliases.length; i+=BATCH){
+    const batch = allAliases.slice(i,i+BATCH).map(function(a){
+      return { usuario:a, nombre:a, verificado:true, pc_codigo:pc };
+    });
+    const { error } = await supabaseClient.from("usuarios")
+      .upsert(batch, { onConflict:"usuario", ignoreDuplicates:false });
+    if(error){ err+=batch.length; console.error("ops csv batch error:", error.message); }
+    else ok+=batch.length;
+
+    const pct = Math.round((i+batch.length)/allAliases.length*100);
+    const bar = document.getElementById("opsCsvProgresoBar");
+    const txt = document.getElementById("opsCsvProgresoTxt");
+    if(bar) bar.style.width = pct+'%';
+    if(txt) txt.textContent = pct+'% — '+ok+' importados';
+  }
+
+  // If any retiros in last 24h from the CSV, these users would already be caught
+  // by verificarRetiro24h via the solicitudes table for NODO-originated ops.
+  // For CSV-imported retiros that are recent, we log them to historial_ops for reference.
+  let retiroMsg = '';
+  if(retiros24h.length){
+    for(const r of retiros24h){
+      await registrarEnHistorial({usuario:r.alias, tipo:'RETIRO', monto:r.monto, origen:'LANDING', estado:'OK', notas:'Importado de CSV · '+r.fecha, pc_codigo:pc});
+    }
+    retiroMsg = '<br>⚠️ <b>'+retiros24h.length+'</b> retiro/s en las últimas 24hs importados al historial (blacklist activa).';
+  }
+
+  setBox("opsCsvMsg",'<div class="ok-box">✅ Importación completada: <b>'+ok+' usuarios</b> marcados como verificados'+(err?(' | <b>'+err+' errores</b>'):'')+'.<br>Total operaciones procesadas: '+totalRows+'.'+retiroMsg+'</div>');
+  document.getElementById("opsCsvProgreso").classList.add("hidden");
 }
 
 // ── Parser CSV ────────────────────────────────────────────────────────────────
@@ -1395,15 +1665,329 @@ function renderInicio(){
   const unread=chats.reduce((a,c)=>a+Number(c.SIN_LEER||0),0);
   const bil=billeteras.find(b=>normalizar(b.SELECCIONADA_MANUAL)==="SI") || billeteras.find(b=>normalizar(b.ACTIVA)==="SI") || {};
   setBox("statPendientes",pendientes.length);
-  setBox("statRetiros",`Retiros: ${retiros.length}`);
+  setBox("statRetiros","Retiros: "+retiros.length);
   setBox("statChats",unread);
   setBox("statBilletera",bil.NOMBRE_VISIBLE||bil.BILLETERA_NOMBRE||"-");
-  setBox("statBilleteraTipo",bil.TIPO?`${bil.TIPO} · ${bil.PC||pcOperativa}`:"-");
-  setBox("alertas",`
-    ${pendientes.length?`<div class="alert-box">🔔 Hay ${pendientes.length} solicitud/es pendiente/s.</div>`:""}
-    ${unread?`<div class="alert-box">💬 Hay ${unread} mensaje/s de chat sin leer.</div>`:""}
-  `);
+  setBox("statBilleteraTipo",bil.TIPO?(bil.TIPO+" · "+(bil.PC||pcOperativa)):"-");
+  setBox("alertas",
+    (pendientes.length?'<div class="alert-box">🔔 Hay '+pendientes.length+' solicitud/es pendiente/s.</div>':"")+
+    (unread?'<div class="alert-box">💬 Hay '+unread+' mensaje/s de chat sin leer.</div>':"")
+  );
   setBox("tablaSolicitudesInicio",tablaSolicitudesHTML(pendientes.slice(0,40)));
+  renderBillerasInicio();
+  poblarManualBilletera();
+  if(!_historialCargado) cargarHistorial();
+}
+
+// ── Billeteras en Inicio ──────────────────────────────────────────────────────
+function renderBillerasInicio(){
+  const el = document.getElementById("billerasInicioGrid");
+  if(!el) return;
+  if(!billeteras.length){
+    el.innerHTML = '<div class="small" style="color:var(--muted)">Sin billeteras configuradas.</div>';
+    return;
+  }
+  el.innerHTML = billeteras.map(function(b){
+    const enLanding = normalizar(b.SELECCIONADA_MANUAL)==="SI";
+    const saldo = Number(b.SALDO||0);
+    return '<div class="bil-mini-card'+(enLanding?' en-landing':'')+'">'+
+      (enLanding?'<span class="bil-landing-badge">EN LANDING</span>':'')+
+      '<div class="bil-mini-nombre" title="'+escapeHtml(b.NOMBRE_VISIBLE||'')+'">'+escapeHtml(b.NOMBRE_VISIBLE||b.BILLETERA_NOMBRE||'—')+'</div>'+
+      '<div class="bil-mini-tipo">'+escapeHtml(b.TIPO||'—')+' · '+escapeHtml(b.PC||pcOperativa)+'</div>'+
+      '<div class="bil-mini-saldo">'+money(saldo)+'</div>'+
+      '</div>';
+  }).join('');
+}
+
+function poblarManualBilletera(){
+  const sel = document.getElementById("manualBilletera");
+  if(!sel) return;
+  const cur = sel.value;
+  const bil = getBilleraLanding();
+  const defaultId = cur || (bil ? bil.ID_BILLETERA : '');
+  sel.innerHTML = billeteras.map(function(b){
+    const selected = b.ID_BILLETERA===defaultId;
+    return '<option value="'+b.ID_BILLETERA+'"'+(selected?' selected':'')+'>'+escapeHtml(b.NOMBRE_VISIBLE||'—')+' — '+money(b.SALDO||0)+'</option>';
+  }).join('') || '<option value="">Sin billeteras</option>';
+}
+
+function toggleClaveCustom(cb){
+  const wrap = document.getElementById("claveCustomWrap");
+  if(wrap) wrap.classList.toggle("hidden", !cb.checked);
+}
+
+// ── Solo consultar saldo ──────────────────────────────────────────────────────
+async function soloConsultarUsuario(){
+  if(!window.ctrlElectron){ alert("La automatización solo funciona en la app de escritorio."); return; }
+  const usuario = (document.getElementById("manualUsuario")?.value||"").trim();
+  if(!usuario){ toast("Ingresá un usuario para consultar.","red"); return; }
+  const res = document.getElementById("manualResultado");
+  if(res) res.innerHTML = '<div class="alert-box">Consultando...</div>';
+  try {
+    await window.ctrlElectron.openAgentWindow();
+    const busqueda = await callDrex("buscarUsuario", usuario);
+    if(!busqueda.exists){
+      if(res) res.innerHTML = '<div class="err-box">❌ <b>'+escapeHtml(usuario)+'</b> no existe en el casino.</div>';
+      return;
+    }
+    const saldo = busqueda.balance?.raw || "sin datos";
+    if(res) res.innerHTML = '<div class="ok-box">✅ <b>'+escapeHtml(usuario)+'</b> — Saldo: <b>'+escapeHtml(saldo)+'</b></div>';
+    toast(usuario+": "+saldo, "green");
+    await registrarEnHistorial({usuario, tipo:'CONSULTA', monto:0, origen:'MANUAL', estado:'OK', notas:saldo});
+  } catch(e) {
+    if(res) res.innerHTML = '<div class="err-box">Error: '+escapeHtml(e.message||'sin detalle')+'</div>';
+    toast("Error al consultar.","red");
+  }
+}
+
+// ── Operación manual automatizada ─────────────────────────────────────────────
+async function ejecutarOperacionManual(){
+  if(!window.ctrlElectron){ alert("La automatización solo funciona en la app de escritorio."); return; }
+  const usuario    = (document.getElementById("manualUsuario")?.value||"").trim();
+  const montoRaw   = (document.getElementById("manualMonto")?.value||"").trim();
+  const bilId      = document.getElementById("manualBilletera")?.value||"";
+  const resetClave = document.getElementById("manualResetClave")?.checked||false;
+  const claveCustom= (document.getElementById("manualClaveCustom")?.value||"").trim();
+  const res        = document.getElementById("manualResultado");
+
+  if(!usuario){ toast("Ingresá un usuario.","red"); return; }
+
+  if(!montoRaw){
+    await soloConsultarUsuario();
+    if(resetClave) await _resetClaveManual(usuario, claveCustom||"12345a");
+    return;
+  }
+
+  const monto = Number(montoRaw);
+  if(isNaN(monto)||monto===0){ toast("Monto inválido.","red"); return; }
+
+  const tipo    = monto > 0 ? "CARGA" : "RETIRO";
+  const montoAbs= Math.abs(monto);
+  const bil     = billeteras.find(function(b){ return b.ID_BILLETERA===bilId; }) || getBilleraLanding();
+
+  if(res) res.innerHTML = '<div class="alert-box">Procesando...</div>';
+
+  if(tipo==="RETIRO"){
+    const check = await verificarRetiro24h(usuario);
+    if(check.bloqueado){
+      if(res) res.innerHTML = '<div class="err-box">⛔ <b>'+escapeHtml(usuario)+'</b> ya realizó un retiro.<br>'+escapeHtml(check.mensaje)+'</div>';
+      toast("Retiro bloqueado (24h)","red"); return;
+    }
+  }
+
+  try {
+    toast("Abriendo backoffice...","blue");
+    await window.ctrlElectron.openAgentWindow();
+    const estadoPag = await callDrex("estadoPagina");
+    if(estadoPag.needsLogin){ toast("Iniciá sesión en el backoffice primero.","red"); return; }
+
+    toast("Buscando "+usuario+"...","blue");
+    const busqueda = await callDrex("buscarUsuario", usuario);
+    if(!busqueda.exists){
+      await registrarEnHistorial({usuario, tipo, monto:montoAbs, billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null, origen:'MANUAL', estado:'ERROR', notas:'Usuario no encontrado'});
+      if(res) res.innerHTML = '<div class="err-box">❌ <b>'+escapeHtml(usuario)+'</b> no existe en el casino.</div>';
+      toast(usuario+" no encontrado","red"); return;
+    }
+
+    let resultado;
+    if(tipo==="CARGA"){
+      toast("Cargando "+money(montoAbs)+"...","blue");
+      resultado = await callDrex("cargarSaldo", montoAbs);
+    } else {
+      const saldo = busqueda.balance?.value ?? -1;
+      if(saldo >= 0 && saldo < montoAbs){
+        await registrarEnHistorial({usuario, tipo, monto:montoAbs, billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null, origen:'MANUAL', estado:'ERROR', notas:'Saldo insuficiente'});
+        if(res) res.innerHTML = '<div class="err-box">⚠️ Saldo insuficiente: '+escapeHtml(busqueda.balance?.raw||'')+'</div>';
+        toast("Saldo insuficiente","red"); return;
+      }
+      toast("Retirando "+money(montoAbs)+"...","blue");
+      resultado = await callDrex("retirarSaldo", montoAbs);
+    }
+
+    const ok     = resultado && resultado.ok !== false;
+    const est2   = ok ? "OK" : "ERROR";
+    const notas  = ok ? (busqueda.balance?.raw||null) : (resultado?.message||"error");
+
+    await registrarEnHistorial({usuario, tipo, monto:montoAbs, billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null, origen:'MANUAL', estado:est2, notas});
+
+    if(ok){
+      if(bil && bil.ID_BILLETERA) await ajustarSaldoBilletera(bil.ID_BILLETERA, tipo==="CARGA" ? montoAbs : -montoAbs);
+      if(res) res.innerHTML = '<div class="ok-box">✅ '+tipo+' de '+money(montoAbs)+' → <b>'+escapeHtml(usuario)+'</b> completada</div>';
+      toast(tipo+" completada: "+usuario+" · "+money(montoAbs), "green");
+    } else {
+      if(res) res.innerHTML = '<div class="err-box">❌ '+tipo+' falló: '+escapeHtml(resultado?.message||'sin detalle')+'</div>';
+      toast("Error: "+(resultado?.message||"falló"),"red");
+    }
+
+    if(resetClave) await _resetClaveManual(usuario, claveCustom||"12345a");
+    await window.ctrlElectron.navigateAgent();
+    await cargarHistorial();
+    renderBillerasInicio();
+    poblarManualBilletera();
+  } catch(e) {
+    await registrarEnHistorial({usuario, tipo, monto:montoAbs, origen:'MANUAL', estado:'ERROR', notas:e.message||'excepción'});
+    if(res) res.innerHTML = '<div class="err-box">Error inesperado: '+escapeHtml(e.message||'sin detalle')+'</div>';
+    toast("Error: "+(e.message||"sin detalle"),"red");
+  }
+}
+
+async function _resetClaveManual(usuario, clave){
+  try {
+    toast("Cambiando clave de "+usuario+"...","blue");
+    const r = await callDrex("cambiarClave", clave);
+    await registrarEnHistorial({usuario, tipo:'RESET_CLAVE', monto:0, origen:'MANUAL', estado:(r&&r.ok!==false)?'OK':'ERROR', notas:'clave → '+clave});
+    toast("Clave cambiada OK","green");
+  } catch(e) { toast("Error al cambiar clave: "+(e.message||""),"red"); }
+}
+
+// ── Historial de operaciones ───────────────────────────────────────────────────
+let _historialData = [];
+let _historialCargado = false;
+
+async function registrarEnHistorial(op){
+  const {usuario, tipo, monto=0, billetera_id=null, billetera_nombre=null, origen='MANUAL', estado='OK', notas=null, solicitud_id=null, reversion_de=null} = op;
+  try {
+    await supabaseClient.from("historial_ops").insert({
+      usuario, tipo, monto, billetera_id, billetera_nombre,
+      operador: operador?.usuario || operador?.nombre || "",
+      origen, estado, notas, solicitud_id, reversion_de,
+      pc_codigo: pcOperativa
+    });
+  } catch(e){ console.warn("historial_ops write failed:", e); }
+}
+
+async function cargarHistorial(){
+  _historialCargado = true;
+  const el = document.getElementById("historialTable");
+  if(el) el.innerHTML = '<div class="small" style="text-align:center;padding:20px;color:var(--muted)">Cargando...</div>';
+
+  const { data, error } = await supabaseClient
+    .from("historial_ops")
+    .select("*")
+    .eq("pc_codigo", pcOperativa)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  if(error){
+    if(el) el.innerHTML = '<div class="err-box">Error: '+escapeHtml(error.message||'')+'</div>';
+    return;
+  }
+  _historialData = data || [];
+
+  const bilSel = document.getElementById("filtHistBilletera");
+  if(bilSel){
+    const bils = [...new Set(_historialData.map(function(h){return h.billetera_nombre;}).filter(Boolean))];
+    bilSel.innerHTML = '<option value="">Todas las billeteras</option>' +
+      bils.map(function(b){ return '<option value="'+escapeHtml(b)+'">'+escapeHtml(b)+'</option>'; }).join('');
+  }
+  filtrarHistorial();
+}
+
+function filtrarHistorial(){
+  const tipo    = document.getElementById("filtHistTipo")?.value||"";
+  const estado  = document.getElementById("filtHistEstado")?.value||"";
+  const origen  = document.getElementById("filtHistOrigen")?.value||"";
+  const bil     = document.getElementById("filtHistBilletera")?.value||"";
+  const usuario = normalizar(document.getElementById("filtHistUsuario")?.value||"");
+
+  let lista = _historialData.slice();
+  if(tipo)    lista = lista.filter(function(h){return h.tipo===tipo;});
+  if(estado)  lista = lista.filter(function(h){return h.estado===estado;});
+  if(origen)  lista = lista.filter(function(h){return h.origen===origen;});
+  if(bil)     lista = lista.filter(function(h){return h.billetera_nombre===bil;});
+  if(usuario) lista = lista.filter(function(h){return normalizar(h.usuario).includes(usuario)||normalizar(h.operador||"").includes(usuario);});
+  renderHistorial(lista);
+}
+
+function renderHistorial(lista){
+  const el = document.getElementById("historialTable");
+  if(!el) return;
+  if(!lista.length){
+    el.innerHTML = '<div class="small" style="text-align:center;padding:20px;color:var(--muted)">Sin operaciones para mostrar.</div>';
+    return;
+  }
+
+  function origenPill(o){
+    const map = {MANUAL:'op-manual',AUTO:'op-auto',PANEL:'op-panel',LANDING:'op-landing'};
+    return '<span class="origen-pill '+(map[o]||'')+'">'+escapeHtml(o||'?')+'</span>';
+  }
+  function estadoIcon(e){
+    if(e==='OK') return '<span style="color:var(--green)">✅</span>';
+    if(e==='ERROR') return '<span style="color:var(--red)">❌</span>';
+    if(e==='REVERTIDA') return '<span style="color:var(--muted)">↩</span>';
+    return e||'';
+  }
+  function tipoIcon(t){
+    if(t==='CARGA') return '⬆️';
+    if(t==='RETIRO') return '⬇️';
+    if(t==='CONSULTA') return '👁';
+    if(t==='RESET_CLAVE') return '🔑';
+    return '➡️';
+  }
+
+  let html = '<div class="table-wrap"><table><thead><tr>'+
+    '<th>Fecha</th><th>Tipo</th><th>Usuario</th><th>Monto</th>'+
+    '<th>Billetera</th><th>Origen</th><th>Estado</th><th>Op</th><th></th>'+
+    '</tr></thead><tbody>';
+
+  lista.forEach(function(h){
+    const rowClass = h.estado==='REVERTIDA'?'hrow-revertida':h.estado==='ERROR'?'hrow-error':
+      h.origen==='MANUAL'?'hrow-manual':h.origen==='AUTO'?'hrow-auto':h.origen==='PANEL'?'hrow-panel':'hrow-landing';
+    const canUndo = h.estado==='OK' && (h.tipo==='CARGA'||h.tipo==='RETIRO');
+    const notasTd = (h.notas && (h.tipo==='CONSULTA'||h.tipo==='RESET_CLAVE'))
+      ? '<br><span class="small">'+escapeHtml(h.notas)+'</span>' : '';
+    const undoBtn = canUndo
+      ? '<button class="mini-btn yellow" onclick="deshacerOperacion(''+h.id+'',''+escapeHtml(h.usuario||'')+'',''+h.tipo+'',''+h.monto+'',''+(h.billetera_id||'')+'')" style="font-size:11px">↩ Deshacer</button>'
+      : '-';
+    html += '<tr class="'+rowClass+'">'+
+      '<td style="font-size:12px;white-space:nowrap">'+formatFecha(h.created_at)+'</td>'+
+      '<td style="white-space:nowrap">'+tipoIcon(h.tipo)+' '+escapeHtml(h.tipo||'—')+'</td>'+
+      '<td><b>'+escapeHtml(h.usuario||'—')+'</b>'+notasTd+'</td>'+
+      '<td style="font-weight:700">'+(h.monto?money(h.monto):'—')+'</td>'+
+      '<td style="font-size:12px">'+escapeHtml(h.billetera_nombre||'—')+'</td>'+
+      '<td>'+origenPill(h.origen)+'</td>'+
+      '<td>'+estadoIcon(h.estado)+'</td>'+
+      '<td style="font-size:11px;color:var(--muted)">'+escapeHtml(h.operador||'—')+'</td>'+
+      '<td>'+undoBtn+'</td>'+
+      '</tr>';
+  });
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
+}
+
+async function deshacerOperacion(id, usuario, tipoOriginal, monto, bilId){
+  if(!window.ctrlElectron){ alert("La automatización solo funciona en la app de escritorio."); return; }
+  if(!confirm("¿Revertir "+tipoOriginal+" de "+money(Number(monto))+" para "+usuario+"?")) return;
+
+  const tipoReversion = tipoOriginal==='CARGA'?'RETIRO':'CARGA';
+  const montoNum = Number(monto);
+  const bil = billeteras.find(function(b){return b.ID_BILLETERA===bilId;})||getBilleraLanding();
+
+  toast("Procesando reversión...","blue");
+  try {
+    await window.ctrlElectron.openAgentWindow();
+    const estadoPag = await callDrex("estadoPagina");
+    if(estadoPag.needsLogin){ toast("Iniciá sesión en el backoffice primero.","red"); return; }
+
+    await callDrex("buscarUsuario", usuario);
+    let r;
+    if(tipoReversion==='CARGA') r = await callDrex("cargarSaldo", montoNum);
+    else r = await callDrex("retirarSaldo", montoNum);
+
+    const ok = r && r.ok !== false;
+    await supabaseClient.from("historial_ops").update({estado:"REVERTIDA"}).eq("id", id);
+    await registrarEnHistorial({usuario, tipo:tipoReversion, monto:montoNum,
+      billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null,
+      origen:'MANUAL', estado:ok?'OK':'ERROR',
+      notas:"Reversión de "+tipoOriginal, reversion_de:id});
+
+    if(ok && bil && bil.ID_BILLETERA) await ajustarSaldoBilletera(bil.ID_BILLETERA, tipoReversion==='CARGA'?montoNum:-montoNum);
+    toast(ok?'Reversión completada OK':'Error en reversión', ok?'green':'red');
+    await window.ctrlElectron.navigateAgent();
+    await cargarHistorial();
+    renderBillerasInicio();
+    poblarManualBilletera();
+  } catch(e) { toast("Error: "+(e.message||"sin detalle"),"red"); }
 }
 function renderSolicitudes(){
   let lista=solicitudes.slice();
@@ -1587,6 +2171,7 @@ function abrirAprobarSolicitud(id){
 
     cerrarModal();
     toast("Carga aprobada","green");
+    await registrarEnHistorial({usuario, tipo:'CARGA', monto:montoFinal, origen:'PANEL', estado:'OK', notas:obs||null, solicitud_id:id});
     await refrescarTodo(false);
   },"Aprobar");
 }
@@ -1653,6 +2238,7 @@ async function abrirCerrarRetiro(id){
 
     cerrarModal();
     toast("Retiro cerrado","green");
+    await registrarEnHistorial({usuario, tipo:'RETIRO', monto:montoFinal, billetera_id:bilId||null, billetera_nombre:(billeteras.find(function(b){return b.ID_BILLETERA===bilId;})||{}).NOMBRE_VISIBLE||null, origen:'PANEL', estado:'OK', notas:obs||null, solicitud_id:id});
     await refrescarTodo(false);
   },"Pagar retiro");
 
@@ -2448,7 +3034,8 @@ async function ejecutarAutoRetiro(id){
   await notificarUsuarioEnChat(usuario,
     `✅ Tu retiro de $${monto.toLocaleString("es-AR")} fue procesado. Lo transferimos a tu CBU/CVU.`);
 
-  toast(`Retiro automático completado · ${usuario} · $${monto.toLocaleString("es-AR")}`, "green");
+  toast(`Retiro automático completado · ${usuario} · ${monto.toLocaleString("es-AR")}`, "green");
+  { const bilR=getBilleraLanding(); await registrarEnHistorial({usuario, tipo:'RETIRO', monto, billetera_id:bilR?bilR.ID_BILLETERA:null, billetera_nombre:bilR?bilR.NOMBRE_VISIBLE:null, origen:'AUTO', estado:'OK', solicitud_id:id}); }
   await window.ctrlElectron.navigateAgent();
   await refrescarTodo(false);
 }
@@ -2514,7 +3101,8 @@ async function ejecutarAutoCarga(id){
   await notificarUsuarioEnChat(usuario,
     `✅ Tu carga fue acreditada: $${monto.toLocaleString("es-AR")}. ¡Ya podés jugar!`);
 
-  toast(`Carga automática completada · ${usuario} · $${monto.toLocaleString("es-AR")}`, "green");
+  toast(`Carga automática completada · ${usuario} · ${monto.toLocaleString("es-AR")}`, "green");
+  { const bilL=getBilleraLanding(); await registrarEnHistorial({usuario, tipo:'CARGA', monto, billetera_id:bilL?bilL.ID_BILLETERA:null, billetera_nombre:bilL?bilL.NOMBRE_VISIBLE:null, origen:'AUTO', estado:'OK', solicitud_id:id}); }
   await window.ctrlElectron.navigateAgent();
   await refrescarTodo(false);
 }
