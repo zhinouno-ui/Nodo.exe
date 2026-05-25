@@ -699,13 +699,9 @@ window.addEventListener("load",()=>{
   // Siempre mostramos el login para capturar la clave (= clave Chunior).
   // Solo pre-rellenamos el usuario si hay sesión guardada.
   const saved=localStorage.getItem("nodo_operador_lite");
+  // No pre-rellenar usuario: cada operador entra con sus credenciales en blanco
   if(saved){
-    try{
-      const op=JSON.parse(saved);
-      const userInput=document.getElementById("loginUsuario");
-      if(userInput && op?.usuario) userInput.value=op.usuario;
-      setBox("loginMsg",'<div class="alert-box" style="font-size:12px">Sesión guardada · ingresá tu clave para continuar.</div>');
-    }catch(e){
+    try{ JSON.parse(saved); }catch(e){
       localStorage.removeItem("nodo_operador_lite");
       localStorage.removeItem("nodo_pc_operativa_lite");
     }
@@ -1545,20 +1541,59 @@ async function validarLoginChunior(usuario, clave){
   const wv = document.getElementById('chuniorWebview');
   if(!wv) throw new Error('Webview de Chunior no disponible.');
 
-  // Asegurar que estamos en la página de login de Chunior
-  const currentUrl = (wv.getURL && wv.getURL()) || wv.src || '';
+  // 1) Asegurar que estamos en la página de login de Chunior
+  let currentUrl = (wv.getURL && wv.getURL()) || wv.src || '';
   if(!currentUrl || currentUrl.includes('about:blank') || !currentUrl.includes('chunior')){
     wv.src = CHUNIOR_HOME;
-    await _waitWebview(wv, 12000);
-  } else if(!currentUrl.includes('/login/')){
-    // Si ya hay sesión activa con OTRO usuario, cerrar primero
+    await _waitWebview(wv, 15000);
+  }
+  currentUrl = wv.getURL ? wv.getURL() : '';
+  if(!currentUrl.includes('/login/')){
+    // Sesión vieja activa → cerrar
     wv.src = CHUNIOR_BASE + '/accounts/logout/';
-    await _waitWebview(wv, 8000);
-    wv.src = CHUNIOR_HOME;
-    await _waitWebview(wv, 12000);
+    await _waitWebview(wv, 10000);
+    currentUrl = wv.getURL ? wv.getURL() : '';
+    if(!currentUrl.includes('/login/')){
+      wv.src = CHUNIOR_HOME;
+      await _waitWebview(wv, 15000);
+    }
   }
 
-  // Inyectar credenciales y enviar
+  // 2) Registrar listeners ANTES de hacer click (evita race condition)
+  const resultPromise = new Promise(function(resolve){
+    let done = false;
+    const finish = function(ok){ if(done) return; done = true; cleanup(); resolve(ok); };
+    const onNav = function(e){
+      const u = (e && e.url) || (wv.getURL ? wv.getURL() : '');
+      if(!u || u.includes('about:blank')) return;
+      if(u.includes('/login/')) return; // todavía en login
+      finish(true);
+    };
+    const onFinish = function(){
+      const u = wv.getURL ? wv.getURL() : '';
+      if(!u || u.includes('about:blank') || u.includes('/login/')){
+        // Si después de 2s todavía está en login → fallo. Si cambió → éxito.
+        setTimeout(function(){
+          if(done) return;
+          const u2 = wv.getURL ? wv.getURL() : '';
+          if(u2 && !u2.includes('/login/') && !u2.includes('about:blank')) finish(true);
+          else finish(false);
+        }, 2000);
+        return;
+      }
+      finish(true);
+    };
+    const cleanup = function(){
+      try { wv.removeEventListener('did-navigate', onNav); } catch(e){}
+      try { wv.removeEventListener('did-finish-load', onFinish); } catch(e){}
+      clearTimeout(timer);
+    };
+    wv.addEventListener('did-navigate', onNav);
+    wv.addEventListener('did-finish-load', onFinish);
+    const timer = setTimeout(function(){ finish(false); }, 20000);
+  });
+
+  // 3) Inyectar credenciales y submit
   await wv.executeJavaScript(
     '(function(){'
     + 'var u=document.getElementById("id_username");'
@@ -1575,30 +1610,7 @@ async function validarLoginChunior(usuario, clave){
     + '})()'
   );
 
-  // Esperar respuesta: si navega fuera de /login/ → OK
-  return new Promise(function(resolve){
-    let done = false;
-    const finish = function(ok){ if(done) return; done = true; cleanup(); resolve(ok); };
-    const onNav = function(e){
-      const u = (e && e.url) || (wv.getURL ? wv.getURL() : '');
-      if(!u) return;
-      if(u.includes('/login/')) return; // todavía en login
-      finish(true);
-    };
-    const onFinish = function(){
-      const u = wv.getURL ? wv.getURL() : '';
-      if(!u || u.includes('/login/')) finish(false);
-      else finish(true);
-    };
-    const cleanup = function(){
-      try { wv.removeEventListener('did-navigate', onNav); } catch(e){}
-      try { wv.removeEventListener('did-finish-load', onFinish); } catch(e){}
-      clearTimeout(timer);
-    };
-    wv.addEventListener('did-navigate', onNav);
-    wv.addEventListener('did-finish-load', onFinish);
-    const timer = setTimeout(function(){ finish(false); }, 12000);
-  });
+  return resultPromise;
 }
 
 function _waitWebview(wv, ms){
@@ -1635,6 +1647,9 @@ function finalizarLogin(guardar=true){
     <span class="badge badge-muted">Tipo: ${operador.tipoOperador||"-"}</span>
     <span class="badge badge-ok">PC: ${pcOperativa}</span>
   `);
+  _nodoListo = true;
+  // Disparar el flujo de Chunior post-login (modal de puesto si corresponde + sync)
+  _checkPuestoPostLogin();
   refrescarTodo(false);
   iniciarRealtimeSolicitudes();
   if(!timersIniciados){
@@ -3332,6 +3347,7 @@ function _jsonAttr(v){ return JSON.stringify(v).replace(/"/g, '&quot;'); }
 const CHUNIOR_BASE = 'https://bo.chunior.com';
 const CHUNIOR_HOME = CHUNIOR_BASE + '/transacciones/';
 let _chuniorInited = false;
+let _nodoListo    = false;  // true después de finalizarLogin, gatea el modal de puesto
 
 function activarChunior(){
   const wv = document.getElementById('chuniorWebview');
@@ -3342,16 +3358,19 @@ function activarChunior(){
       const url = wv.getURL ? wv.getURL() : wv.src;
       if(!url || url.includes('about:blank')) return;
 
-      // Si Chunior nos pidió elegir puesto de trabajo, mostrar modal
-      try {
-        const ptData = await wv.executeJavaScript(
-          '(function(){var s=document.getElementById("id_pt");if(!s)return null;var o=Array.from(s.options).filter(function(x){return x.value!=="";}).map(function(x){return{value:x.value,text:x.text.trim()};});return{isPt:true,opts:o};})()'
-        );
-        if(ptData && ptData.isPt && ptData.opts.length > 0){
-          _chuniorElegirPuesto(wv, ptData.opts);
-          return;
-        }
-      } catch(e){}
+      // Solo abrir el modal de puesto si NODO ya está logueado
+      // (durante el login, validarLoginChunior maneja la página por sí mismo)
+      if(_nodoListo){
+        try {
+          const ptData = await wv.executeJavaScript(
+            '(function(){var s=document.getElementById("id_pt");if(!s)return null;var o=Array.from(s.options).filter(function(x){return x.value!=="";}).map(function(x){return{value:x.value,text:x.text.trim()};});return{isPt:true,opts:o};})()'
+          );
+          if(ptData && ptData.isPt && ptData.opts.length > 0){
+            _chuniorElegirPuesto(wv, ptData.opts);
+            return;
+          }
+        } catch(e){}
+      }
 
       _setChuniorStatus(!url.includes('/login/'), url);
     });
@@ -3361,9 +3380,27 @@ function activarChunior(){
       _setChuniorStatus(!e.url.includes('/login/'), e.url);
     });
   }
-  // Si quedó en /login/ (sesión caduca), volver a la home
+  // Solo navegar a CHUNIOR_HOME si NODO ya está logueado o si nunca cargamos
   const cur = wv.getURL ? wv.getURL() : wv.src;
-  if(!cur || cur === 'about:blank' || cur.includes('/login/')) wv.src = CHUNIOR_HOME;
+  if(_nodoListo && (!cur || cur === 'about:blank' || cur.includes('/login/'))) wv.src = CHUNIOR_HOME;
+}
+
+// Después del login, chequear si Chunior está esperando selección de puesto y arrancar el flujo
+async function _checkPuestoPostLogin(){
+  const wv = document.getElementById('chuniorWebview');
+  if(!wv) return;
+  await new Promise(function(r){setTimeout(r,500);});
+  try {
+    const ptData = await wv.executeJavaScript(
+      '(function(){var s=document.getElementById("id_pt");if(!s)return null;var o=Array.from(s.options).filter(function(x){return x.value!=="";}).map(function(x){return{value:x.value,text:x.text.trim()};});return{isPt:true,opts:o};})()'
+    );
+    if(ptData && ptData.isPt && ptData.opts.length > 0){
+      _chuniorElegirPuesto(wv, ptData.opts);
+    } else {
+      // Ya está en una página normal: sincronizar billeteras directamente
+      setTimeout(function(){ sincronizarBilleterasChunior(true).catch(function(){}); }, 800);
+    }
+  } catch(e){}
 }
 
 function chuniorCerrarSesion(){
@@ -3429,8 +3466,10 @@ async function _chuniorConfirmarPuesto(value, text){
       '(function(){var s=document.getElementById("id_pt");var b=document.querySelector("input[type=\'submit\'],button[type=\'submit\'],.btn");if(s&&b){s.value='+JSON.stringify(value)+';b.click();}})()'
     );
     toast('Chunior: puesto '+text+' seleccionado', 'green');
-    // Sincronizar billeteras desde Chunior al confirmar puesto
-    setTimeout(function(){ sincronizarBilleterasChunior(true).catch(function(){}); }, 2500);
+    // Sincronizar billeteras desde Chunior (solo si NODO ya está logueado)
+    if(pcOperativa){
+      setTimeout(function(){ sincronizarBilleterasChunior(true).catch(function(){}); }, 2500);
+    }
   } catch(e){
     toast('Error al seleccionar puesto: '+(e.message||''), 'red');
   }
@@ -3444,6 +3483,10 @@ async function _chuniorConfirmarPuesto(value, text){
 async function sincronizarBilleterasChunior(silencioso){
   const wv = document.getElementById('chuniorWebview');
   if(!wv){ if(!silencioso) toast('Webview de Chunior no disponible.','red'); return; }
+  if(!pcOperativa){
+    if(!silencioso) toast('Sincronización pospuesta: NODO todavía no terminó de loguear.','red');
+    return;
+  }
 
   if(!silencioso) toast('Sincronizando con Chunior...','blue');
 
