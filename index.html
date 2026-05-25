@@ -1017,6 +1017,24 @@ async function enviarSolicitudRetiro(){
   const monto = Number(document.getElementById('retiroMonto')?.value || 0);
   if(!monto || monto <= 0){ msg('retiroFormMsg','Ingresá el monto a retirar.','err'); return; }
 
+  // Validar política de 24hs
+  msg('retiroFormMsg','<span class="spinner"></span>Verificando si podés retirar...','info');
+  
+  const hace24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: ultimoRetiro } = await sb.from('solicitudes').select('id, created_at, monto, estado')
+    .eq('usuario', usuario.usuario).eq('tipo','RETIRO')
+    .in('estado',['PAGADA','APROBADA','ACREDITADA'])
+    .gte('created_at', hace24h)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if(ultimoRetiro && ultimoRetiro.length){
+    const hace = Date.now() - new Date(ultimoRetiro[0].created_at).getTime();
+    const horasRestantes = Math.ceil((24 * 60 * 60 * 1000 - hace) / (60 * 60 * 1000));
+    msg('retiroFormMsg',`⛔ Ya realizaste un retiro hace ${Math.floor(hace / (60 * 60 * 1000))}hs. Podés volver a retirar en ${horasRestantes}hs.`,'err');
+    return;
+  }
+
   // Bloqueo doble: no se puede enviar si ya hay uno pendiente
   const { data: enCola } = await sb.from('solicitudes').select('id')
     .eq('usuario', usuario.usuario).eq('pc_codigo', PC).eq('tipo','RETIRO')
@@ -1193,7 +1211,10 @@ async function enviarSolicitudCarga(){
   }
 
   msg('cargaMsg','✅ Solicitud enviada. Un operador la procesará en breve. Si tenés el comprobante, mandalo por el chat.','ok');
+  // Limpiar los inputs para la siguiente carga
   document.getElementById('cargaMonto').value = '';
+  document.getElementById('cargaUsuario').value = '';
+  document.getElementById('cargaNombre').value = '';
   setTimeout(()=>msg('cargaMsg',''), 8000);
 }
 

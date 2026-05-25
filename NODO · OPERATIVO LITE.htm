@@ -14,21 +14,7 @@
 }
 body{background:var(--bg);color:#fff;overflow:hidden}
 .hidden{display:none!important}
-/* La sección Chunior queda renderizada off-screen cuando está "oculta", para que el webview siga vivo y pueda usarse como validador del login */
-#viewChunior.hidden{display:block!important;visibility:hidden;position:fixed!important;left:-99999px!important;top:0!important;width:1200px!important;height:800px!important;pointer-events:none!important;overflow:hidden!important;margin:0!important}
 .layout{display:grid;grid-template-columns:280px 1fr;height:100vh}
-/* Chunior section ocupa todo el main sin padding */
-.main.chunior-active{padding:0;overflow:hidden}
-#chuniorWrap{display:flex;flex-direction:column;height:100%}
-#chuniorBar{display:flex;align-items:center;gap:8px;padding:7px 12px;background:#161b22;border-bottom:1px solid #2e3444;flex-shrink:0}
-#chuniorWebview{flex:1;width:100%;border:none}
-.layout.bo-open{grid-template-columns:280px var(--bo-w,820px) 1fr}
-#boPanel{display:none;flex-direction:column;border-right:2px solid #3d5afe;background:#0e1118;height:100vh;overflow:hidden;position:relative}
-.layout.bo-open #boPanel{display:flex}
-#boPanelBar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#161b22;border-bottom:1px solid #2e3444;flex-shrink:0;gap:6px}
-#boWebview{flex:1;width:100%;height:100%}
-#boResizer{position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;z-index:10;background:transparent;transition:background .15s}
-#boResizer:hover,#boResizer.dragging{background:rgba(61,90,254,.5)}
 .sidebar{background:var(--panel);border-right:1px solid #272b36;padding:18px;overflow-y:auto}
 .main{overflow-y:auto;padding:18px}
 .logo{width:170px;display:block;margin:0 auto 18px}
@@ -178,26 +164,9 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
       <button id="navJugadores" class="nav-btn" onclick="mostrarVista('jugadores')">🏅 Jugadores</button>
       <button id="navAuto" class="nav-btn hidden" onclick="mostrarVista('auto')" style="border:1px solid rgba(124,58,237,.5)">⚡ Automatización</button>
       <button id="navVerificaciones" class="nav-btn hidden" onclick="mostrarVista('verificaciones')" style="border:1px solid rgba(61,90,254,.4)">🔍 Verificaciones <span id="badgeVerif" class="badge-alert hidden">0</span></button>
-      <button id="navBoPanel" class="nav-btn hidden" onclick="toggleBoPanel()" style="border:1px solid rgba(18,183,106,.4)">🖥 Panel cargas</button>
-      <button id="navChunior" class="nav-btn hidden" onclick="mostrarVista('chunior')" style="border:1px solid rgba(240,160,23,.4)">📋 Chunior <span id="chuniorStatus" style="font-size:10px">⚪</span></button>
 
       <button class="nav-btn" onclick="cerrarSesion()">🚪 Cerrar sesión</button>
     </aside>
-
-    <!-- Panel lateral de backoffice (webview embebido, a la izquierda del main) -->
-    <div id="boPanel">
-      <div id="boResizer"></div>
-      <div id="boPanelBar">
-        <span style="font-size:12px;font-weight:700;color:#7c8dff;white-space:nowrap">🖥 Backoffice</span>
-        <div style="display:flex;gap:4px;flex-wrap:nowrap">
-          <button class="mini-btn gray" style="font-size:11px;padding:3px 7px" onclick="boPanelNav('search')" title="Búsqueda">🔍</button>
-          <button class="mini-btn gray" style="font-size:11px;padding:3px 7px" onclick="boPanelNav('new')" title="Nuevo usuario">➕</button>
-          <button class="mini-btn gray" style="font-size:11px;padding:3px 7px" onclick="document.getElementById('boWebview').reload()" title="Recargar">🔄</button>
-        </div>
-        <button class="mini-btn red" style="font-size:11px;padding:3px 7px" onclick="toggleBoPanel()">✕</button>
-      </div>
-      <webview id="boWebview" src="about:blank" style="flex:1;width:100%;border:none"></webview>
-    </div>
 
     <main class="main">
       <section id="viewInicio">
@@ -637,24 +606,6 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
         </div>
       </section>
 
-      <!-- ── Chunior ── -->
-      <section id="viewChunior" class="hidden" style="height:100%;margin:-18px;overflow:hidden">
-        <div id="chuniorWrap">
-          <div id="chuniorBar">
-            <span style="font-size:12px;font-weight:700;color:#f0a017">📋 Chunior</span>
-            <span id="chuniorStatusBar" style="font-size:11px;color:var(--muted)">—</span>
-            <div style="display:flex;gap:4px;margin-left:auto">
-              <button class="mini-btn gray" style="font-size:11px;padding:3px 7px" onclick="chuniorNav('/transacciones/')" title="Transacciones">📋</button>
-              <button class="mini-btn gray" style="font-size:11px;padding:3px 7px" onclick="document.getElementById('chuniorWebview').reload()" title="Recargar">🔄</button>
-              <button class="mini-btn red"  style="font-size:11px;padding:3px 7px" onclick="chuniorCerrarSesion()" title="Cerrar sesión">🚪 Salir</button>
-            </div>
-          </div>
-
-          <!-- Webview de Chunior (sesión iniciada desde el login de NODO) -->
-          <webview id="chuniorWebview" src="about:blank" style="flex:1;width:100%;border:none"></webview>
-        </div>
-      </section>
-
     </main>
   </div>
 </div>
@@ -691,6 +642,7 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let operador=null, pcOperativa=null;
 let solicitudes=[], billeteras=[], chats=[], chatMensajes=[];
+let retiros24hCSV = []; // {alias, fecha, monto} — retiros detectados en últimas 24h desde CSV
 let timersIniciados=false;
 let lastPendientesIds=new Set(), lastChatUnread=0;
 let chatActualId="", chatImagenBase64="", chatImagenNombre="";
@@ -900,7 +852,7 @@ async function importarOperacionesCSV(){
   const hace24h = new Date(Date.now() - 24*60*60*1000);
 
   const aliasSet = new Set();
-  const retiros24h = []; // {alias, fecha}
+  retiros24hCSV = []; // {alias, fecha, monto} — reinicializamos y llenamos con los retiros del CSV
   let totalRows = 0, errorRows = 0;
 
   for(let i=1; i<lines.length; i++){
@@ -930,7 +882,7 @@ async function importarOperacionesCSV(){
       try {
         const fechaDate = new Date(fecha);
         if(!isNaN(fechaDate) && fechaDate >= hace24h){
-          retiros24h.push({ alias, fecha: fechaDate.toISOString(), monto: Math.abs(cant) });
+          retiros24hCSV.push({ alias, fecha: fechaDate.toISOString(), monto: Math.abs(cant) });
         }
       } catch(e){}
     }
@@ -965,11 +917,11 @@ async function importarOperacionesCSV(){
   // by verificarRetiro24h via the solicitudes table for NODO-originated ops.
   // For CSV-imported retiros that are recent, we log them to historial_ops for reference.
   let retiroMsg = '';
-  if(retiros24h.length){
-    for(const r of retiros24h){
+  if(retiros24hCSV.length){
+    for(const r of retiros24hCSV){
       await registrarEnHistorial({usuario:r.alias, tipo:'RETIRO', monto:r.monto, origen:'LANDING', estado:'OK', notas:'Importado de CSV · '+r.fecha, pc_codigo:pc});
     }
-    retiroMsg = '<br>⚠️ <b>'+retiros24h.length+'</b> retiro/s en las últimas 24hs importados al historial (blacklist activa).';
+    retiroMsg = '<br>⚠️ <b>'+retiros24hCSV.length+'</b> retiro/s en las últimas 24hs importados al historial (blacklist activa).';
   }
 
   setBox("opsCsvMsg",'<div class="ok-box">✅ Importación completada: <b>'+ok+' usuarios</b> marcados como verificados'+(err?(' | <b>'+err+' errores</b>'):'')+'.<br>Total operaciones procesadas: '+totalRows+'.'+retiroMsg+'</div>');
@@ -1290,33 +1242,58 @@ function renderTablaJugadores(lista){
 
 // ── Control de retiros: 1 cada 24hs por usuario ──────────────────────────────
 async function verificarRetiro24h(usuario) {
-  const hace24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const hace24h = new Date(Date.now() - 24 * 60 * 60 * 1000).getTime();
+  const ahora = Date.now();
 
+  // 1. Buscar retiro en Supabase (solicitudes realizadas por NODO)
   const { data, error } = await supabaseClient
     .from("solicitudes")
     .select("id, created_at, monto, estado")
     .eq("usuario", usuario)
     .eq("tipo", "RETIRO")
     .in("estado", ["PAGADA", "APROBADA", "ACREDITADA"])
-    .gte("created_at", hace24h)
+    .gte("created_at", new Date(hace24h).toISOString())
     .order("created_at", { ascending: false })
     .limit(1);
 
-  if (error) return { bloqueado: false }; // si falla la consulta, no bloqueamos
+  if (!error && data && data.length) {
+    const retiro = data[0];
+    const tiempoTranscurrido = ahora - new Date(retiro.created_at).getTime();
+    const horasRestantes = Math.ceil((24 * 60 * 60 * 1000 - tiempoTranscurrido) / (60 * 60 * 1000));
+    return {
+      bloqueado: true,
+      horasRestantes,
+      monto: retiro.monto,
+      fecha: retiro.created_at,
+      origen: "SUPABASE",
+      mensaje: `El usuario ya realizó un retiro hace ${Math.floor(tiempoTranscurrido / (60 * 60 * 1000))}hs. Puede volver a retirar en ${horasRestantes}hs.`
+    };
+  }
 
-  if (!data || !data.length) return { bloqueado: false };
+  // 2. Buscar retiro en el CSV importado (últimas 24h)
+  if (retiros24hCSV && retiros24hCSV.length > 0) {
+    const usuarioNorm = normalizar(usuario);
+    const retiroCSV = retiros24hCSV.find(r => normalizar(r.alias) === usuarioNorm);
+    
+    if (retiroCSV) {
+      const tiempoTranscurrido = ahora - new Date(retiroCSV.fecha).getTime();
+      const horasRestantes = Math.ceil((24 * 60 * 60 * 1000 - tiempoTranscurrido) / (60 * 60 * 1000));
+      
+      if (tiempoTranscurrido < 24 * 60 * 60 * 1000) {
+        return {
+          bloqueado: true,
+          horasRestantes: Math.max(1, horasRestantes),
+          monto: retiroCSV.monto,
+          fecha: retiroCSV.fecha,
+          origen: "CSV",
+          mensaje: `El usuario ya realizó un retiro hace ${Math.floor(tiempoTranscurrido / (60 * 60 * 1000))}hs (detectado en archivo de operaciones). Puede volver a retirar en ${Math.max(1, horasRestantes)}hs.`
+        };
+      }
+    }
+  }
 
-  const retiro = data[0];
-  const hace = Date.now() - new Date(retiro.created_at).getTime();
-  const horasRestantes = Math.ceil((24 * 60 * 60 * 1000 - hace) / (60 * 60 * 1000));
-
-  return {
-    bloqueado: true,
-    horasRestantes,
-    monto: retiro.monto,
-    fecha: retiro.created_at,
-    mensaje: `El usuario ya realizó un retiro hace ${Math.floor(hace / (60 * 60 * 1000))}hs. Puede volver a retirar en ${horasRestantes}hs.`
-  };
+  // No hay restricción
+  return { bloqueado: false };
 }
 
 function esPendiente(s){const e=normalizar(s.ESTADO);return e.includes("PENDIENTE")||e==="NUEVA"||e==="NUEVO"||e==="EN_REVISION"}
@@ -1536,92 +1513,98 @@ async function login(){
   finalizarLogin(true);
 }
 
-// Inyecta usuario/clave en el webview de Chunior y verifica si fue aceptado
+// Inyecta usuario/clave en la VENTANA de Chunior (separada, visible) y verifica si fue aceptado
 async function validarLoginChunior(usuario, clave){
-  const wv = document.getElementById('chuniorWebview');
-  if(!wv) throw new Error('Webview de Chunior no disponible.');
+  if(!window.chunior || !window.chunior.exec) throw new Error('Ventana de Chunior no disponible (correr en Electron).');
 
-  // 1) Asegurar que estamos en la página de login de Chunior
-  let currentUrl = (wv.getURL && wv.getURL()) || wv.src || '';
-  if(!currentUrl || currentUrl.includes('about:blank') || !currentUrl.includes('chunior')){
-    wv.src = CHUNIOR_HOME;
-    await _waitWebview(wv, 15000);
-  }
-  currentUrl = wv.getURL ? wv.getURL() : '';
-  if(!currentUrl.includes('/login/')){
-    // Sesión vieja activa → cerrar
-    wv.src = CHUNIOR_BASE + '/accounts/logout/';
-    await _waitWebview(wv, 10000);
-    currentUrl = wv.getURL ? wv.getURL() : '';
-    if(!currentUrl.includes('/login/')){
-      wv.src = CHUNIOR_HOME;
-      await _waitWebview(wv, 15000);
+  // 1) ¿Hay sesión activa? Buscar el botón "Cerrar sesión" (presente en TODAS las páginas internas de Chunior).
+  //    Si existe → click → esperar a que aparezca el form de login.
+  const huboLogout = await window.chunior.exec(
+    '(function(){' +
+    'var n=document.querySelectorAll("button,a,input[type=\'submit\']");' +
+    'for(var i=0;i<n.length;i++){' +
+    '  var t=((n[i].textContent||n[i].value||"")+"").trim().toLowerCase();' +
+    '  if(t.indexOf("cerrar sesi")>=0||t.indexOf("logout")>=0){' +
+    '    n[i].click();' +
+    '    return true;' +
+    '  }' +
+    '}' +
+    'return false;' +
+    '})()'
+  );
+
+  if(huboLogout){
+    // Tras logout, Chunior muestra una página intermedia con un link "Identificarse de nuevo".
+    // Lo clickeamos para llegar al form de login. Después esperamos a #id_username.
+    const t0 = Date.now();
+    let yaClickeoIdentificar = false;
+    while(Date.now() - t0 < 10000){
+      await new Promise(function(r){ setTimeout(r, 300); });
+      try {
+        const estado = await window.chunior.exec(
+          '(function(){' +
+          'if(document.getElementById("id_username")) return "login";' +
+          // Buscar "Identificarse de nuevo" (link o botón) y clickearlo
+          'var n=document.querySelectorAll("a,button,input[type=\'submit\']");' +
+          'for(var i=0;i<n.length;i++){' +
+          '  var t=((n[i].textContent||n[i].value||"")+"").trim().toLowerCase();' +
+          '  if(t.indexOf("identificarse")>=0 || t.indexOf("iniciar sesi")>=0){' +
+          '    n[i].click(); return "click";' +
+          '  }' +
+          '}' +
+          'return "wait";' +
+          '})()'
+        );
+        if(estado === 'login') break;
+        if(estado === 'click') yaClickeoIdentificar = true;
+      } catch(e){}
     }
+  } else {
+    // No hay sesión activa y tampoco tenemos form de login a la vista → forzar carga del home
+    const cur = await window.chunior.getUrl();
+    const enLogin = await window.chunior.exec('(function(){return !!document.getElementById("id_username");})()').catch(function(){return false;});
+    if(!enLogin && !cur.includes('/login/')) await window.chunior.navigate(CHUNIOR_HOME);
   }
 
-  // 2) Registrar listeners ANTES de hacer click (evita race condition)
-  const resultPromise = new Promise(function(resolve){
-    let done = false;
-    const finish = function(ok){ if(done) return; done = true; cleanup(); resolve(ok); };
-    const onNav = function(e){
-      const u = (e && e.url) || (wv.getURL ? wv.getURL() : '');
-      if(!u || u.includes('about:blank')) return;
-      if(u.includes('/login/')) return; // todavía en login
-      finish(true);
-    };
-    const onFinish = function(){
-      const u = wv.getURL ? wv.getURL() : '';
-      if(!u || u.includes('about:blank') || u.includes('/login/')){
-        // Si después de 2s todavía está en login → fallo. Si cambió → éxito.
-        setTimeout(function(){
-          if(done) return;
-          const u2 = wv.getURL ? wv.getURL() : '';
-          if(u2 && !u2.includes('/login/') && !u2.includes('about:blank')) finish(true);
-          else finish(false);
-        }, 2000);
-        return;
-      }
-      finish(true);
-    };
-    const cleanup = function(){
-      try { wv.removeEventListener('did-navigate', onNav); } catch(e){}
-      try { wv.removeEventListener('did-finish-load', onFinish); } catch(e){}
-      clearTimeout(timer);
-    };
-    wv.addEventListener('did-navigate', onNav);
-    wv.addEventListener('did-finish-load', onFinish);
-    const timer = setTimeout(function(){ finish(false); }, 20000);
-  });
-
-  // 3) Inyectar credenciales y submit
-  await wv.executeJavaScript(
+  // 2) Inyectar usuario + clave en la misma pasada y submit
+  const inyectado = await window.chunior.exec(
     '(function(){'
     + 'var u=document.getElementById("id_username");'
     + 'var p=document.getElementById("id_password");'
     + 'var b=document.querySelector("input[type=\'submit\'],button[type=\'submit\']");'
-    + 'if(u&&p&&b){'
-    + '  u.value='+JSON.stringify(usuario)+';'
-    + '  p.value='+JSON.stringify(clave)+';'
-    + '  u.dispatchEvent(new Event("input",{bubbles:true}));'
-    + '  p.dispatchEvent(new Event("input",{bubbles:true}));'
-    + '  b.click();'
-    + '  return true;'
-    + '} return false;'
+    + 'if(!u||!p||!b) return false;'
+    + 'u.value='+JSON.stringify(usuario)+';'
+    + 'p.value='+JSON.stringify(clave)+';'
+    + 'u.dispatchEvent(new Event("input",{bubbles:true}));'
+    + 'p.dispatchEvent(new Event("input",{bubbles:true}));'
+    + 'b.click();'
+    + 'return true;'
     + '})()'
   );
+  if(!inyectado) throw new Error('No se encontró el formulario de login en Chunior.');
 
-  return resultPromise;
-}
-
-function _waitWebview(wv, ms){
-  return new Promise(function(resolve){
-    let done = false;
-    const finish = function(){ if(done) return; done = true; cleanup(); resolve(); };
-    const onFin = function(){ finish(); };
-    const cleanup = function(){ try { wv.removeEventListener('did-finish-load', onFin); } catch(e){} clearTimeout(timer); };
-    wv.addEventListener('did-finish-load', onFin);
-    const timer = setTimeout(finish, ms || 10000);
-  });
+  // 3) Polling del DOM: el pt selector también está en /login/, por eso miramos el DOM, no la URL
+  //    - aparece #id_pt → login OK, hay que elegir puesto
+  //    - desaparece #id_username → login OK, sesión completa
+  //    - aparece .errornote → clave mala, no esperar más
+  //    - sigue #id_username sin error → todavía procesando
+  const inicio = Date.now();
+  while(Date.now() - inicio < 20000){
+    await new Promise(function(r){ setTimeout(r, 400); });
+    try {
+      const state = await window.chunior.exec(
+        '(function(){'
+        + 'if(document.getElementById("id_pt")) return "pt";'
+        + 'if(document.querySelector("p.errornote, .errornote")) return "error";'
+        + 'if(!document.getElementById("id_username")) return "logged";'
+        + 'return "login";'
+        + '})()'
+      );
+      if(state === 'pt' || state === 'logged') return true;
+      if(state === 'error') return false;
+    } catch(e){}
+  }
+  return false;
 }
 
 function abrirSelectorPc(lista){
@@ -1705,9 +1688,6 @@ function mostrarVista(vista){
   if(vista==="jugadores")cargarJugadores();
   if(vista==="auto")verificarEstadoBackoffice();
   if(vista==="verificaciones")cargarVerificaciones();
-  if(vista==="chunior")activarChunior();
-  // Quitar clase chunior-active del main cuando no es chunior
-  document.querySelector(".main")?.classList.toggle("chunior-active", vista==="chunior");
   cerrarMenuMobile();
 }
 
@@ -1931,11 +1911,29 @@ async function ejecutarOperacionManual(){
     const est2   = ok ? "OK" : "ERROR";
     const notas  = ok ? (busqueda.balance?.raw||null) : (resultado?.message||"error");
 
-    await registrarEnHistorial({usuario, tipo, monto:montoAbs, billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null, origen:'MANUAL', estado:est2, notas});
+    // Registrar el movimiento en Chunior (solo CARGA exitosa, y solo si la billetera tiene chunior_uid)
+    let movimientoChunior = null;
+    if(ok && tipo === "CARGA" && bil && bil.CHUNIOR_UID){
+      try {
+        toast("Registrando en Chunior...", "blue");
+        const rChu = await registrarCargaEnChunior(bil.CHUNIOR_UID, montoAbs, usuario);
+        if(rChu.ok && rChu.movimientoId){
+          movimientoChunior = rChu.movimientoId;
+          toast("📋 Movimiento Chunior N° "+rChu.movimientoId, 'blue');
+        } else if(rChu.error){
+          toast('⚠️ Carga OK en casino pero falló en Chunior: '+rChu.error, 'red');
+        }
+      } catch(e){ toast('⚠️ Error registrando en Chunior: '+(e.message||''), 'red'); }
+    }
+
+    await registrarEnHistorial({usuario, tipo, monto:montoAbs, billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null, origen:'MANUAL', estado:est2, notas, chunior_movimiento_id:movimientoChunior});
 
     if(ok){
       if(bil && bil.ID_BILLETERA) await ajustarSaldoBilletera(bil.ID_BILLETERA, tipo==="CARGA" ? montoAbs : -montoAbs);
-      if(res) res.innerHTML = '<div class="ok-box">✅ '+tipo+' de '+money(montoAbs)+' → <b>'+escapeHtml(usuario)+'</b> completada</div>';
+      if(res){
+        const tagChu = movimientoChunior ? ' · Chunior N° '+escapeHtml(movimientoChunior) : '';
+        res.innerHTML = '<div class="ok-box">✅ '+tipo+' de '+money(montoAbs)+' → <b>'+escapeHtml(usuario)+'</b> completada'+tagChu+'</div>';
+      }
       toast(tipo+" completada: "+usuario+" · "+money(montoAbs), "green");
     } else {
       if(res) res.innerHTML = '<div class="err-box">❌ '+tipo+' falló: '+escapeHtml(resultado?.message||'sin detalle')+'</div>';
@@ -2658,73 +2656,7 @@ if(enElectron){
   document.getElementById("navAuto")?.classList.remove("hidden");
   document.getElementById("agentBalanceCard")?.classList.remove("hidden");
   document.getElementById("navVerificaciones")?.classList.remove("hidden");
-  document.getElementById("navBoPanel")?.classList.remove("hidden");
-  document.getElementById("navChunior")?.classList.remove("hidden");
 }
-
-// ── Panel lateral de backoffice ───────────────────────────────────────────────
-const BO_SEARCH_URL = 'https://bo.casinodrex.com/agents/user_search';
-const BO_NEW_URL    = 'https://bo.casinodrex.com/agents/new_user';
-let _boPanelOpen = false;
-let _boPanelW = parseInt(localStorage.getItem('bo_panel_w') || '820', 10);
-
-function _applyBoPanelWidth(w){
-  _boPanelW = Math.max(180, Math.min(1400, w));
-  document.getElementById('appLayout').style.setProperty('--bo-w', _boPanelW + 'px');
-  localStorage.setItem('bo_panel_w', _boPanelW);
-}
-
-function toggleBoPanel(){
-  _boPanelOpen = !_boPanelOpen;
-  const layout = document.getElementById("appLayout");
-  const wv     = document.getElementById("boWebview");
-  const btn    = document.getElementById("navBoPanel");
-  const autoBtn = document.getElementById("abrirBackofficeBtn");
-  if(_boPanelOpen){
-    _applyBoPanelWidth(_boPanelW);
-    layout.classList.add("bo-open");
-    if(!wv.src || wv.src === 'about:blank') wv.src = BO_SEARCH_URL;
-    if(btn) btn.style.background = "rgba(18,183,106,.2)";
-    if(autoBtn) autoBtn.style.display = "none";
-  } else {
-    layout.classList.remove("bo-open");
-    if(btn) btn.style.background = "";
-    if(autoBtn) autoBtn.style.display = "";
-  }
-}
-
-function boPanelNav(dest){
-  const wv = document.getElementById("boWebview");
-  if(!wv) return;
-  if(dest === 'new') wv.src = BO_NEW_URL;
-  else               wv.src = BO_SEARCH_URL;
-}
-
-// Resize handle drag
-(function(){
-  const resizer = document.getElementById('boResizer');
-  if(!resizer) return;
-  resizer.addEventListener('mousedown', e=>{
-    e.preventDefault();
-    resizer.classList.add('dragging');
-    const startX = e.clientX;
-    const startW = _boPanelW;
-    function onMove(e){
-      const delta = e.clientX - startX;
-      const newW  = startW + delta;
-      if(newW < 80){ return; }
-      _applyBoPanelWidth(newW);
-    }
-    function onUp(){
-      resizer.classList.remove('dragging');
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      if(_boPanelW < 180) toggleBoPanel();
-    }
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  });
-})();
 
 // ── Saldo del agente (widget del sidebar) ─────────────────────────────────────
 async function refrescarSaldoAgente(){
@@ -2794,7 +2726,8 @@ function autoResBox(id, ok, texto){
 
 async function abrirBackoffice(){
   if(!enElectron) return;
-  await window.ctrlElectron.openAgentWindow();
+  // Esta es la ÚNICA función que muestra la ventana de agentes (botón manual del operador)
+  await window.ctrlElectron.showAgentWindow();
   await verificarEstadoBackoffice();
 }
 
@@ -2875,6 +2808,18 @@ async function testRetirar(){
     const r = await callDrex("retirarSaldo", monto);
     document.getElementById("autoResultVal").textContent = `RETIRO · ${usuario} · $${monto.toLocaleString("es-AR")}`;
     autoResBox("autoRetirarRes", true, `✅ ${r.message || "Retiro realizado."}`);
+    
+    // Registrar el retiro en Supabase para que quede en el historial y se valide en 24hs
+    await supabaseClient.from("solicitudes").insert({
+      tipo: "RETIRO",
+      usuario: usuario,
+      monto: monto,
+      estado: "PAGADA",
+      pc_codigo: pcOperativa,
+      origen: "MANUAL",
+      operador_usuario: operador?.usuario || operador?.nombre || "Sistema"
+    }).catch(err => console.error("Error registrando retiro en Supabase:", err));
+    
     await window.ctrlElectron.navigateAgent();
   }catch(err){ autoResBox("autoRetirarRes", false, "Error: " + err.message); }
 }
@@ -3038,6 +2983,17 @@ async function retirarSaldoRapido(usuario, monto){
 
   const r = await callDrex("retirarSaldo", monto);
   if(r && r.ok === false){ toast("Error: " + (r.message||"falló"), "red"); return; }
+
+  // Registrar el retiro en Supabase para que quede en el historial y se valide en 24hs
+  await supabaseClient.from("solicitudes").insert({
+    tipo: "RETIRO",
+    usuario: usuario,
+    monto: monto,
+    estado: "PAGADA",
+    pc_codigo: pcOperativa,
+    origen: "CHAT",
+    operador_usuario: operador?.usuario || operador?.nombre || "Sistema"
+  }).catch(err => console.error("Error registrando retiro en Supabase:", err));
 
   toast(`Retiro completado · ${usuario} · $${monto.toLocaleString("es-AR")}`, "green");
   await window.ctrlElectron.navigateAgent();
@@ -3254,8 +3210,7 @@ function cerrarSesion(){
   localStorage.removeItem("nodo_pc_operativa_lite");
   // Cerrar también sesión de Chunior antes de recargar
   try {
-    const wv = document.getElementById('chuniorWebview');
-    if(wv) wv.src = CHUNIOR_BASE + '/accounts/logout/';
+    if(window.chunior) window.chunior.navigate(CHUNIOR_BASE + '/accounts/logout/');
   } catch(e){}
   setTimeout(function(){ location.reload(); }, 400);
 }
@@ -3350,52 +3305,40 @@ let _chuniorInited = false;
 let _nodoListo    = false;  // true después de finalizarLogin, gatea el modal de puesto
 
 function activarChunior(){
-  const wv = document.getElementById('chuniorWebview');
-  if(!wv) return;
+  if(!window.chunior) return;
   if(!_chuniorInited){
     _chuniorInited = true;
-    wv.addEventListener('did-finish-load', async ()=>{
-      const url = wv.getURL ? wv.getURL() : wv.src;
-      if(!url || url.includes('about:blank')) return;
-
-      // Solo abrir el modal de puesto si NODO ya está logueado
-      // (durante el login, validarLoginChunior maneja la página por sí mismo)
-      if(_nodoListo){
-        try {
-          const ptData = await wv.executeJavaScript(
+    // Polling de status cada 3s: la lógica de Chunior corre en una ventana separada (visible).
+    setInterval(async function(){
+      try {
+        const url = await window.chunior.getUrl();
+        if(!url || url.includes('about:blank')) return;
+        _setChuniorStatus(!url.includes('/login/'), url);
+        // Si está esperando selección de puesto y NODO ya está logueado, abrir modal
+        if(_nodoListo){
+          const ptData = await window.chunior.exec(
             '(function(){var s=document.getElementById("id_pt");if(!s)return null;var o=Array.from(s.options).filter(function(x){return x.value!=="";}).map(function(x){return{value:x.value,text:x.text.trim()};});return{isPt:true,opts:o};})()'
           );
-          if(ptData && ptData.isPt && ptData.opts.length > 0){
-            _chuniorElegirPuesto(wv, ptData.opts);
-            return;
+          if(ptData && ptData.isPt && ptData.opts.length > 0 && !window._chuniorPtModalOpen){
+            window._chuniorPtModalOpen = true;
+            _chuniorElegirPuesto(ptData.opts);
           }
-        } catch(e){}
-      }
-
-      _setChuniorStatus(!url.includes('/login/'), url);
-    });
-
-    wv.addEventListener('did-navigate', function(e){
-      if(!e.url || e.url.includes('about:blank')) return;
-      _setChuniorStatus(!e.url.includes('/login/'), e.url);
-    });
+        }
+      } catch(e){}
+    }, 3000);
   }
-  // Solo navegar a CHUNIOR_HOME si NODO ya está logueado o si nunca cargamos
-  const cur = wv.getURL ? wv.getURL() : wv.src;
-  if(_nodoListo && (!cur || cur === 'about:blank' || cur.includes('/login/'))) wv.src = CHUNIOR_HOME;
 }
 
 // Después del login, chequear si Chunior está esperando selección de puesto y arrancar el flujo
 async function _checkPuestoPostLogin(){
-  const wv = document.getElementById('chuniorWebview');
-  if(!wv) return;
+  if(!window.chunior) return;
   await new Promise(function(r){setTimeout(r,500);});
   try {
-    const ptData = await wv.executeJavaScript(
+    const ptData = await window.chunior.exec(
       '(function(){var s=document.getElementById("id_pt");if(!s)return null;var o=Array.from(s.options).filter(function(x){return x.value!=="";}).map(function(x){return{value:x.value,text:x.text.trim()};});return{isPt:true,opts:o};})()'
     );
     if(ptData && ptData.isPt && ptData.opts.length > 0){
-      _chuniorElegirPuesto(wv, ptData.opts);
+      _chuniorElegirPuesto(ptData.opts);
     } else {
       // Ya está en una página normal: sincronizar billeteras directamente
       setTimeout(function(){ sincronizarBilleterasChunior(true).catch(function(){}); }, 800);
@@ -3405,8 +3348,7 @@ async function _checkPuestoPostLogin(){
 
 function chuniorCerrarSesion(){
   if(!confirm('¿Cerrar sesión de Chunior?\n\nEsto también te va a deslogear de NODO.')) return;
-  const wv = document.getElementById('chuniorWebview');
-  if(wv){ wv.src = CHUNIOR_BASE + '/accounts/logout/'; }
+  if(window.chunior) window.chunior.navigate(CHUNIOR_BASE + '/accounts/logout/');
   // Cerrar NODO también
   localStorage.removeItem('nodo_operador_lite');
   localStorage.removeItem('nodo_pc_operativa_lite');
@@ -3420,7 +3362,7 @@ function _setChuniorStatus(loggedIn, url){
   if(bar) bar.textContent = loggedIn ? 'Sesión activa' : 'Sin sesión';
 }
 
-function _chuniorElegirPuesto(wv, opts){
+function _chuniorElegirPuesto(opts){
   const optsHtml = opts.map(function(o){
     return '<button class="btn btn-primary" style="margin-bottom:8px" onclick="_chuniorConfirmarPuesto('+_jsonAttr(o.value)+','+_jsonAttr(o.text)+')">'+escapeHtml(o.text)+'</button>';
   }).join('');
@@ -3429,8 +3371,7 @@ function _chuniorElegirPuesto(wv, opts){
     '<div style="display:flex;flex-direction:column;gap:4px">'+optsHtml+'</div>',
     null, null
   );
-  window._chuniorWvPendiente = wv;
-  // Sobrescribir el botón Cancelar para que recargue la app (evita quedar trabados en la selección de puesto)
+  // Sobrescribir el botón Cancelar para que recargue la app
   const cancelBtn = document.querySelector('#modalOverlay .btn-gray');
   if(cancelBtn){
     cancelBtn._origOnclick = cancelBtn.onclick;
@@ -3440,7 +3381,7 @@ function _chuniorElegirPuesto(wv, opts){
       setTimeout(function(){ location.reload(); }, 600);
     };
   }
-  // Ocultar el botón Guardar (no aplica acá)
+  // Ocultar el botón Guardar
   const saveBtn = document.getElementById('modalSaveBtn');
   if(saveBtn) saveBtn.style.display = 'none';
 }
@@ -3458,11 +3399,10 @@ function _restaurarBotonesModal(){
 async function _chuniorConfirmarPuesto(value, text){
   _restaurarBotonesModal();
   cerrarModal();
-  const wv = window._chuniorWvPendiente;
-  window._chuniorWvPendiente = null;
-  if(!wv) return;
+  window._chuniorPtModalOpen = false;
+  if(!window.chunior) return;
   try {
-    await wv.executeJavaScript(
+    await window.chunior.exec(
       '(function(){var s=document.getElementById("id_pt");var b=document.querySelector("input[type=\'submit\'],button[type=\'submit\'],.btn");if(s&&b){s.value='+JSON.stringify(value)+';b.click();}})()'
     );
     toast('Chunior: puesto '+text+' seleccionado', 'green');
@@ -3481,8 +3421,7 @@ async function _chuniorConfirmarPuesto(value, text){
 //   • saldos reales del breadcrumb (.billetera spans)
 // Resultado: actualiza saldos en NODO y agrega billeteras nuevas si las encuentra.
 async function sincronizarBilleterasChunior(silencioso){
-  const wv = document.getElementById('chuniorWebview');
-  if(!wv){ if(!silencioso) toast('Webview de Chunior no disponible.','red'); return; }
+  if(!window.chunior){ if(!silencioso) toast('Ventana de Chunior no disponible.','red'); return; }
   if(!pcOperativa){
     if(!silencioso) toast('Sincronización pospuesta: NODO todavía no terminó de loguear.','red');
     return;
@@ -3491,16 +3430,15 @@ async function sincronizarBilleterasChunior(silencioso){
   if(!silencioso) toast('Sincronizando con Chunior...','blue');
 
   const addUrl = CHUNIOR_BASE + '/transacciones/movimientoficha/add/';
-  const cur = wv.getURL ? wv.getURL() : '';
+  const cur = await window.chunior.getUrl();
   if(!cur.includes('/movimientoficha/add')){
-    wv.src = addUrl;
-    await _waitWebview(wv, 12000);
+    await window.chunior.navigate(addUrl);
     await new Promise(function(r){setTimeout(r,500);});
   }
 
   let data = null;
   try {
-    data = await wv.executeJavaScript(
+    data = await window.chunior.exec(
       '(function(){' +
       'var sel=document.getElementById("id_cuenta_destino");' +
       'if(!sel)return null;' +
@@ -3584,42 +3522,56 @@ async function sincronizarBilleterasChunior(silencioso){
 // usuario: nombre del usuario para escribir en notas
 // Retorna: { ok:boolean, movimientoId:string|null, error:string|null }
 async function registrarCargaEnChunior(chunior_uid, monto, usuario){
-  const wv = document.getElementById('chuniorWebview');
-  if(!wv) return { ok:false, movimientoId:null, error:'Webview no disponible' };
+  if(!window.chunior) return { ok:false, movimientoId:null, error:'Ventana de Chunior no disponible' };
   if(!chunior_uid) return { ok:false, movimientoId:null, error:'La billetera no tiene chunior_uid configurado' };
 
   const addUrl = CHUNIOR_BASE + '/transacciones/movimientoficha/add/';
-  wv.src = addUrl;
-  await _waitWebview(wv, 12000);
-  await new Promise(function(r){setTimeout(r,500);});
+  await window.chunior.navigate(addUrl);
 
+  // Esperar a que aparezcan los 3 campos del formulario (DOM ready ≠ form ready en Chunior)
+  const t0 = Date.now();
+  let ready = false;
+  while(Date.now() - t0 < 10000){
+    ready = await window.chunior.exec(
+      '(function(){return !!(document.getElementById("id_cuenta_destino")&&document.getElementById("id_monto")&&document.getElementById("id_notas")&&document.querySelector("input[name=\'_addanother\']"));})()'
+    ).catch(function(){return false;});
+    if(ready) break;
+    await new Promise(function(r){ setTimeout(r,300); });
+  }
+  if(!ready) return { ok:false, movimientoId:null, error:'Formulario de Chunior no apareció en 10s' };
+
+  let injectRes;
   try {
-    // Setear select de cuenta_destino, monto y notas. Luego submit con _addanother (mantiene en la misma página y se ve el mensaje de éxito).
-    await wv.executeJavaScript(
+    injectRes = await window.chunior.exec(
       '(function(){' +
       'var s=document.getElementById("id_cuenta_destino");' +
       'var m=document.getElementById("id_monto");' +
       'var n=document.getElementById("id_notas");' +
-      'if(s){s.value='+JSON.stringify(String(chunior_uid))+'; s.dispatchEvent(new Event("change",{bubbles:true}));}' +
-      'if(m){m.value='+JSON.stringify(String(monto))+'; m.dispatchEvent(new Event("input",{bubbles:true}));}' +
-      'if(n){n.value='+JSON.stringify(String(usuario||""))+'; n.dispatchEvent(new Event("input",{bubbles:true}));}' +
-      'var btn=document.querySelector("input[name=\'_addanother\']");' +
-      'if(btn){btn.click();return true;}' +
-      'return false;' +
+      'var b=document.querySelector("input[name=\'_addanother\']");' +
+      'if(!s||!m||!n||!b) return {ok:false,err:"campos faltantes",hasS:!!s,hasM:!!m,hasN:!!n,hasB:!!b};' +
+      's.value='+JSON.stringify(String(chunior_uid))+'; s.dispatchEvent(new Event("change",{bubbles:true}));' +
+      'm.value='+JSON.stringify(String(monto))+'; m.dispatchEvent(new Event("input",{bubbles:true})); m.dispatchEvent(new Event("change",{bubbles:true}));' +
+      'n.value='+JSON.stringify(String(usuario||""))+'; n.dispatchEvent(new Event("input",{bubbles:true})); n.dispatchEvent(new Event("change",{bubbles:true}));' +
+      // Devolvemos los valores PRE-click para verificar que entraron antes del submit
+      'var snap={ok:true, valS:s.value, valM:m.value, valN:n.value};' +
+      'b.click();' +
+      'return snap;' +
       '})()'
     );
   } catch(e){
     return { ok:false, movimientoId:null, error:e.message||'Error inyectando datos' };
   }
+  if(!injectRes || !injectRes.ok){
+    return { ok:false, movimientoId:null, error:'Inyección falló: '+JSON.stringify(injectRes) };
+  }
 
   // Esperar la respuesta de Chunior (recarga la página con mensaje de éxito)
-  await _waitWebview(wv, 12000);
-  await new Promise(function(r){setTimeout(r,400);});
+  await new Promise(function(r){setTimeout(r,2500);});
 
   let movimientoId = null;
   let errorMsg = null;
   try {
-    const res = await wv.executeJavaScript(
+    const res = await window.chunior.exec(
       '(function(){' +
       'var ok=document.querySelector("li.success");' +
       'if(ok){' +
@@ -3672,8 +3624,7 @@ async function _crearBilleterasNuevasChunior(nuevas){
 }
 
 function chuniorNav(path){
-  const wv = document.getElementById('chuniorWebview');
-  if(wv) wv.src = CHUNIOR_BASE + path;
+  if(window.chunior) window.chunior.navigate(CHUNIOR_BASE + path);
 }
 
 // ── Macros del chat ───────────────────────────────────────────────────────────

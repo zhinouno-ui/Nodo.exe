@@ -293,10 +293,22 @@ function findSearchInput() {
     || null;
 }
 
+// Detecta el modal de sesión inválida en cualquiera de sus variantes:
+//  - .ReactModal__Content (versión vieja, texto "session is invalid")
+//  - .ReactModalContent  (versión nueva, texto "Invalid session", botón "Cerrar")
+//  - .card-alert         (fallback por si encapsula el modal)
+function detectarModalSesionInvalida() {
+  const selectores = ['.ReactModal__Content', '.ReactModalContent', '.card-alert', '[role="dialog"]'];
+  for (const sel of selectores) {
+    const el = document.querySelector(sel);
+    if (el && /invalid session|session is invalid/i.test(el.textContent || '')) return el;
+  }
+  return null;
+}
+
 function pageNeedsLogin() {
   // Modal de sesión inválida (aparece cuando la sesión expira abruptamente)
-  const modal = document.querySelector('.ReactModal__Content');
-  if (modal && /session is invalid/i.test(modal.textContent || '')) return true;
+  if (detectarModalSesionInvalida()) return true;
 
   // Pantalla de login — h4 con clase loginTitle o texto "login agente"
   const allH4 = Array.from(document.querySelectorAll('h4'));
@@ -315,13 +327,14 @@ function pageNeedsLogin() {
   return Boolean(entrarBtn || password);
 }
 
-// Cierra el modal de sesión inválida si está presente y retorna true si lo hizo
+// Si aparece el modal de sesión inválida, NO intenta cerrarlo: refresca la página
+// para volver al login del backoffice (que es lo que pidió el operador).
+// Programa el reload diferido para que la IPC pueda responder antes de que se vaya la página.
 async function cerrarModalSesionInvalida() {
-  const modal = document.querySelector('.ReactModal__Content');
-  if (!modal) return false;
-  if (!/session is invalid/i.test(modal.textContent || '')) return false;
-  const acceptBtn = Array.from(modal.querySelectorAll('button')).find(b => /accept|aceptar/i.test(b.textContent || ''));
-  if (acceptBtn) { clickElement(acceptBtn); await delay(600); }
+  if (!detectarModalSesionInvalida()) return false;
+  setTimeout(() => {
+    try { window.location.assign(USER_SEARCH_URL); } catch (_) {}
+  }, 200);
   return true;
 }
 

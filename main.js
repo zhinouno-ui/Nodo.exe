@@ -3,10 +3,12 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 
 const AGENT_URL    = 'https://bo.casinodrex.com/agents/user_search';
 const NEW_USER_URL = 'https://bo.casinodrex.com/agents/new_user';
+const CHUNIOR_URL  = 'https://bo.chunior.com/transacciones/';
 
-let mainWindow   = null;
-let agentWindow  = null;
-let verifyWindow = null;
+let mainWindow    = null;
+let agentWindow   = null;
+let verifyWindow  = null;
+let chuniorWindow = null;
 const pendingAutomation   = new Map();
 const pendingVerification = new Map();
 
@@ -48,12 +50,14 @@ function createMainWindow() {
   });
 }
 
-// ── Ventana del backoffice del casino ─────────────────────────────────────────
+// ── Ventana del backoffice del casino (Casinodrex) ────────────────────────────
+// OCULTA por defecto: contiene la lógica de cargas automáticas pero no se muestra.
 function createAgentWindow(url = AGENT_URL) {
   agentWindow = new BrowserWindow({
     width:  1400,
     height: 900,
     title:  'Agentes — Cargas automáticas',
+    show:   false,
     webPreferences: {
       preload:          path.join(__dirname, 'agent-preload.js'),
       contextIsolation: true,
@@ -69,6 +73,40 @@ function createAgentWindow(url = AGENT_URL) {
   });
 
   return agentWindow;
+}
+
+// ── Ventana de Chunior (backoffice secundario, VISIBLE) ───────────────────────
+// Contiene la lógica de login + sync de billeteras + registro de cargas.
+// El operador puede ver el flujo en vivo en esta ventana.
+function createChuniorWindow() {
+  chuniorWindow = new BrowserWindow({
+    width:  1200,
+    height: 800,
+    title:  'Chunior — Backoffice',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration:  false,
+      sandbox:          true,
+    }
+  });
+  chuniorWindow.loadURL(CHUNIOR_URL);
+  chuniorWindow.on('closed', () => { chuniorWindow = null; });
+  return chuniorWindow;
+}
+
+function getChuniorWindow() {
+  if (chuniorWindow && !chuniorWindow.isDestroyed()) return chuniorWindow;
+  return createChuniorWindow();
+}
+
+function whenChuniorReady(win, timeoutMs = 15000) {
+  if (!win.webContents.isLoading()) return Promise.resolve();
+  return new Promise(resolve => {
+    let done = false;
+    const finish = () => { if (done) return; done = true; resolve(); };
+    win.webContents.once('did-finish-load', finish);
+    setTimeout(finish, timeoutMs);
+  });
 }
 
 function getAgentWindow(url = AGENT_URL) {
@@ -165,6 +203,7 @@ async function sendVerification(usuario) {
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   createMainWindow();
+  createChuniorWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
   });
@@ -183,7 +222,16 @@ ipcMain.handle('drex:navigate', async (_event, url) => {
   return { ok: true };
 });
 
+// Asegura que la ventana de agentes EXISTE (creándola hidden si hace falta) pero NO la muestra.
+// Usado por automatizaciones (cargas, búsquedas) que solo necesitan que el webContents esté cargado.
 ipcMain.handle('drex:open-agent-window', (_event, url) => {
+  const win = getAgentWindow(url || AGENT_URL);
+  if (url && win.webContents.getURL() !== url) win.loadURL(url);
+  return { ok: true };
+});
+
+// Trae al frente la ventana de agentes (uso manual: botón "Abrir backoffice").
+ipcMain.handle('drex:show-agent-window', (_event, url) => {
   const win = getAgentWindow(url || AGENT_URL);
   if (url && win.webContents.getURL() !== url) win.loadURL(url);
   win.show();
@@ -217,4 +265,42 @@ ipcMain.on('drex:verify:result', (_event, response = {}) => {
   pendingVerification.delete(response.requestId);
   if (response.ok !== false) pending.resolve(response.result ?? response);
   else pending.reject(new Error(response.error || 'Error en verificación.'));
+});
+
+// ── IPC handlers para Chunior (ventana visible separada) ─────────────────────
+// Ejecuta JS arbitrario en la ventana de Chunior
+ipcMain.handle('chunior:exec', async (_event, script) => {
+  const win = getChuniorWindow();
+  if (win.webContents.isLoading()) await whenChuniorReady(win);
+  return win.webContents.executeJavaScript(script, true);
+});
+
+// Devuelve la URL actual de la ventana de Chunior
+ipcMain.handle('chunior:get-url', () => {
+  const win = getChuniorWindow();
+  return win.webContents.getURL();
+});
+
+// Navega la ventana de Chunior a una URL nueva y espera a que cargue
+ipcMain.handle('chunior:navigate', async (_event, url) => {
+  const win = getChuniorWindow();
+  win.loadURL(url);
+  await whenChuniorReady(win);
+  return { ok: true, url: win.webContents.getURL() };
+});
+
+// Recarga la ventana de Chunior
+ipcMain.handle('chunior:reload', async () => {
+  const win = getChuniorWindow();
+  win.reload();
+  await whenChuniorReady(win);
+  return { ok: true };
+});
+
+// Trae la ventana de Chunior al frente
+ipcMain.handle('chunior:focus', () => {
+  const win = getChuniorWindow();
+  win.show();
+  win.focus();
+  return { ok: true };
 });
