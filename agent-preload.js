@@ -591,6 +591,49 @@ async function obtenerSaldoAgente(options = {}) {
   return { ok: true, balance: readAgentBalance() };
 }
 
+// Inicia sesión en el backoffice de agentes inyectando usuario y clave.
+// Si ya hay sesión activa devuelve {ok:true} inmediatamente.
+// Soporta el modal de sesión inválida (recarga y falla para que el operador reintente).
+async function iniciarSesion(usuario, clave) {
+  // Modal de sesión inválida → recargar y avisar
+  if (detectarModalSesionInvalida()) {
+    await cerrarModalSesionInvalida(); // programa location.assign en 200ms
+    return { ok: false, message: 'Recargando la página del casino. Esperá unos segundos e intentá de nuevo.' };
+  }
+
+  // Ya logueado → nada que hacer
+  if (!pageNeedsLogin()) {
+    return { ok: true, message: 'Sesión ya activa.' };
+  }
+
+  // Buscar el formulario de login
+  const userInput = document.querySelector('input[type="text"], input[name="username"], input[name="user"], input[autocomplete="username"]');
+  const passInput = document.querySelector('input[type="password"]');
+  const entrarBtn = Array.from(document.querySelectorAll('button')).find(btn =>
+    /entrar|ingresar|login|iniciar|sign.?in/i.test(btn.textContent || '')
+  );
+
+  if (!userInput || !passInput || !entrarBtn) {
+    return { ok: false, message: 'No se encontró el formulario de login en el backoffice.' };
+  }
+
+  // Inyectar credenciales con disparo de eventos React
+  setReactInputValue(userInput, usuario);
+  await delay(200);
+  setReactInputValue(passInput, clave);
+  await delay(300);
+  clickElement(entrarBtn);
+
+  // Esperar hasta 15s a que desaparezca la pantalla de login
+  const inicio = now();
+  while (now() - inicio < 15000) {
+    await delay(500);
+    if (!pageNeedsLogin()) return { ok: true, message: 'Sesión iniciada.' };
+  }
+
+  return { ok: false, message: 'No se pudo iniciar sesión. Verificá usuario y contraseña.' };
+}
+
 const api = {
   buscarUsuario,
   cargarSaldo,
@@ -599,6 +642,7 @@ const api = {
   crearUsuario,
   obtenerSaldoAgente,
   irABusquedaUsuarios,
+  iniciarSesion,
   estadoPagina: status
 };
 

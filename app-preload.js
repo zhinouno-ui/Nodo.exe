@@ -8,7 +8,8 @@ const ALLOWED_AUTOMATION_METHODS = new Set([
   'retirarSaldo',
   'cambiarClave',
   'crearUsuario',
-  'obtenerSaldoAgente'
+  'obtenerSaldoAgente',
+  'iniciarSesion'
 ]);
 
 contextBridge.exposeInMainWorld('ctrlElectron', {
