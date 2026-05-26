@@ -1,3 +1,25 @@
+# Dependencias
 node_modules/
 package-lock.json
+
+# Salida de build (electron-builder) — se distribuyen como Releases en GitHub
+dist/
+out/
+build/
+
+# IDE
+.vscode/
+.idea/
 .claude/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Env / secretos
+.env
+.env.local
