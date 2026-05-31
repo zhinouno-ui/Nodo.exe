@@ -2835,11 +2835,21 @@ async function reintentarOperacionFallida(historialId){
       toast('Reintentando '+tipo+' en agentes...', 'blue');
       _wdLock();
       try {
-        const r = (tipo === 'CARGA')
-          ? await callDrex("cargarSaldo", m)
-          : await callDrex("retirarSaldo", m);
-        if(r && r.ok !== false){ drexOk = true; toast('✓ '+tipo+' OK en agentes', 'green'); }
-        else toast('✗ Agentes falló: '+(r?.message||''), 'red');
+        // Re-posicionar la página de agentes en una búsqueda FRESCA del usuario
+        // justo antes de cargar. Esto replica el flujo normal (buscar → cargar
+        // pegados, sin gap) y evita que cargarSaldo corra sobre un estado sucio
+        // que quedó de la lectura de saldo al abrir el modal (por eso antes
+        // fallaba la 1ª vez y andaba la 2ª).
+        const bb = await callDrex("buscarUsuario", usuario, { skipBalance: true });
+        if(!bb || !bb.exists){
+          toast('✗ Usuario no encontrado al reintentar en agentes', 'red');
+        } else {
+          const r = (tipo === 'CARGA')
+            ? await callDrex("cargarSaldo", m)
+            : await callDrex("retirarSaldo", m);
+          if(r && r.ok !== false){ drexOk = true; toast('✓ '+tipo+' OK en agentes', 'green'); }
+          else toast('✗ Agentes falló: '+(r?.message||''), 'red');
+        }
       } catch(e){ toast('Error en agentes: '+(e.message||''), 'red'); }
       finally { _wdUnlock(); }
     }
