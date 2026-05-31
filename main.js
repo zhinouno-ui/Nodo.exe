@@ -152,8 +152,22 @@ function whenAgentReady(win) {
 
 async function navigateAgentTo(url = AGENT_URL) {
   const win = getAgentWindow();
-  win.loadURL(url);
-  await whenAgentReady(win);
+  // Siempre recargamos la página antes de operar para dejar el search limpio.
+  // Configuramos el listener de 'did-finish-load' ANTES de loadURL para no perder
+  // el evento (whenAgentReady a veces resolvía antes de que arrancara la carga).
+  await new Promise((resolve) => {
+    let resuelto = false;
+    const finish = () => {
+      if (resuelto) return;
+      resuelto = true;
+      win.webContents.removeListener('did-finish-load', finish);
+      resolve();
+    };
+    win.webContents.once('did-finish-load', finish);
+    // Fallback por si el evento no dispara (página cacheada, error de red, etc.)
+    setTimeout(finish, 8000);
+    try { win.loadURL(url); } catch (_) { finish(); }
+  });
   await new Promise(r => setTimeout(r, 800)); // margen para que React monte
 }
 

@@ -228,10 +228,11 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
                   <button class="mini-btn gray" onclick="mostrarVista('billeteras')" style="font-size:11px">Administrar</button>
                 </div>
               </div>
+              <div id="estadoLandingInicio"></div>
               <div id="billerasInicioGrid" class="bil-mini-grid"></div>
             </div>
 
-            <div class="card" style="margin-bottom:0">
+            <div id="cardOperacionManual" class="card" style="margin-bottom:0">
               <h2 class="card-title">⚡ Operación manual automatizada</h2>
               <span class="manual-label">Billetera destino</span>
               <select id="manualBilletera" style="margin-top:4px;margin-bottom:8px"></select>
@@ -293,7 +294,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
               <option value="MANUAL">Manuales</option>
               <option value="PANEL">Panel</option>
               <option value="AUTO">Automáticas</option>
-              <option value="LANDING">Landing</option>
+              <option value="CHAT">Chat rápido</option>
             </select>
             <select id="filtHistBilletera" onchange="filtrarHistorial()">
               <option value="">Todas las billeteras</option>
@@ -331,6 +332,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
         <div class="card">
           <h2 class="card-title">💳 Billeteras para landing</h2>
           <div class="alert-box">Solo una billetera puede quedar marcada como <b>EN LANDING</b>. No se muestran montos en este panel.</div>
+          <div id="estadoLanding"></div>
           <div id="walletsGrid" class="wallet-grid"></div>
         </div>
       </section>
@@ -744,6 +746,31 @@ function inicioDiaArgentina(){
   return new Date(get('year') + '-' + get('month') + '-' + get('day') + 'T00:00:00-03:00');
 }
 
+// Parsea la fecha del CSV de operaciones de agentes.
+// Formato típico: "MM/DD/YYYY HH:MM:SS" (ej "05/29/2026 15:50:56").
+// Lo interpretamos como hora de Argentina (UTC-3) y devolvemos un Date correcto.
+function _parseFechaCSV(str){
+  if(!str) return null;
+  const s = String(str).trim();
+  // MM/DD/YYYY HH:MM:SS  o  MM/DD/YYYY
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if(m){
+    const mes = m[1].padStart(2,'0');
+    const dia = m[2].padStart(2,'0');
+    const ano = m[3];
+    const hh  = (m[4]||'00').padStart(2,'0');
+    const mm  = (m[5]||'00').padStart(2,'0');
+    const ss  = (m[6]||'00').padStart(2,'0');
+    // Construir como hora AR (-03:00) → Date en UTC correcto
+    const iso = ano+'-'+mes+'-'+dia+'T'+hh+':'+mm+':'+ss+'-03:00';
+    const d = new Date(iso);
+    if(!isNaN(d)) return d;
+  }
+  // Fallback: intentar parseo nativo
+  const d2 = new Date(s);
+  return isNaN(d2) ? null : d2;
+}
+
 
 // ── Jugadores ─────────────────────────────────────────────────────────────────
 let todosLosJugadores = [];
@@ -904,11 +931,11 @@ async function importarOperacionesCSV(){
     totalRows++;
     aliasSet.add(alias);
 
-    // Track retiros in last 24h
+    // Track retiros in last 24h (cantidad negativa = retiro/cobro del jugador)
     if(tipo==='Deposito de un jugador' && cant<0 && fecha){
       try {
-        const fechaDate = new Date(fecha);
-        if(!isNaN(fechaDate) && fechaDate >= hace24h){
+        const fechaDate = _parseFechaCSV(fecha);
+        if(fechaDate && !isNaN(fechaDate) && fechaDate >= hace24h){
           retiros24hCSV.push({ alias, fecha: fechaDate.toISOString(), monto: Math.abs(cant) });
         }
       } catch(e){}
@@ -941,14 +968,61 @@ async function importarOperacionesCSV(){
   }
 
   // If any retiros in last 24h from the CSV, these users would already be caught
-  // by verificarRetiro24h via the solicitudes table for NODO-originated ops.
-  // For CSV-imported retiros that are recent, we log them to historial_ops for reference.
+  // by verificarRetiro24h via la tabla. Antes de insertar, deduplicamos contra
+  // retiros que YA están en historial_ops por otra vía (PANEL/AUTO/MANUAL/CHAT).
   let retiroMsg = '';
   if(retiros24hCSV.length){
+    // Traer retiros recientes en NODO (cualquier origen excepto LANDING) para deduplicar
+    const desde = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    let existentes = [];
+    try {
+      const { data: ex } = await supabaseClient
+        .from('historial_ops')
+        .select('usuario, monto, created_at')
+        .eq('pc_codigo', pc)
+        .eq('tipo', 'RETIRO')
+        .neq('origen', 'LANDING')
+        .gte('created_at', desde);
+      existentes = ex || [];
+    } catch(_){}
+    // También deduplicar contra LANDING ya importados (para no duplicar entre imports sucesivos)
+    let landingPrevios = [];
+    try {
+      const { data: lp } = await supabaseClient
+        .from('historial_ops')
+        .select('usuario, monto, created_at')
+        .eq('pc_codigo', pc)
+        .eq('tipo', 'RETIRO')
+        .eq('origen', 'LANDING')
+        .gte('created_at', desde);
+      landingPrevios = lp || [];
+    } catch(_){}
+    // Set de keys: usuario|monto — sin fecha, porque las fuentes pueden
+    // tener el mismo retiro con distinto created_at (Chunior vs CSV).
+    // La política es: 1 retiro por usuario en 24hs, así que cualquier combinación
+    // usuario+monto en la ventana de tiempo ya es suficiente para deduplicar.
+    const keyDe = function(usr, mt){
+      return String(usr).toLowerCase()+'|'+Math.round(Number(mt));
+    };
+    const yaExisten = new Set();
+    existentes.concat(landingPrevios).forEach(function(e){
+      if(e.usuario && e.monto != null) yaExisten.add(keyDe(e.usuario, e.monto));
+    });
+
+    let insertados = 0, duplicados = 0;
     for(const r of retiros24hCSV){
-      await registrarEnHistorial({usuario:r.alias, tipo:'RETIRO', monto:r.monto, origen:'LANDING', estado:'OK', notas:'Importado de CSV · '+r.fecha, pc_codigo:pc});
+      const key = keyDe(r.alias, r.monto);
+      if(yaExisten.has(key)){
+        duplicados++;
+        continue;
+      }
+      // Usar la fecha ORIGINAL del CSV como created_at (no la fecha de importación)
+      await registrarEnHistorial({usuario:r.alias, tipo:'RETIRO', monto:r.monto, origen:'LANDING', estado:'OK', notas:'Importado de CSV · '+r.fecha, pc_codigo:pc, created_at:r.fecha});
+      yaExisten.add(key);
+      insertados++;
     }
-    retiroMsg = '<br>⚠️ <b>'+retiros24hCSV.length+'</b> retiro/s en las últimas 24hs importados al historial (blacklist activa).';
+    retiroMsg = '<br>⚠️ <b>'+insertados+'</b> retiro/s en las últimas 24hs importados al historial (blacklist activa)' +
+                (duplicados > 0 ? ' · <b>'+duplicados+'</b> ya existían y se saltearon' : '') + '.';
   }
 
   setBox("opsCsvMsg",'<div class="ok-box">✅ Importación completada: <b>'+ok+' usuarios</b> marcados como verificados'+(err?(' | <b>'+err+' errores</b>'):'')+'.<br>Total operaciones procesadas: '+totalRows+'.'+retiroMsg+'</div>');
@@ -1381,11 +1455,27 @@ function confirmarRetiroDuplicado(check) {
       '</div>' +
       '<p style="color:#c0cad8;font-size:13px">Podés proceder si verificaste el caso del usuario.</p>';
 
-    abrirModal('⚠️ Retiro en 24hs', body, function(){ cerrarModal(); resolve(true); }, 'Proceder igualmente');
+    abrirModal('⚠️ Retiro en 24hs', body, null, 'Proceder igualmente');
 
-    // Cancelar → resolver false
+    var saveBtn   = document.getElementById('modalSaveBtn');
     var cancelBtn = document.querySelector('#modalOverlay .btn-gray');
-    if(cancelBtn) cancelBtn.onclick = function(){ cerrarModal(); resolve(false); };
+
+    function limpiarHandlers(){
+      // Restaurar el modal a estado neutro para que el próximo abrirModal funcione limpio
+      if(saveBtn)   saveBtn.onclick   = null;
+      if(cancelBtn) cancelBtn.onclick = function(){ cerrarModal(); };
+    }
+
+    if(saveBtn) saveBtn.onclick = function(){
+      limpiarHandlers();
+      cerrarModal();
+      resolve(true);
+    };
+    if(cancelBtn) cancelBtn.onclick = function(){
+      limpiarHandlers();
+      cerrarModal();
+      resolve(false);
+    };
   });
 }
 
@@ -1902,6 +1992,7 @@ function renderBillerasInicio(){
   if(!el) return;
   if(!billeteras.length){
     el.innerHTML = '<div class="small" style="color:var(--muted)">Sin billeteras configuradas.</div>';
+    renderEstadoLanding();
     return;
   }
   el.innerHTML = billeteras.map(function(b){
@@ -1914,6 +2005,7 @@ function renderBillerasInicio(){
       '<div class="bil-mini-saldo">'+money(saldo)+'</div>'+
       '</div>';
   }).join('');
+  renderEstadoLanding();
 }
 
 function poblarManualBilletera(){
@@ -1953,22 +2045,55 @@ async function soloConsultarUsuario(){
 }
 
 // ── Operación manual automatizada ─────────────────────────────────────────────
+let _operacionManualEnCurso = false;
 async function ejecutarOperacionManual(){
+  // Anti-doble-click: si ya hay una operación corriendo, ignorar
+  if(_operacionManualEnCurso){
+    toast("Ya hay una operación en curso, esperá que termine.", "yellow");
+    return;
+  }
   if(!window.ctrlElectron){ alert("La automatización solo funciona en la app de escritorio."); return; }
   const usuario    = (document.getElementById("manualUsuario")?.value||"").trim();
   const montoRaw   = (document.getElementById("manualMonto")?.value||"").trim();
   const bilId      = document.getElementById("manualBilletera")?.value||"";
   const res        = document.getElementById("manualResultado");
+  const btnEjecutar = document.querySelector('button.btn-primary[onclick="ejecutarOperacionManual()"]');
 
   if(!usuario){ toast("Ingresá un usuario.","red"); return; }
 
+  // Activar el lock + deshabilitar el botón visualmente
+  _operacionManualEnCurso = true;
+  if(btnEjecutar){ btnEjecutar.disabled = true; btnEjecutar.style.opacity = '0.6'; btnEjecutar.textContent = 'Procesando...'; }
+
+  let _lockLiberado = false;
+  // Timeout de seguridad: si la operación se cuelga (un await que nunca resuelve),
+  // a los 75s liberamos el lock y avisamos para que el operador reintente.
+  const _safetyTimer = setTimeout(() => {
+    if(_lockLiberado) return;
+    _lockLiberado = true;
+    _operacionManualEnCurso = false;
+    _wdUnlock(); // por si quedó el watchdog bloqueado
+    if(btnEjecutar){ btnEjecutar.disabled = false; btnEjecutar.style.opacity = ''; btnEjecutar.textContent = 'Ejecutar'; }
+    if(res) res.innerHTML = '<div class="err-box">⏱️ La operación se colgó (el script de agentes no respondió en 75s).<br>Revisá que la ventana de agentes esté abierta y reintentá.</div>';
+    toast('⏱️ Operación cancelada por timeout · reintentá', 'red');
+  }, 75000);
+
+  // Asegurar que se libere SIEMPRE al final, pase lo que pase
+  const _liberarLock = () => {
+    if(_lockLiberado) return;
+    _lockLiberado = true;
+    clearTimeout(_safetyTimer);
+    _operacionManualEnCurso = false;
+    if(btnEjecutar){ btnEjecutar.disabled = false; btnEjecutar.style.opacity = ''; btnEjecutar.textContent = 'Ejecutar'; }
+  };
+
   if(!montoRaw){
-    await soloConsultarUsuario();
+    try { await soloConsultarUsuario(); } finally { _liberarLock(); }
     return;
   }
 
   const monto = Number(montoRaw);
-  if(isNaN(monto)||monto===0){ toast("Monto inválido.","red"); return; }
+  if(isNaN(monto)||monto===0){ toast("Monto inválido.","red"); _liberarLock(); return; }
 
   const tipo    = monto > 0 ? "CARGA" : "RETIRO";
   const montoAbs= Math.abs(monto);
@@ -1981,7 +2106,7 @@ async function ejecutarOperacionManual(){
     if(check.bloqueado){
       if(res) res.innerHTML = '<div class="alert-box">⚠️ <b>'+escapeHtml(usuario)+'</b> tiene un retiro reciente.<br><span class="small">'+escapeHtml(check.mensaje)+'</span></div>';
       const proceder = await confirmarRetiroDuplicado(check);
-      if(!proceder){ if(res) res.innerHTML = ''; return; }
+      if(!proceder){ if(res) res.innerHTML = ''; _liberarLock(); return; }
     }
   }
 
@@ -1990,62 +2115,113 @@ async function ejecutarOperacionManual(){
     if(!await ensureDrexSession()){ toast("Sesión de backoffice requerida.","red"); return; }
 
     toast("Buscando "+usuario+"...","blue");
-    const busqueda = await callDrex("buscarUsuario", usuario);
+    _wdLock();
+    let busqueda;
+    try {
+      // CARGA: skipBalance → NO abrimos el modal acá. applyAmount (cargarSaldo)
+      //        abre el modal UNA sola vez y lee pre (input 0) + post (input 1).
+      // RETIRO: necesitamos el saldo antes para validar suficiencia → sin skip.
+      busqueda = await callDrex("buscarUsuario", usuario, { skipBalance: tipo === "CARGA" });
+    } finally {
+      _wdUnlock();
+    }
     if(!busqueda.exists){
       await registrarEnHistorial({usuario, tipo, monto:montoAbs, billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null, origen:'MANUAL', estado:'ERROR', notas:'Usuario no encontrado'});
       if(res) res.innerHTML = '<div class="err-box">❌ <b>'+escapeHtml(usuario)+'</b> no existe en el casino.</div>';
       toast(usuario+" no encontrado","red"); return;
     }
 
-    let resultado;
-    if(tipo==="CARGA"){
-      toast("Cargando "+money(montoAbs)+"...","blue");
-      resultado = await callDrex("cargarSaldo", montoAbs);
-    } else {
+    // RETIRO: chequeo de saldo previo
+    if(tipo === "RETIRO"){
       const saldo = busqueda.balance?.value ?? -1;
       if(saldo >= 0 && saldo < montoAbs){
         await registrarEnHistorial({usuario, tipo, monto:montoAbs, billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null, origen:'MANUAL', estado:'ERROR', notas:'Saldo insuficiente'});
         if(res) res.innerHTML = '<div class="err-box">⚠️ Saldo insuficiente: '+escapeHtml(busqueda.balance?.raw||'')+'</div>';
         toast("Saldo insuficiente","red"); return;
       }
-      toast("Retirando "+money(montoAbs)+"...","blue");
-      resultado = await callDrex("retirarSaldo", montoAbs);
     }
 
-    const ok     = resultado && resultado.ok !== false;
-    const est2   = ok ? "OK" : "ERROR";
-    const notas  = ok ? (busqueda.balance?.raw||null) : (resultado?.message||"error");
+    // ── Drex SECUENCIAL ── (esperamos confirmación antes de marcar como completada)
+    toast(tipo === "CARGA" ? "Cargando "+money(montoAbs)+"..." : "Retirando "+money(montoAbs)+"...", "blue");
 
-    // Calcular saldo del usuario después de la operación
-    const saldoPre = (typeof busqueda.balance?.value === 'number') ? busqueda.balance.value : null;
-    const saldoPost = (ok && saldoPre !== null)
-      ? saldoPre + (tipo === "CARGA" ? montoAbs : -montoAbs)
-      : null;
-
-    // Registrar en Chunior (carga positiva, retiro negativo) si la billetera tiene chunior_uid
-    let movimientoChunior = null;
-    if(ok && bil && bil.CHUNIOR_UID){
-      try {
-        toast("Registrando en Chunior...", "blue");
-        const rChu = tipo === "CARGA"
-          ? await registrarCargaEnChunior(bil.CHUNIOR_UID, montoAbs, usuario)
-          : await registrarRetiroEnChunior(bil.CHUNIOR_UID, montoAbs, usuario);
-        if(rChu.ok && rChu.movimientoId){
-          movimientoChunior = rChu.movimientoId;
-          toast("📋 "+tipo+" Chunior N° "+rChu.movimientoId, 'blue');
-        } else if(rChu.error){
-          toast('⚠️ '+tipo+' OK en casino pero falló en Chunior: '+rChu.error, 'red');
-        }
-      } catch(e){ toast('⚠️ Error registrando en Chunior: '+(e.message||''), 'red'); }
+    _wdLock(); // bloqueamos watchdog para que no navegue agentes mientras opera
+    let resultado;
+    try {
+      resultado = tipo === "CARGA"
+        ? await callDrex("cargarSaldo",  montoAbs)
+        : await callDrex("retirarSaldo", montoAbs);
+    } catch(e){
+      resultado = { ok:false, message: e.message || 'Error en Drex' };
+    } finally {
+      _wdUnlock();
     }
 
-    await registrarEnHistorial({usuario, tipo, monto:montoAbs, billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null, origen:'MANUAL', estado:est2, notas, chunior_movimiento_id:movimientoChunior, saldo_post:saldoPost});
+    const ok    = resultado && resultado.ok !== false;
+    const est2  = ok ? "OK" : "ERROR";
+    const notas = ok ? (resultado?.previousBalance?.raw || busqueda.balance?.raw || null) : (resultado?.message||"error");
+
+    // Saldo PRE: lo leemos siempre (ya sea del casino o de la búsqueda inicial).
+    // Saldo POST: SIEMPRE lo calculamos (pre + monto). Es lo más confiable.
+    // La lectura post del casino se usa SOLO para detectar duplicados como bonus.
+    const saldoPreCasino = (typeof resultado?.previousBalance?.value === 'number') ? resultado.previousBalance.value : null;
+    const saldoPre  = saldoPreCasino !== null ? saldoPreCasino : ((typeof busqueda.balance?.value === 'number') ? busqueda.balance.value : null);
+    const saldoPost = (ok && saldoPre !== null) ? saldoPre + (tipo === "CARGA" ? montoAbs : -montoAbs) : null;
+
+    // Detección de duplicado SOLO si la lectura post fue 100% confiable (no fallback)
+    // y muestra un múltiplo claro del monto (2x-4x). Si la lectura no funcionó, no
+    // disparamos — el historial igual queda bien con el cálculo manual.
+    const saldoPostLeido = (typeof resultado?.newBalance?.value === 'number') ? resultado.newBalance.value : null;
+    const postConfiable  = saldoPostLeido !== null && !resultado?.newBalance?.unchanged;
+    if(ok && tipo === "CARGA" && saldoPreCasino !== null && postConfiable){
+      const movido = saldoPostLeido - saldoPreCasino;
+      const veces  = Math.round(movido / montoAbs);
+      if(veces >= 2 && veces <= 4 && Math.abs(movido - veces * montoAbs) < 1){
+        toast('🚨 POSIBLE CARGA DUPLICADA ('+veces+'x) · saldo subió de '+money(saldoPreCasino)+' a '+money(saldoPostLeido)+' en una sola operación.', 'red');
+      }
+    }
+
+    // Registramos en historial AHORA con chunior_movimiento_id=null (se actualiza
+    // después cuando Chunior responda en background).
+    const filaHist = await registrarEnHistorial({usuario, tipo, monto:montoAbs, billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null, origen:'MANUAL', estado:est2, notas, chunior_movimiento_id:null, saldo_post:saldoPost, saldo_pre:saldoPre});
+
+    // ── Chunior EN BACKGROUND ── (solo si Drex confirmó OK)
+    const debeChunior = ok && !!(bil && bil.CHUNIOR_UID);
+    if(debeChunior){
+      const chuPromise = tipo === "CARGA"
+        ? registrarCargaEnChunior (bil.CHUNIOR_UID, montoAbs, usuario)
+        : registrarRetiroEnChunior(bil.CHUNIOR_UID, montoAbs, usuario);
+
+      chuPromise
+        .then(async function(rChu){
+          if(rChu && rChu.ok && rChu.movimientoId){
+            toast("📋 "+tipo+" Chunior N° "+rChu.movimientoId, 'blue');
+            // Actualizar el historial con el chunior_movimiento_id real
+            if(filaHist && filaHist.id){
+              try {
+                await supabaseClient.from('historial_ops')
+                  .update({ chunior_movimiento_id: rChu.movimientoId })
+                  .eq('id', filaHist.id);
+                if(typeof cargarHistorial === 'function') await cargarHistorial();
+              } catch(e){ console.warn('update chunior_movimiento_id falló:', e); }
+            }
+            // Recién acá comparamos fichas: Chunior YA confirmó su movimiento.
+            _watchdogTrigger(1500);
+          } else if(rChu && rChu.error){
+            toast('⚠️ '+tipo+' OK en casino pero falló en Chunior: '+rChu.error, 'red');
+            // Chunior falló → NO chequeamos fichas (sabríamos que hay discrepancia,
+            // no aporta info nueva).
+          }
+        })
+        .catch(function(e){ toast('⚠️ Error registrando en Chunior: '+(e.message||''), 'red'); });
+    }
+    // Si no hay Chunior involucrado (billetera sin CHUNIOR_UID), NO disparamos
+    // el watchdog: sabemos que va a haber discrepancia (Drex cambió, Chunior no).
 
     if(ok){
       if(bil && bil.ID_BILLETERA) await ajustarSaldoBilletera(bil.ID_BILLETERA, tipo==="CARGA" ? montoAbs : -montoAbs);
       if(res){
-        const tagChu = movimientoChunior ? ' · Chunior N° '+escapeHtml(movimientoChunior) : '';
-        res.innerHTML = '<div class="ok-box">✅ '+tipo+' de '+money(montoAbs)+' → <b>'+escapeHtml(usuario)+'</b> completada'+tagChu+'</div>';
+        // El N° de Chunior se actualiza después si llega — por ahora mostramos OK directo
+        res.innerHTML = '<div class="ok-box">✅ '+tipo+' de '+money(montoAbs)+' → <b>'+escapeHtml(usuario)+'</b> completada</div>';
       }
       toast(tipo+" completada: "+usuario+" · "+money(montoAbs), "green");
       // Auto-registrar al usuario en NODO si vino de una CARGA y no existe en la base (segundo plano)
@@ -2070,6 +2246,8 @@ async function ejecutarOperacionManual(){
     await registrarEnHistorial({usuario, tipo, monto:montoAbs, origen:'MANUAL', estado:'ERROR', notas:e.message||'excepción'});
     if(res) res.innerHTML = '<div class="err-box">Error inesperado: '+escapeHtml(e.message||'sin detalle')+'</div>';
     toast("Error: "+(e.message||"sin detalle"),"red");
+  } finally {
+    _liberarLock();
   }
 }
 
@@ -2160,9 +2338,10 @@ async function consultarRetirosUsuarioRealtime(){
   try {
     // Ventana de 24hs exactas — la política de retiro es 1 cada 24hs
     const desde = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    // No filtramos por pc_codigo: queremos detectar si el usuario retiró desde OTRA oficina
     const { data } = await supabaseClient
       .from("historial_ops")
-      .select("created_at, monto, billetera_nombre, estado, origen, chunior_movimiento_id")
+      .select("created_at, monto, billetera_nombre, estado, origen, chunior_movimiento_id, pc_codigo")
       .eq("usuario", usuario)
       .eq("tipo", "RETIRO")
       .gte("created_at", desde)
@@ -2177,18 +2356,48 @@ async function consultarRetirosUsuarioRealtime(){
       return;
     }
 
+    // ¿Hay alguno de otra oficina?
+    const otrasOficinas = data
+      .map(r => r.pc_codigo)
+      .filter(pc => pc && pc !== pcOperativa);
+    const tagCrossOficina = otrasOficinas.length > 0
+      ? '<div style="background:#3a2515;color:#ffa066;padding:6px 10px;border-radius:8px;margin-top:6px;font-size:12px">' +
+        '🚨 <b>Atención:</b> hay retiros de este usuario en otra oficina ('+escapeHtml([...new Set(otrasOficinas)].join(', '))+'). Verificá antes de proceder.' +
+        '</div>'
+      : '';
+
+    // Etiqueta de ORIGEN: aclara de dónde viene cada retiro.
+    //   LANDING = importado del CSV de operaciones de agentes (retiro real del jugador en la plataforma)
+    //   PANEL/AUTO/MANUAL/CHAT = procesado por NODO
+    const origenLabel = function(o){
+      const map = {
+        LANDING: { txt: 'CSV agentes', color: '#9aa4b2' },
+        PANEL:   { txt: 'NODO panel',  color: '#7aa2ff' },
+        AUTO:    { txt: 'NODO auto',   color: '#7aa2ff' },
+        MANUAL:  { txt: 'NODO manual', color: '#7aa2ff' },
+        CHAT:    { txt: 'NODO chat',   color: '#7aa2ff' }
+      };
+      const m = map[o] || { txt: (o||'?'), color: '#9aa4b2' };
+      return '<span style="font-size:9px;color:'+m.color+';border:1px solid '+m.color+'55;border-radius:4px;padding:1px 5px;margin-left:4px">'+escapeHtml(m.txt)+'</span>';
+    };
+
     let filas = '';
     data.forEach(function(r){
-      const fecha    = formatFecha(r.created_at);
+      const fecha     = formatFecha(r.created_at);
       const billetera = r.billetera_nombre || '—';
-      const tagErr   = r.estado === 'ERROR' ? ' <span style="color:var(--red)">❌</span>' : '';
+      const tagErr    = r.estado === 'ERROR' ? ' <span style="color:var(--red)">❌</span>' : '';
+      const esExterna = r.pc_codigo && r.pc_codigo !== pcOperativa;
+      const pcBadge   = r.pc_codigo
+        ? '<span class="badge '+(esExterna?'badge-danger':'badge-muted')+'" style="font-size:9px;padding:2px 6px;margin-left:4px">'+escapeHtml(r.pc_codigo)+'</span>'
+        : '';
       filas += '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid rgba(255,255,255,.08);font-size:12px">'
-        +   '<span style="color:#c0cad8;white-space:nowrap">'+escapeHtml(fecha)+tagErr+'</span>'
+        +   '<span style="color:#c0cad8;white-space:nowrap">'+escapeHtml(fecha)+tagErr+pcBadge+origenLabel(r.origen)+'</span>'
         +   '<span style="text-align:right"><b>'+money(r.monto)+'</b> <span class="small">· '+escapeHtml(billetera)+'</span></span>'
         + '</div>';
     });
     res.innerHTML = '<div class="alert-box" style="padding:10px;line-height:1.4">'
       + '<b>⚠️ Retiros de '+escapeHtml(usuario)+' en las últimas 24hs</b>'
+      + tagCrossOficina
       + '<div style="margin-top:4px">'+filas+'</div>'
       + '</div>';
   } catch(e){
@@ -2220,10 +2429,17 @@ function abrirModalCrearUsuario(){
     '<label style="color:#c0cad8;font-size:12px;font-weight:700">CLAVE INICIAL <span style="font-weight:400;text-transform:none;color:#777">(mín 6 caracteres)</span></label>' +
     '<input id="nuevoJugClave" type="text" placeholder="12345a" value="12345a" autocomplete="off" style="margin-bottom:4px">' +
     '<div id="nuevoJugRes" style="min-height:16px;margin-top:4px"></div>',
-    _ejecutarCrearUsuario,
+    null,
     'Crear y copiar'
   );
-  setTimeout(function(){ document.getElementById("nuevoJugUsuario")?.focus(); }, 80);
+  // Asignar handlers DESPUÉS de que abrirModal renderizó el overlay (evita contaminación de flujos anteriores)
+  setTimeout(function(){
+    const btn = document.getElementById('modalSaveBtn');
+    if(btn){ btn.onclick = _ejecutarCrearUsuario; }
+    const cancelBtn = document.querySelector('#modalOverlay .btn-gray');
+    if(cancelBtn){ cancelBtn.onclick = function(){ cerrarModal(); }; }
+    document.getElementById("nuevoJugUsuario")?.focus();
+  }, 30);
 }
 
 async function _ejecutarCrearUsuario(){
@@ -2253,6 +2469,23 @@ async function _ejecutarCrearUsuario(){
       // Auto-registrar el usuario recién creado en NODO en segundo plano
       _autoregistrarUsuarioSiFalta(aliasFinal);
       toast("Usuario " + aliasFinal + " creado · credenciales copiadas", "green");
+    } else if(r?.error === 'duplicado'){
+      // Alias duplicado → buscar y proponer alternativas que NO estén usadas
+      if(resEl) resEl.innerHTML = '<div class="err-box" style="padding:10px;margin-top:8px">❌ El alias <b>'+escapeHtml(usuario)+'</b> ya existe.<br><span class="small">Buscando alternativas disponibles...</span></div>';
+      if(btn){ btn.disabled = false; btn.textContent = 'Crear y copiar'; }
+      const libres = await _generarAlternativasAlias(usuario, 6);
+      let extra = '';
+      if(libres.length){
+        extra = '<div style="margin-top:8px;font-size:12px;color:#c0cad8">Alternativas libres en NODO (click para usar):</div>' +
+                '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">' +
+                  libres.map(function(a){
+                    return '<button class="mini-btn blue" style="font-size:12px" onclick="_usarAlternativaAlias(\''+escapeHtml(a)+'\')">'+escapeHtml(a)+'</button>';
+                  }).join('') +
+                '</div>';
+      } else {
+        extra = '<div style="margin-top:8px;font-size:12px;color:var(--muted)">No se generaron alternativas libres. Probá con otra base.</div>';
+      }
+      if(resEl) resEl.innerHTML = '<div class="err-box" style="padding:10px;margin-top:8px">❌ El alias <b>'+escapeHtml(usuario)+'</b> ya existe en el casino.'+extra+'</div>';
     } else {
       const msg = r?.message || "No se pudo crear el usuario.";
       if(resEl) resEl.innerHTML = '<div class="err-box" style="margin-top:8px">❌ ' + escapeHtml(msg) + '</div>';
@@ -2262,6 +2495,42 @@ async function _ejecutarCrearUsuario(){
     if(resEl) resEl.innerHTML = '<div class="err-box" style="margin-top:8px">Error: ' + escapeHtml(e.message||'sin detalle') + '</div>';
     if(btn){ btn.disabled = false; btn.textContent = 'Crear y copiar'; }
   }
+}
+
+// Genera N variantes del alias y descarta las que ya están en nuestra base de usuarios.
+// Estrategias: número creciente (1..99), sufijos comunes, año actual.
+async function _generarAlternativasAlias(base, cantidad){
+  const limpio = String(base||'').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if(!limpio) return [];
+  const ano = new Date().getFullYear();
+  const candidatos = [];
+  // Números crecientes
+  for(let i = 1; i <= 30; i++){
+    candidatos.push(limpio + i);
+  }
+  // Sufijos
+  const sufijos = ['ok','ar','mp','bet','777','999','x', String(ano), String(ano).slice(-2)];
+  for(const s of sufijos){
+    candidatos.push(limpio + s);
+  }
+  // Filtrar los que YA existen en nuestra base local (cualquier oficina, indistinto)
+  const unicos = [...new Set(candidatos)];
+  try {
+    const { data } = await supabaseClient
+      .from('usuarios')
+      .select('usuario')
+      .in('usuario', unicos);
+    const existentes = new Set((data||[]).map(function(u){ return u.usuario; }));
+    return unicos.filter(function(c){ return !existentes.has(c); }).slice(0, cantidad);
+  } catch(_){
+    return unicos.slice(0, cantidad);
+  }
+}
+
+// Pone una alternativa elegida en el input del modal
+function _usarAlternativaAlias(alias){
+  const input = document.getElementById("nuevoJugUsuario");
+  if(input){ input.value = alias; input.focus(); }
 }
 
 async function _resetClaveManual(usuario, clave){
@@ -2278,17 +2547,45 @@ async function _resetClaveManual(usuario, clave){
 let _historialData = [];
 let _historialCargado = false;
 
+// Columnas opcionales que pueden NO existir en la tabla (según versión del schema).
+// Si el insert falla por alguna de estas, las quitamos y reintentamos.
+const _HISTORIAL_COLS_OPCIONALES = ['saldo_pre', 'saldo_post', 'chunior_movimiento_id', 'reversion_de'];
+// Columnas que YA detectamos que no existen → no las mandamos más (evita 400 repetidos).
+const _HISTORIAL_COLS_INEXISTENTES = new Set();
+
 async function registrarEnHistorial(op){
-  const {usuario, tipo, monto=0, billetera_id=null, billetera_nombre=null, origen='MANUAL', estado='OK', notas=null, solicitud_id=null, reversion_de=null, chunior_movimiento_id=null, saldo_post=null} = op;
-  try {
-    await supabaseClient.from("historial_ops").insert({
-      usuario, tipo, monto, billetera_id, billetera_nombre,
-      operador: operador?.usuario || operador?.nombre || "",
-      origen, estado, notas, solicitud_id, reversion_de,
-      chunior_movimiento_id, saldo_post,
-      pc_codigo: pcOperativa
-    });
-  } catch(e){ console.warn("historial_ops write failed:", e); }
+  const {usuario, tipo, monto=0, billetera_id=null, billetera_nombre=null, origen='MANUAL', estado='OK', notas=null, solicitud_id=null, reversion_de=null, chunior_movimiento_id=null, saldo_post=null, saldo_pre=null, created_at=null, pc_codigo:pc_override=null} = op;
+  const insertRow = {
+    usuario, tipo, monto, billetera_id, billetera_nombre,
+    operador: operador?.usuario || operador?.nombre || "",
+    origen, estado, notas, solicitud_id, reversion_de,
+    chunior_movimiento_id, saldo_post, saldo_pre,
+    pc_codigo: pc_override || pcOperativa
+  };
+  if(created_at) insertRow.created_at = created_at;
+  // Quitar de entrada las columnas que ya sabemos que no existen (sin reintentar/ensuciar)
+  _HISTORIAL_COLS_INEXISTENTES.forEach(c => delete insertRow[c]);
+
+  // Intento con todas las columnas. Si falla por una columna inexistente, la marcamos
+  // como inexistente (para no volver a mandarla nunca) y reintentamos.
+  let intento = { ...insertRow };
+  for(let i = 0; i <= _HISTORIAL_COLS_OPCIONALES.length; i++){
+    try {
+      const { data, error } = await supabaseClient.from("historial_ops").insert(intento).select().single();
+      if(!error) return data;
+      const msg = (error.message || '') + ' ' + (error.details || '');
+      const colMencionada = _HISTORIAL_COLS_OPCIONALES.find(c => msg.includes(c) && (c in intento));
+      if(colMencionada){
+        console.warn('historial_ops: columna "'+colMencionada+'" no existe → no la mando más');
+        _HISTORIAL_COLS_INEXISTENTES.add(colMencionada); // recordar para futuros inserts
+        delete intento[colMencionada];
+        continue;
+      }
+      console.warn("historial_ops insert error:", error);
+      return null;
+    } catch(e){ console.warn("historial_ops write failed:", e); return null; }
+  }
+  return null;
 }
 
 async function cargarHistorial(){
@@ -2296,10 +2593,14 @@ async function cargarHistorial(){
   const el = document.getElementById("historialTable");
   if(el) el.innerHTML = '<div class="small" style="text-align:center;padding:20px;color:var(--muted)">Cargando...</div>';
 
+  // Excluimos origen='LANDING' porque son retiros importados de CSV (para el
+  // chequeo de 24hs) y no son operaciones reales que hizo el operador. Las
+  // solicitudes de landing actuales viven en su propio apartado.
   const { data, error } = await supabaseClient
     .from("historial_ops")
     .select("*")
     .eq("pc_codigo", pcOperativa)
+    .neq("origen", "LANDING")
     .order("created_at", { ascending: false })
     .limit(200);
 
@@ -2380,7 +2681,20 @@ function renderHistorial(lista){
     const claveBtn = (h.usuario && h.tipo !== 'RESET_CLAVE')
       ? '<button class="mini-btn yellow" onclick="blanquearClaveUsuario(\x27'+escapeHtml(String(h.usuario))+'\x27)" style="font-size:11px" title="Blanquear clave de '+escapeHtml(String(h.usuario))+' a 12345a">🔑 Clave</button>'
       : '';
-    const acciones = [chuniorBtn, claveBtn, undoBtn].filter(Boolean).join(' ') || '-';
+    // Botón de reintento. Aparece en dos casos:
+    //   1) estado ERROR → verifica Drex/Chunior y reintenta lo que falte
+    //   2) estado OK pero SIN chunior_movimiento_id y la billetera TIENE chunior_uid
+    //      → la carga entró en Drex pero NO se anotó en Chunior (queda discrepancia)
+    const _bilDeFila = billeteras.find(function(b){ return String(b.ID_BILLETERA) === String(h.billetera_id); });
+    const chuniorPendiente = (h.estado === 'OK')
+      && !h.chunior_movimiento_id
+      && (h.tipo === 'CARGA' || h.tipo === 'RETIRO')
+      && _bilDeFila && _bilDeFila.CHUNIOR_UID;
+    const necesitaRetry = (h.estado === 'ERROR' && h.usuario && (h.tipo === 'CARGA' || h.tipo === 'RETIRO')) || chuniorPendiente;
+    const retryBtn = necesitaRetry
+      ? '<button class="mini-btn red" onclick="reintentarOperacionFallida(\x27'+h.id+'\x27)" style="font-size:11px" title="'+(chuniorPendiente?'Falta anotar en Chunior — reintentar':'Verificar Drex/Chunior y reintentar lo que falte')+'">'+(chuniorPendiente?'⚠️ Falta Chunior':'↻ Reintentar')+'</button>'
+      : '';
+    const acciones = [retryBtn, chuniorBtn, claveBtn, undoBtn].filter(Boolean).join(' ') || '-';
     const saldoPostTd = (h.saldo_post !== null && h.saldo_post !== undefined && h.saldo_post !== '')
       ? '<span style="font-weight:700;color:#7ee07e">'+money(h.saldo_post)+'</span>'
       : '<span class="small">—</span>';
@@ -2399,6 +2713,155 @@ function renderHistorial(lista){
   });
   html += '</tbody></table></div>';
   el.innerHTML = html;
+}
+
+// Reintento INTERACTIVO de una operación con problemas.
+// En vez de adivinar si la op se hizo (no siempre tenemos datos confiables para eso),
+// le mostramos al operador el estado REAL de cada sistema y lo dejamos decidir:
+//   - Chunior: detectable por chunior_movimiento_id (null = NO registrado)
+//   - Drex/Agentes: leemos el saldo ACTUAL del jugador y lo mostramos. El operador
+//     ve el número y decide si la carga ya está reflejada o falta.
+async function reintentarOperacionFallida(historialId){
+  if(!window.ctrlElectron){ alert("La automatización solo funciona en la app de escritorio."); return; }
+  const { data: row, error } = await supabaseClient
+    .from('historial_ops').select('*').eq('id', historialId).single();
+  if(error || !row){ toast('No se encontró la fila del historial.', 'red'); return; }
+  const { usuario, tipo, monto, billetera_id, billetera_nombre, chunior_movimiento_id, saldo_pre, saldo_post } = row;
+
+  // Resolver billetera (ID → nombre → landing) para Chunior
+  let bil = billeteras.find(function(b){ return String(b.ID_BILLETERA) === String(billetera_id); });
+  if(!bil && billetera_nombre) bil = billeteras.find(function(b){ return String(b.NOMBRE_VISIBLE) === String(billetera_nombre); });
+  if(!bil) bil = getBilleraLanding();
+  const necesitaChunior = !!(bil && bil.CHUNIOR_UID);
+  let chuniorYaHecho     = !!chunior_movimiento_id;
+  let movChuVerificado   = chunior_movimiento_id;
+
+  // 1) Leer agentes (saldo) Y verificar Chunior EN PARALELO.
+  //    - Agentes: buscarUsuario (saldo actual)
+  //    - Chunior: si NO tenemos chunior_movimiento_id pero la billetera usa Chunior,
+  //      buscamos el movimiento en la lista real (cubre "se anotó pero no se guardó el N°")
+  toast('Verificando estado de '+usuario+' en agentes y Chunior...', 'blue');
+  if(!await ensureDrexSession()){ toast("Sesión backoffice requerida", "red"); return; }
+
+  _wdLock();
+  let b, chuVerif = { existe:false, movimientoId:null };
+  try {
+    const verifChuniorPromise = (necesitaChunior && !chuniorYaHecho)
+      ? verificarMovimientoEnChunior(usuario, monto)   // corre en la ventana de Chunior (paralelo)
+      : Promise.resolve({ existe:false, movimientoId:null });
+    // Agentes y Chunior usan ventanas distintas → realmente en paralelo
+    const [bRes, chuRes] = await Promise.all([
+      callDrex("buscarUsuario", usuario),
+      verifChuniorPromise
+    ]);
+    b = bRes;
+    chuVerif = chuRes || { existe:false, movimientoId:null };
+  } catch(e){
+    _wdUnlock(); toast('Error verificando: '+(e.message||''), 'red'); return;
+  }
+  _wdUnlock();
+  if(!b || !b.exists){ toast('Usuario '+usuario+' no encontrado en agentes', 'red'); return; }
+  const saldoActual = (typeof b.balance?.value === 'number') ? b.balance.value : null;
+
+  // Si la verificación en vivo encontró el movimiento → Chunior ya está hecho
+  if(chuVerif.existe){
+    chuniorYaHecho = true;
+    if(chuVerif.movimientoId) movChuVerificado = chuVerif.movimientoId;
+  }
+
+  // 2) Inferir si Drex ya hizo la op (solo si tenemos referencia confiable)
+  //    saldo esperado si la op se hizo = saldo_pre ± monto
+  const m = Number(monto);
+  const signo = tipo === 'CARGA' ? 1 : -1;
+  let drexInferido = 'desconocido'; // 'hecho' | 'pendiente' | 'desconocido'
+  if(saldoActual !== null && saldo_pre !== null && saldo_pre !== undefined){
+    const esperadoHecho     = Number(saldo_pre) + signo * m;
+    const esperadoPendiente = Number(saldo_pre);
+    if(Math.abs(saldoActual - esperadoHecho) < 1)        drexInferido = 'hecho';
+    else if(Math.abs(saldoActual - esperadoPendiente) < 1) drexInferido = 'pendiente';
+  } else if(saldoActual !== null && saldo_post !== null && saldo_post !== undefined){
+    if(Math.abs(saldoActual - Number(saldo_post)) < 1) drexInferido = 'hecho';
+  }
+
+  // 3) Modal con el estado real + checkboxes para decidir
+  const drexBadge = drexInferido === 'hecho'
+      ? '<span style="color:#7ee07e">✓ Parece HECHO</span>'
+      : drexInferido === 'pendiente'
+        ? '<span style="color:var(--red)">✗ Parece PENDIENTE</span>'
+        : '<span style="color:#e0c070">? No se pudo inferir</span>';
+  const chuniorBadge = chuniorYaHecho
+      ? '<span style="color:#7ee07e">✓ Registrado'+(movChuVerificado?' (N° '+escapeHtml(String(movChuVerificado))+')':' (verificado en lista)')+'</span>'
+      : (necesitaChunior ? '<span style="color:var(--red)">✗ NO registrado</span>' : '<span style="color:var(--muted)">N/A (billetera sin Chunior)</span>');
+
+  const body =
+    '<div style="font-size:13px;line-height:1.6;color:#c0cad8">' +
+      '<b>'+escapeHtml(usuario)+'</b> · '+tipo+' de '+money(m)+'<br><br>' +
+      '<div style="background:#0e1525;padding:10px;border-radius:10px;margin-bottom:12px">' +
+        '💰 Saldo actual en agentes: <b style="color:#fff">'+(saldoActual!==null?money(saldoActual):'—')+'</b><br>' +
+        (saldo_pre!=null ? '↳ Saldo antes de la op: '+money(saldo_pre)+'<br>' : '') +
+        '↳ Agentes: '+drexBadge+'<br>' +
+        '↳ Chunior: '+chuniorBadge +
+      '</div>' +
+      '<div style="font-weight:700;margin-bottom:6px">¿Qué querés reintentar?</div>' +
+      '<label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer">' +
+        '<input type="checkbox" id="retryDrex" '+(drexInferido==='pendiente'?'checked':'')+' style="width:16px;height:16px"> ' +
+        'Cargar/retirar en <b>agentes</b> '+(drexInferido==='hecho'?'<span style="color:var(--red);font-size:11px">(¡cuidado, parece hecho — duplicaría!)</span>':'')+
+      '</label>' +
+      (necesitaChunior && !chuniorYaHecho ?
+      '<label style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
+        '<input type="checkbox" id="retryChunior" checked style="width:16px;height:16px"> ' +
+        'Anotar en <b>Chunior</b> ('+escapeHtml(bil.NOMBRE_VISIBLE||'')+')' +
+      '</label>' : '') +
+    '</div>';
+
+  abrirModal('↻ Reintentar '+tipo, body, async function(){
+    const hacerDrex    = document.getElementById('retryDrex')?.checked;
+    const hacerChunior = document.getElementById('retryChunior')?.checked;
+    cerrarModal();
+
+    let drexOk = drexInferido === 'hecho', movChu = movChuVerificado;
+
+    // Drex
+    if(hacerDrex){
+      toast('Reintentando '+tipo+' en agentes...', 'blue');
+      _wdLock();
+      try {
+        const r = (tipo === 'CARGA')
+          ? await callDrex("cargarSaldo", m)
+          : await callDrex("retirarSaldo", m);
+        if(r && r.ok !== false){ drexOk = true; toast('✓ '+tipo+' OK en agentes', 'green'); }
+        else toast('✗ Agentes falló: '+(r?.message||''), 'red');
+      } catch(e){ toast('Error en agentes: '+(e.message||''), 'red'); }
+      finally { _wdUnlock(); }
+    }
+
+    // Chunior
+    if(hacerChunior && necesitaChunior){
+      toast('Anotando en Chunior...', 'blue');
+      try {
+        const rChu = (tipo === 'CARGA')
+          ? await registrarCargaEnChunior(bil.CHUNIOR_UID, m, usuario)
+          : await registrarRetiroEnChunior(bil.CHUNIOR_UID, m, usuario);
+        if(rChu && rChu.ok && rChu.movimientoId){ movChu = rChu.movimientoId; toast('✓ Chunior N° '+rChu.movimientoId, 'green'); }
+        else toast('✗ Chunior: '+(rChu?.error||'falló'), 'red');
+      } catch(e){ toast('Error Chunior: '+(e.message||''), 'red'); }
+    }
+
+    // Actualizar fila
+    const chuOk = !!movChu || !necesitaChunior;
+    const nuevoEstado = (drexOk && chuOk) ? 'OK' : 'ERROR';
+    try {
+      await supabaseClient.from('historial_ops').update({
+        estado: nuevoEstado,
+        chunior_movimiento_id: movChu,
+        notas: 'Reintento manual ['+new Date().toLocaleTimeString('es-AR',{timeZone:'America/Argentina/Buenos_Aires',hour:'2-digit',minute:'2-digit'})+']'
+      }).eq('id', historialId);
+    } catch(e){ console.warn('update reintento:', e); }
+
+    toast(nuevoEstado==='OK' ? '🎉 Reintento OK' : '⚠️ Reintento parcial', nuevoEstado==='OK'?'green':'yellow');
+    await cargarHistorial();
+    if(movChu) _watchdogTrigger(1500);
+  }, 'Ejecutar reintento');
 }
 
 async function deshacerOperacion(id, usuario, tipoOriginal, monto, bilId){
@@ -2482,6 +2945,68 @@ function getBilleraLanding(){
   return billeteras.find(b=>normalizar(b.SELECCIONADA_MANUAL)==="SI") || billeteras.find(b=>normalizar(b.ACTIVA)==="SI");
 }
 
+// Verifica la configuración del "EN LANDING" sin tener que abrir la landing del jugador.
+// Devuelve {ok, tipo:'ok'|'warn'|'err', mensaje, billetera}.
+function verificarConfigLanding(){
+  if(!billeteras || !billeteras.length){
+    return { ok:false, tipo:'warn', mensaje:'No hay billeteras configuradas para esta oficina.' };
+  }
+  const enLanding = billeteras.filter(b => normalizar(b.SELECCIONADA_MANUAL)==='SI');
+
+  if(enLanding.length === 0){
+    return { ok:false, tipo:'warn', mensaje:'⚠️ Ninguna billetera marcada como EN LANDING. El jugador no ve a dónde transferir.' };
+  }
+  if(enLanding.length > 1){
+    const nombres = enLanding.map(b => b.NOMBRE_VISIBLE || '?').join(', ');
+    return { ok:false, tipo:'err', mensaje:'❌ Hay '+enLanding.length+' billeteras marcadas como EN LANDING (debe ser solo 1): '+nombres };
+  }
+
+  const b = enLanding[0];
+
+  if(normalizar(b.ACTIVA) !== 'SI'){
+    return { ok:false, tipo:'err', mensaje:'❌ La billetera EN LANDING ('+(b.NOMBRE_VISIBLE||'?')+') está PAUSADA. El jugador no puede usarla.', billetera:b };
+  }
+
+  // Campos mínimos que la landing necesita mostrar al jugador
+  const faltantes = [];
+  if(!b.NOMBRE_VISIBLE) faltantes.push('Nombre');
+  if(!b.CBU_ALIAS)      faltantes.push('CBU/Alias');
+  if(!b.TITULAR)        faltantes.push('Titular');
+  if(!b.TIPO)           faltantes.push('Tipo');
+  if(faltantes.length){
+    return { ok:false, tipo:'warn', mensaje:'⚠️ La billetera EN LANDING ('+escapeHtml(b.NOMBRE_VISIBLE||'?')+') no tiene completos: <b>'+faltantes.join(', ')+'</b>. La landing va a mostrar incompleto.', billetera:b };
+  }
+
+  return {
+    ok: true,
+    tipo: 'ok',
+    mensaje: '✅ Landing OK · <b>'+escapeHtml(b.NOMBRE_VISIBLE)+'</b> ('+escapeHtml(b.TIPO)+') · Titular: '+escapeHtml(b.TITULAR)+' · CBU/Alias: <code style="background:#0c1018;padding:2px 6px;border-radius:4px">'+escapeHtml(b.CBU_ALIAS)+'</code>',
+    billetera: b
+  };
+}
+
+function renderEstadoLanding(){
+  const r = verificarConfigLanding();
+  const claseBox = r.tipo === 'ok' ? 'ok-box' : (r.tipo === 'err' ? 'err-box' : 'alert-box');
+
+  // Vista billeteras: cartel completo arriba del grid
+  const elFull = document.getElementById("estadoLanding");
+  if(elFull){
+    elFull.innerHTML = '<div class="'+claseBox+'" style="margin-top:8px;padding:12px;font-size:13px;line-height:1.4">'+r.mensaje+'</div>';
+  }
+
+  // Inicio: indicador compacto arriba de las billeteras
+  const elMini = document.getElementById("estadoLandingInicio");
+  if(elMini){
+    // Versión corta para el inicio
+    let mensajeCorto = r.mensaje;
+    if(r.tipo === 'ok' && r.billetera){
+      mensajeCorto = '✅ Landing OK · <b>'+escapeHtml(r.billetera.NOMBRE_VISIBLE)+'</b>';
+    }
+    elMini.innerHTML = '<div class="'+claseBox+'" style="margin-bottom:10px;padding:8px 12px;font-size:12px;line-height:1.3">'+mensajeCorto+'</div>';
+  }
+}
+
 async function ajustarSaldoBilletera(id, delta){
   if(!id || !delta) return;
   const b = billeteras.find(x=>x.ID_BILLETERA===id);
@@ -2493,7 +3018,7 @@ async function ajustarSaldoBilletera(id, delta){
 
 function renderBilleteras(){
   let html=`<div style="margin-bottom:14px"><button class="mini-btn blue" onclick="abrirNuevaBilletera()">+ Nueva billetera</button></div>`;
-  if(!billeteras.length){html+=`<div class="alert-box">No hay billeteras configuradas para esta PC.</div>`;setBox("walletsGrid",html);return}
+  if(!billeteras.length){html+=`<div class="alert-box">No hay billeteras configuradas para esta PC.</div>`;setBox("walletsGrid",html);renderEstadoLanding();return}
   billeteras.forEach(b=>{
     const activa=normalizar(b.ACTIVA)==="SI";
     const seleccionada=normalizar(b.SELECCIONADA_MANUAL)==="SI";
@@ -2517,6 +3042,7 @@ function renderBilleteras(){
     </div>`;
   });
   setBox("walletsGrid",html);
+  renderEstadoLanding();
 }
 
 function abrirEditarBilletera(id){
@@ -2616,6 +3142,7 @@ function abrirAprobarSolicitud(id){
     cerrarModal();
     toast("Carga aprobada","green");
     await registrarEnHistorial({usuario, tipo:'CARGA', monto:montoFinal, origen:'PANEL', estado:'OK', notas:obs||null, solicitud_id:id});
+    // Panel de aprobar carga no toca Chunior → no comparamos fichas
     await refrescarTodo(false);
   },"Aprobar");
 }
@@ -2686,6 +3213,8 @@ async function abrirCerrarRetiro(id){
       } catch(e){ toast('⚠️ Error en Chunior: '+(e.message||''), 'red'); }
     }
     await registrarEnHistorial({usuario, tipo:'RETIRO', monto:montoFinal, billetera_id:bilId||null, billetera_nombre:bilObjR.NOMBRE_VISIBLE||null, origen:'PANEL', estado:'OK', notas:obs||null, solicitud_id:id, chunior_movimiento_id:movChuniorP});
+    // Comparamos fichas solo si Chunior confirmó
+    if(movChuniorP) _watchdogTrigger(1500);
     await refrescarTodo(false);
   },"Pagar retiro");
 
@@ -2969,7 +3498,16 @@ function sonido(tipo="msg"){
 
 function abrirModal(title,body,saveFn,saveText="Guardar"){
   setBox("modalTitle",title);setBox("modalBody",body);
-  const btn=document.getElementById("modalSaveBtn");btn.innerText=saveText;btn.onclick=saveFn;
+  const btn=document.getElementById("modalSaveBtn");
+  btn.innerText=saveText;
+  btn.disabled=false;
+  btn.style.opacity='';
+  btn.style.display='';
+  // Siempre limpiar onclick antes de asignar el nuevo — evita contaminación entre modales
+  btn.onclick = saveFn || null;
+  // Restaurar el botón Cancelar al comportamiento por defecto
+  const cancelBtn=document.querySelector('#modalOverlay .btn-gray');
+  if(cancelBtn) cancelBtn.onclick=function(){ cerrarModal(); };
   document.getElementById("modalOverlay").classList.remove("hidden");
 }
 function cerrarModal(){document.getElementById("modalOverlay").classList.add("hidden")}
@@ -3009,16 +3547,23 @@ if(enElectron){
 // direcciones OPUESTAS con el mismo monto (carga: Drex -X, Chunior +X). Si no
 // se cumple, hay alguien moviendo plata fuera de NODO o una carga repetida.
 const _watchdog = {
-  drex: null,          // último saldo del agente leído
-  chunior: null,       // último total de Chunior leído (sum de billeteras)
+  drexFichas: null,      // último Saldo agente leído de Drex (= fichas del agente)
+  chuniorFichas: null,   // último "Saldo Fichas" leído de Chunior (mismo concepto)
   lastCheck: null,
   intervalId: null,
   alertaActiva: false,
   // Recovery
   drexLoginInProgress: false,   // evita abrir el modal de login Drex más de una vez
   chuniorFails: 0,              // contador de polls consecutivos sin Chunior
-  chuniorRecoveryScheduled: false
+  chuniorRecoveryScheduled: false,
+  // Lock: si una operación está usando la ventana de agentes, el watchdog
+  // NO debe hacer su poll (porque navega la página y rompe la operación).
+  busy: 0                        // contador (soporta operaciones anidadas)
 };
+
+// Helpers para que las operaciones se anuncien al watchdog
+function _wdLock(){   _watchdog.busy++; }
+function _wdUnlock(){ if(_watchdog.busy > 0) _watchdog.busy--; }
 
 function _wdParseMontoAR(s){
   const m = String(s||'').match(/\$\s*([\d.,]+)/);
@@ -3027,8 +3572,13 @@ function _wdParseMontoAR(s){
   return isNaN(n) ? null : n;
 }
 
+// Lee el saldo de fichas del agente desde los DOS sistemas:
+//   - Drex: agentBalance (lo que la página de agentes dice que tiene el agente)
+//   - Chunior: "Saldo Fichas: $X" del header (lo que Chunior dice que tiene el agente)
+// Estos DOS valores representan LO MISMO desde dos sistemas → deben matchear siempre.
+// Las billeteras MP son cash, no fichas — no entran acá.
 async function _watchdogLeer(){
-  let drex = null, chunior = null;
+  let drexFichas = null, chuniorFichas = null;
   let drexNeedsLogin = false;
   let chuniorReachable = false;
   try {
@@ -3036,7 +3586,7 @@ async function _watchdogLeer(){
       const r = await window.ctrlElectron.drexAutomation('obtenerSaldoAgente');
       if(r){
         if(r.needsLogin) drexNeedsLogin = true;
-        if(r.balance && typeof r.balance.value === 'number') drex = r.balance.value;
+        if(r.balance && typeof r.balance.value === 'number') drexFichas = r.balance.value;
       }
     }
   } catch(_){}
@@ -3044,32 +3594,22 @@ async function _watchdogLeer(){
     if(window.chunior){
       const data = await window.chunior.exec(
         '(function(){' +
-          'var total = 0; var bils = [];' +
-          'var nodos = document.querySelectorAll(".breadcrumbs .billetera, .billetera");' +
-          'var vistos = {};' +
-          'for(var i=0;i<nodos.length;i++){' +
-            'var el = nodos[i];' +
-            'var k = el.id || el.textContent;' +
-            'if(vistos[k]) continue; vistos[k] = true;' +
-            'var txt = (el.textContent||"");' +
-            'var m = txt.match(/\\$\\s*([\\d.,]+)/);' +
-            'if(m){' +
-              'var n = parseFloat(m[1].replace(/\\./g,"").replace(",","."));' +
-              'if(!isNaN(n)){ total += n; bils.push({id: el.id||null, monto: n}); }' +
-            '}' +
-          '}' +
-          // Reachable = la página de Chunior respondió con algo identificable
+          // Buscar "Saldo Fichas: $X" (con o sin "Fichas"/"Ficha" y con ":" opcional)
+          'var bodyText = document.body.textContent || "";' +
+          'var fichas = null;' +
+          'var sm = bodyText.match(/Saldo\\s*Fichas?\\s*:?\\s*\\$\\s*([\\d.,]+)/i);' +
+          'if(sm){ var n = parseFloat(sm[1].replace(/\\./g,"").replace(",",".")); if(!isNaN(n)) fichas = n; }' +
           'var ok = !!(document.querySelector(".breadcrumbs") || document.getElementById("id_username") || document.getElementById("id_pt"));' +
-          'return { total: total, count: bils.length, billeteras: bils, reachable: ok };' +
+          'return { fichas: fichas, reachable: ok };' +
         '})()'
       );
       if(data){
         chuniorReachable = !!data.reachable;
-        if(typeof data.total === 'number' && data.count > 0) chunior = data;
+        if(typeof data.fichas === 'number') chuniorFichas = data.fichas;
       }
     }
   } catch(_){}
-  return { drex, chunior, drexNeedsLogin, chuniorReachable };
+  return { drexFichas, chuniorFichas, drexNeedsLogin, chuniorReachable };
 }
 
 function _wdActualizarUI(estado, texto){
@@ -3079,7 +3619,8 @@ function _wdActualizarUI(estado, texto){
   ind.textContent = texto;
 }
 
-function _wdMostrarBanner(info){
+// Banner para discrepancia absoluta (Drex saldo agente != Chunior Saldo Fichas)
+function _wdMostrarBannerAbs(info){
   _watchdog.alertaActiva = true;
   let banner = document.getElementById("watchdogBanner");
   if(!banner){
@@ -3087,17 +3628,21 @@ function _wdMostrarBanner(info){
     banner.id = "watchdogBanner";
     document.body.appendChild(banner);
   }
-  const dDrex = info.deltaDrex >= 0 ? '+' + money(info.deltaDrex) : '−' + money(Math.abs(info.deltaDrex));
-  const dChu  = info.deltaChunior >= 0 ? '+' + money(info.deltaChunior) : '−' + money(Math.abs(info.deltaChunior));
+  const drexTxt    = money(info.drex);
+  const chuniorTxt = money(info.chunior);
+  const diffTxt    = (info.diff >= 0 ? '+' : '−') + money(Math.abs(info.diff));
   banner.innerHTML =
     '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
       '<span style="font-size:18px">⚠️</span>' +
-      '<span><b>Discrepancia de fichas detectada</b><br>' +
-        '<span style="font-weight:400;font-size:12px">Drex: ' + dDrex + ' · Chunior: ' + dChu + ' · ' + formatFecha(new Date().toISOString()) + '</span>' +
+      '<span><b>DISCREPANCIA de fichas detectada</b><br>' +
+        '<span style="font-weight:400;font-size:12px">' +
+          'Drex: <b>'+drexTxt+'</b> · Chunior: <b>'+chuniorTxt+'</b> · Diferencia: <b>'+diffTxt+'</b> · '+
+          formatFecha(new Date().toISOString()) +
+        '</span>' +
       '</span>' +
     '</div>' +
     '<button onclick="_wdDismissBanner()">Entendido</button>';
-  toast('⚠️ Discrepancia: Drex ' + dDrex + ' · Chunior ' + dChu, 'red');
+  toast('⚠️ Drex '+drexTxt+' ≠ Chunior '+chuniorTxt+' (Δ '+diffTxt+')', 'red');
 }
 
 function _wdDismissBanner(){
@@ -3107,6 +3652,13 @@ function _wdDismissBanner(){
 }
 
 async function _watchdogPoll(){
+  // Si una operación NODO está usando la ventana de agentes, NO pollear
+  // (un obtenerSaldoAgente navega la página y rompe la operación en curso).
+  if(_watchdog.busy > 0){
+    _wdActualizarUI('', '⏸ Operación en curso · próximo check al terminar');
+    return;
+  }
+
   const ahora = await _watchdogLeer();
 
   // ── Recovery Drex: sesión cerrada → modal de login ──────────────────────
@@ -3133,53 +3685,194 @@ async function _watchdogPoll(){
     }
     return;
   }
-  // Si llegó acá, Chunior responde — reset
   _watchdog.chuniorFails = 0;
   _watchdog.chuniorRecoveryScheduled = false;
 
-  // Si falta saldo de uno u otro pero la app está OK (ej: aún cargando), no comparamos
-  if(ahora.drex === null || !ahora.chunior){
-    _wdActualizarUI('', '⏸ Watchdog · ' + (ahora.drex === null ? 'sin Drex' : 'sin Chunior'));
+  // Si falta alguna lectura, mostrar estado pero no comparar
+  if(ahora.drexFichas === null || ahora.chuniorFichas === null){
+    const falta = ahora.drexFichas === null ? 'Drex' : 'Chunior "Saldo Fichas"';
+    _wdActualizarUI('', '⏸ Sin lectura de ' + falta);
     return;
   }
 
-  if(_watchdog.drex !== null && _watchdog.chunior !== null){
-    const dDrex     = ahora.drex - _watchdog.drex;
-    const dChunior  = ahora.chunior.total - _watchdog.chunior.total;
-    const TOL       = 1; // tolerancia $1 para errores de redondeo
-    const cambioDrex    = Math.abs(dDrex) > TOL;
-    const cambioChunior = Math.abs(dChunior) > TOL;
+  // ── Comparación ABSOLUTA: Drex saldo agente == Chunior Saldo Fichas ──
+  const diff = ahora.drexFichas - ahora.chuniorFichas;
+  const TOL  = 1; // $1 de tolerancia para redondeos
+  const matchOk = Math.abs(diff) <= TOL;
 
-    if(cambioDrex || cambioChunior){
-      // Operación legítima: Drex y Chunior se mueven en SENTIDOS OPUESTOS con el mismo monto
-      const opuestos = (dDrex * dChunior < 0) && (Math.abs(Math.abs(dDrex) - Math.abs(dChunior)) < TOL);
-      if(!opuestos){
-        console.warn('[watchdog] DISCREPANCIA · ΔDrex='+dDrex+' ΔChunior='+dChunior);
-        _wdMostrarBanner({ deltaDrex: dDrex, deltaChunior: dChunior });
-      } else {
-        console.log('[watchdog] operación normal · ΔDrex='+dDrex+' ΔChunior='+dChunior);
-      }
-    }
+  _watchdog.drexFichas    = ahora.drexFichas;
+  _watchdog.chuniorFichas = ahora.chuniorFichas;
+  _watchdog.lastCheck     = Date.now();
+
+  const horaCheck = new Date().toLocaleTimeString('es-AR', { timeZone:'America/Argentina/Buenos_Aires', hour:'2-digit', minute:'2-digit' });
+  const fmt = function(v){ return money(v).replace('$ ','$'); };
+
+  if(matchOk){
+    if(_watchdog.alertaActiva){ _wdDismissBanner(); }
+    _wdActualizarUI('ok',
+      '✓ Fichas OK · Drex '+fmt(ahora.drexFichas)+' = Chunior '+fmt(ahora.chuniorFichas)+' · '+horaCheck
+    );
+    _watchdog.pendingReconfirm = false;
+    return;
   }
 
-  _watchdog.drex = ahora.drex;
-  _watchdog.chunior = ahora.chunior;
-  _watchdog.lastCheck = Date.now();
-  const horaCheck = new Date().toLocaleTimeString('es-AR', { timeZone:'America/Argentina/Buenos_Aires', hour:'2-digit', minute:'2-digit' });
-  _wdActualizarUI(_watchdog.alertaActiva ? 'alerta' : 'ok',
-    (_watchdog.alertaActiva ? '⚠ ' : '✓ ') + 'Watchdog OK · ' + horaCheck);
+  // ── Discrepancia detectada — puede ser TRANSITORIA ──
+  // Chunior tarda en propagar el "Saldo Fichas" del breadcrumb. Re-leemos en 4s.
+  // Si en la 2da lectura coinciden, era transitoria. Si siguen sin coincidir → alerta REAL.
+  if(!_watchdog.pendingReconfirm){
+    _watchdog.pendingReconfirm = true;
+    console.log('[watchdog] discrepancia detectada · Drex='+ahora.drexFichas+' Chunior='+ahora.chuniorFichas+' diff='+diff+' · re-confirmando en 4s...');
+    _wdActualizarUI('', '⏳ Verificando fichas (puede ser transitorio)...');
+    setTimeout(async function(){
+      const recheck = await _watchdogLeer();
+      _watchdog.pendingReconfirm = false;
+      if(recheck.drexFichas === null || recheck.chuniorFichas === null){
+        _wdActualizarUI('', '⏸ Re-check abortado · sin lectura');
+        return;
+      }
+      const diffR    = recheck.drexFichas - recheck.chuniorFichas;
+      const horaR    = new Date().toLocaleTimeString('es-AR', { timeZone:'America/Argentina/Buenos_Aires', hour:'2-digit', minute:'2-digit' });
+      if(Math.abs(diffR) <= TOL){
+        // Era transitorio
+        console.log('[watchdog] discrepancia transitoria resuelta · diff_final=' + diffR);
+        _watchdog.drexFichas    = recheck.drexFichas;
+        _watchdog.chuniorFichas = recheck.chuniorFichas;
+        _wdActualizarUI('ok',
+          '✓ Fichas OK · Drex '+fmt(recheck.drexFichas)+' = Chunior '+fmt(recheck.chuniorFichas)+' · '+horaR+' (re-confirmado)'
+        );
+      } else {
+        // Discrepancia CONFIRMADA después del re-check
+        console.warn('[watchdog] DISCREPANCIA CONFIRMADA tras re-check · diff=' + diffR);
+        _watchdog.drexFichas    = recheck.drexFichas;
+        _watchdog.chuniorFichas = recheck.chuniorFichas;
+        _wdActualizarUI('alerta',
+          '⚠ DISCREPANCIA · Drex '+fmt(recheck.drexFichas)+' ≠ Chunior '+fmt(recheck.chuniorFichas)+' (Δ '+fmt(Math.abs(diffR))+')'
+        );
+        _wdMostrarBannerAbs({
+          drex: recheck.drexFichas,
+          chunior: recheck.chuniorFichas,
+          diff: diffR
+        });
+      }
+    }, 4000);
+  }
 }
 
 function _watchdogIniciar(){
-  if(_watchdog.intervalId) return;
-  setTimeout(_watchdogPoll, 8000);              // primera lectura para baseline
-  _watchdog.intervalId = setInterval(_watchdogPoll, 60000); // poll cada 60s
+  if(_watchdog.iniciado) return;
+  _watchdog.iniciado = true;
+  // Lectura inicial para tener baseline en la UI
+  setTimeout(_watchdogPoll, 8000);
+  // YA NO hay polling periódico — los saldos solo cambian con cargas/retiros,
+  // así que disparamos el check después de cada operación (ver _watchdogTrigger).
+}
+
+// Trigger debounced: se llama después de cada operación. Espera unos segundos
+// para que Chunior alcance a actualizar su "Saldo Fichas" y después compara.
+let _watchdogTriggerTimer = null;
+function _watchdogTrigger(delayMs){
+  if(_watchdog.busy > 0){
+    // Si hay otra operación en curso, postergamos
+    clearTimeout(_watchdogTriggerTimer);
+    _watchdogTriggerTimer = setTimeout(function(){ _watchdogTrigger(1500); }, 2000);
+    return;
+  }
+  clearTimeout(_watchdogTriggerTimer);
+  _watchdogTriggerTimer = setTimeout(_watchdogPoll, delayMs || 3000);
 }
 
 if(enElectron){
   // Arranca el watchdog 12s después del load (da tiempo a que la ventana de Chunior esté lista)
   setTimeout(_watchdogIniciar, 12000);
 }
+
+// ── Scroll snap con histéresis del Inicio ─────────────────────────────────────
+// Cuando el operador scrollea hacia abajo y CRUZARÍA la card de "Operación
+// manual", lo frena seco en esa altura. Para destrabar (subir y mostrar
+// billeteras/KPIs) hay que scrollear hacia ARRIBA dos veces seguidas. Bajar
+// más allá del snap requiere también dos scrolls (no se "escapa" con uno).
+(function initScrollSnap(){
+  const main = document.querySelector('.main');
+  if(!main) return;
+
+  const HYST  = 2;     // cantidad de scrolls "consumidos" antes de destrabar
+  const RESET = 600;   // ms sin scrollear para resetear contadores
+
+  let snapY      = 0;
+  let snapped    = false;
+  let upAttempts = 0;
+  let dnAttempts = 0;
+  let resetTimer = null;
+
+  function recalcSnapY(){
+    const target = document.getElementById('cardOperacionManual');
+    if(!target) return;
+    const targetTop = target.offsetTop;
+    const mainPad   = 12;
+    snapY = Math.max(0, targetTop - mainPad);
+  }
+
+  function resetCounters(){ upAttempts = 0; dnAttempts = 0; }
+
+  recalcSnapY();
+  window.addEventListener('resize', recalcSnapY);
+  const mo = new MutationObserver(() => { recalcSnapY(); });
+  mo.observe(document.body, { childList: true, subtree: true, characterData: false });
+
+  main.addEventListener('wheel', function(e){
+    if(snapY <= 0) return;
+    const viewInicioVisible = !document.getElementById('viewInicio')?.classList.contains('hidden');
+    if(!viewInicioVisible){ snapped = false; return; }
+
+    const y           = main.scrollTop;
+    const goingDown   = e.deltaY > 0;
+    const futureY     = y + e.deltaY;
+    // Detectar CRUCE del snap point en cualquier dirección
+    const cruzaAbajo  = goingDown && y < snapY && futureY >= snapY;
+    const cruzaArriba = !goingDown && y > snapY && futureY <= snapY;
+
+    clearTimeout(resetTimer);
+    resetTimer = setTimeout(resetCounters, RESET);
+
+    if(!snapped){
+      // No enganchado todavía: si la rueda nos quiere meter del otro lado
+      // del snap point, lo agarramos en seco.
+      if(cruzaAbajo){
+        e.preventDefault();
+        main.scrollTop = snapY; // instantáneo, sin smooth
+        snapped = true;
+        upAttempts = 0;
+        dnAttempts = 0;
+      }
+      // (cruzaArriba viniendo de abajo sin estar snapped no debería pasar
+      //  porque al pasar por snap going down ya nos enganchamos, pero por
+      //  las dudas no hacemos nada y dejamos pasar)
+    } else {
+      // Enganchado: cualquier scroll requiere HYST repeticiones
+      if(!goingDown){
+        upAttempts++;
+        dnAttempts = 0;
+        if(upAttempts >= HYST){
+          snapped = false;
+          upAttempts = 0;
+        } else {
+          e.preventDefault();
+          main.scrollTop = snapY; // re-fijar por si el navegador ya movió algo
+        }
+      } else {
+        dnAttempts++;
+        upAttempts = 0;
+        if(dnAttempts >= HYST){
+          snapped = false;
+          dnAttempts = 0;
+        } else {
+          e.preventDefault();
+          main.scrollTop = snapY; // re-fijar
+        }
+      }
+    }
+  }, { passive: false });
+})();
 
 // ── Acciones rápidas desde el chat ────────────────────────────────────────────
 function chatUsuarioActivo(){
@@ -3268,30 +3961,47 @@ async function callDrex(method, ...args){
   // crearUsuario / cambiarClave NO se tocan.
   if(method === 'buscarUsuario' && args.length > 0 && typeof args[0] === 'string'){
     const aliasFinal = await _resolverAliasParaCasino(args[0]);
-    return window.ctrlElectron.drexAutomation('buscarUsuario', aliasFinal);
+    // Reenviamos los args extra (ej: options { skipBalance: true })
+    return window.ctrlElectron.drexAutomation('buscarUsuario', aliasFinal, ...args.slice(1));
   }
   return window.ctrlElectron.drexAutomation(method, ...args);
 }
 
-// Si el alias confirmado por el casino no está en nuestra base de "usuarios", lo agrega.
-// Diseñado para correr en SEGUNDO PLANO: NO lanzar con await desde el flujo de carga.
+// Auto-registra o reconoce un usuario después de una operación exitosa.
+// Estrategia:
+//   1) Buscar el alias en TODA la tabla usuarios (sin filtrar por pc_codigo)
+//   2) Si existe en CUALQUIER pc → NO duplicar. Si la pc es distinta a la actual,
+//      avisar al operador con un toast informativo (cross-oficina detectado).
+//   3) Si NO existe en ninguna → crear en la pc actual con origen 'AUTO_CARGA'.
+// Corre en SEGUNDO PLANO: nunca usar await desde el flujo de carga.
 async function _autoregistrarUsuarioSiFalta(aliasCasino){
   if(!aliasCasino) return;
   try {
     const { data, error } = await supabaseClient
       .from('usuarios')
-      .select('id')
+      .select('id, pc_codigo, usuario')
       .eq('usuario', aliasCasino)
-      .limit(1);
+      .limit(5);
     if(error) return;
-    if(data && data.length) return; // ya está
+    if(data && data.length){
+      // Ya existe en alguna oficina. Si es DISTINTA a la actual, avisar.
+      const pcsExistentes = [...new Set(data.map(x => x.pc_codigo).filter(Boolean))];
+      const esDeOtraOficina = pcsExistentes.length > 0 && !pcsExistentes.includes(pcOperativa);
+      if(esDeOtraOficina){
+        const pcs = pcsExistentes.join(', ');
+        console.log('[auto-registro] "'+aliasCasino+'" pertenece a otra oficina: '+pcs);
+        toast('ℹ️ "'+aliasCasino+'" está registrado en oficina: '+pcs, 'yellow');
+      }
+      return;
+    }
+    // No existe en ninguna oficina → crear en la actual
     const ins = await supabaseClient.from('usuarios').insert({
       usuario:   aliasCasino,
       nombre:    aliasCasino,
       pc_codigo: pcOperativa,
       origen:    'AUTO_CARGA'
     });
-    if(!ins.error) console.log('[auto-registro] usuario "'+aliasCasino+'" agregado a la base');
+    if(!ins.error) console.log('[auto-registro] usuario "'+aliasCasino+'" agregado a la base ('+pcOperativa+')');
   } catch(_){}
 }
 
@@ -3355,6 +4065,9 @@ async function _ejecutarLoginDrex() {
   try {
     var r = await callDrex("iniciarSesion", user, pass);
     if(r && r.ok){
+      // Limpiar handlers ANTES de cerrar para que el próximo modal arranque limpio
+      const saveB = document.getElementById('modalSaveBtn');
+      if(saveB){ saveB.onclick = null; saveB.disabled = false; saveB.textContent = 'Guardar'; }
       cerrarModal();
       if(_drexLoginResolve){ _drexLoginResolve(true); _drexLoginResolve=null; }
     } else {
@@ -3648,9 +4361,11 @@ async function retirarSaldoRapido(usuario, monto){
     operador_usuario: operador?.usuario || operador?.nombre || "Sistema"
   }).catch(err => console.error("Error registrando retiro en solicitudes:", err));
 
-  // Saldo después del retiro
-  const saldoPreR  = (typeof b.balance?.value === 'number') ? b.balance.value : null;
-  const saldoPostR = (saldoPreR !== null) ? saldoPreR - monto : null;
+  // Saldo pre / post leídos por el casino (en el mismo modal del retiro)
+  const saldoPreCasinoR  = (typeof r?.previousBalance?.value === 'number') ? r.previousBalance.value : null;
+  const saldoPostCasinoR = (typeof r?.newBalance?.value === 'number')      ? r.newBalance.value      : null;
+  const saldoPreR  = saldoPreCasinoR  !== null ? saldoPreCasinoR  : (b.balance?.value ?? null);
+  const saldoPostR = saldoPostCasinoR !== null ? saldoPostCasinoR : (saldoPreR !== null ? saldoPreR - monto : null);
 
   // Registrar en historial de operaciones para que aparezca en el panel
   const bilR = getBilleraLanding();
@@ -3673,6 +4388,8 @@ async function retirarSaldoRapido(usuario, monto){
     chunior_movimiento_id: movChuniorR,
     saldo_post: saldoPostR
   });
+  // Recién comparamos fichas si Chunior confirmó el movimiento
+  if(movChuniorR) _watchdogTrigger(1500);
 
   toast(`Retiro completado · ${usuario} · $${monto.toLocaleString("es-AR")}`, "green");
   await window.ctrlElectron.navigateAgent();
@@ -3686,15 +4403,28 @@ async function cargarSaldoRapido(usuario, monto){
   toast(`Cargando $${monto} a ${usuario}...`,"blue");
   if(!await ensureDrexSession()){ toast("Sesión de backoffice requerida.","red"); return; }
 
-  const b = await callDrex("buscarUsuario", usuario);
+  // CARGA: no necesitamos balance → skipBalance evita abrir/cerrar modal extra
+  const b = await callDrex("buscarUsuario", usuario, { skipBalance: true });
   if(!b.exists){ toast(`Usuario "${usuario}" no encontrado.`,"red"); return; }
 
   const r = await callDrex("cargarSaldo", monto);
   if(r && r.ok === false){ toast("Error: "+(r.message||"falló"),"red"); return; }
 
-  // Saldo post-carga
-  const saldoPreC  = (typeof b.balance?.value === 'number') ? b.balance.value : null;
+  // Saldo PRE leído del casino o de la búsqueda. POST siempre calculado.
+  const saldoPreCasinoC = (typeof r?.previousBalance?.value === 'number') ? r.previousBalance.value : null;
+  const saldoPreC  = saldoPreCasinoC !== null ? saldoPreCasinoC : (b.balance?.value ?? null);
   const saldoPostC = (saldoPreC !== null) ? saldoPreC + monto : null;
+
+  // Detección de duplicado SOLO con lectura post confiable
+  const saldoPostLeidoC = (typeof r?.newBalance?.value === 'number') ? r.newBalance.value : null;
+  const postConfiableC  = saldoPostLeidoC !== null && !r?.newBalance?.unchanged;
+  if(saldoPreCasinoC !== null && postConfiableC){
+    const movido = saldoPostLeidoC - saldoPreCasinoC;
+    const veces  = Math.round(movido / monto);
+    if(veces >= 2 && veces <= 4 && Math.abs(movido - veces * monto) < 1){
+      toast('🚨 POSIBLE CARGA DUPLICADA ('+veces+'x) · saldo subió de '+money(saldoPreCasinoC)+' a '+money(saldoPostLeidoC), 'red');
+    }
+  }
 
   // Auto-registrar al usuario en NODO si no existe (segundo plano)
   if(b?.user) _autoregistrarUsuarioSiFalta(b.user);
@@ -3711,6 +4441,7 @@ async function cargarSaldoRapido(usuario, monto){
     estado: 'OK',
     saldo_post: saldoPostC
   });
+  // Sin registro en Chunior → no comparamos fichas (daría discrepancia segura)
 
   toast(`Carga completada · ${usuario} · $${monto.toLocaleString("es-AR")}`,"green");
   await window.ctrlElectron.navigateAgent();
@@ -3822,9 +4553,12 @@ async function ejecutarAutoRetiro(id){
         else if(rChu.error) toast('⚠️ Retiro OK pero falló en Chunior: '+rChu.error, 'red');
       } catch(e){ toast('⚠️ Error en Chunior: '+(e.message||''), 'red'); }
     }
-    const saldoPreAR  = (typeof b.balance?.value === 'number') ? b.balance.value : null;
-    const saldoPostAR = (saldoPreAR !== null) ? saldoPreAR - monto : null;
+    const saldoPreCasinoAR  = (typeof r?.previousBalance?.value === 'number') ? r.previousBalance.value : null;
+    const saldoPostCasinoAR = (typeof r?.newBalance?.value === 'number')      ? r.newBalance.value      : null;
+    const saldoPreAR  = saldoPreCasinoAR  !== null ? saldoPreCasinoAR  : (b.balance?.value ?? null);
+    const saldoPostAR = saldoPostCasinoAR !== null ? saldoPostCasinoAR : (saldoPreAR !== null ? saldoPreAR - monto : null);
     await registrarEnHistorial({usuario, tipo:'RETIRO', monto, billetera_id:bilR?bilR.ID_BILLETERA:null, billetera_nombre:bilR?bilR.NOMBRE_VISIBLE:null, origen:'AUTO', estado:'OK', solicitud_id:id, chunior_movimiento_id:movChuniorAR, saldo_post:saldoPostAR});
+    if(movChuniorAR) _watchdogTrigger(1500);
   }
   await window.ctrlElectron.navigateAgent();
   await refrescarTodo(false);
@@ -3846,7 +4580,8 @@ async function ejecutarAutoCarga(id){
   if(!await ensureDrexSession()){ toast("Sesión de backoffice requerida.","red"); return; }
 
   toast(`Buscando usuario ${usuario}...`,"blue");
-  const busqueda = await callDrex("buscarUsuario", usuario);
+  // CARGA auto: no necesitamos balance del jugador → evitamos el abrir/cerrar modal
+  const busqueda = await callDrex("buscarUsuario", usuario, { skipBalance: true });
   if(!busqueda.exists){
     await actualizarSolicitudSupabase(id, {
       estado: "RECHAZADA",
@@ -3902,11 +4637,25 @@ async function ejecutarAutoCarga(id){
     } catch(e){ toast('⚠️ Error registrando en Chunior: '+(e.message||''), 'red'); }
   }
 
-  const saldoPreAC  = (typeof busqueda.balance?.value === 'number') ? busqueda.balance.value : null;
+  // Saldo PRE leído del casino o busqueda. POST siempre calculado.
+  const saldoPreCasinoAC = (typeof resultado?.previousBalance?.value === 'number') ? resultado.previousBalance.value : null;
+  const saldoPreAC  = saldoPreCasinoAC !== null ? saldoPreCasinoAC : (busqueda.balance?.value ?? null);
   const saldoPostAC = (saldoPreAC !== null) ? saldoPreAC + monto : null;
+
+  // Duplicado: solo si post fue confiable
+  const saldoPostLeidoAC = (typeof resultado?.newBalance?.value === 'number') ? resultado.newBalance.value : null;
+  const postConfiableAC  = saldoPostLeidoAC !== null && !resultado?.newBalance?.unchanged;
+  if(saldoPreCasinoAC !== null && postConfiableAC){
+    const movidoAC = saldoPostLeidoAC - saldoPreCasinoAC;
+    const vecesAC  = Math.round(movidoAC / monto);
+    if(vecesAC >= 2 && vecesAC <= 4 && Math.abs(movidoAC - vecesAC * monto) < 1){
+      toast('🚨 POSIBLE CARGA DUPLICADA ('+vecesAC+'x) · saldo subió de '+money(saldoPreCasinoAC)+' a '+money(saldoPostLeidoAC), 'red');
+    }
+  }
   // Auto-registrar al usuario en NODO si no existe (segundo plano)
   if(busqueda?.user) _autoregistrarUsuarioSiFalta(busqueda.user);
   await registrarEnHistorial({usuario, tipo:'CARGA', monto, billetera_id:bilL?bilL.ID_BILLETERA:null, billetera_nombre:bilL?bilL.NOMBRE_VISIBLE:null, origen:'AUTO', estado:'OK', solicitud_id:id, chunior_movimiento_id:movimientoChunior, saldo_post:saldoPostAC});
+  if(movimientoChunior) _watchdogTrigger(1500);
   await window.ctrlElectron.navigateAgent();
   await refrescarTodo(false);
 }
@@ -4022,15 +4771,25 @@ function activarChunior(){
         const url = await window.chunior.getUrl();
         if(!url || url.includes('about:blank')) return;
         _setChuniorStatus(!url.includes('/login/'), url);
-        // Si está esperando selección de puesto y NODO ya está logueado, abrir modal
-        if(_nodoListo){
-          const ptData = await window.chunior.exec(
-            '(function(){var s=document.getElementById("id_pt");if(!s)return null;var o=Array.from(s.options).filter(function(x){return x.value!=="";}).map(function(x){return{value:x.value,text:x.text.trim()};});return{isPt:true,opts:o};})()'
-          );
-          if(ptData && ptData.isPt && ptData.opts.length > 0 && !window._chuniorPtModalOpen){
-            window._chuniorPtModalOpen = true;
-            _chuniorElegirPuesto(ptData.opts);
-          }
+        if(!_nodoListo) return; // todavía en el login inicial de NODO
+
+        // Inspeccionar el DOM de Chunior: ¿selector de puesto? ¿form de login?
+        const estado = await window.chunior.exec(
+          '(function(){' +
+            'var s=document.getElementById("id_pt");' +
+            'if(s){var o=Array.from(s.options).filter(function(x){return x.value!=="";}).map(function(x){return{value:x.value,text:x.text.trim()};});return{tipo:"pt", opts:o};}' +
+            // Form de login: #id_username presente (sesión cerrada del todo)
+            'if(document.getElementById("id_username")) return {tipo:"login"};' +
+            'return {tipo:"ok"};' +
+          '})()'
+        );
+
+        if(estado && estado.tipo === 'pt' && estado.opts.length > 0 && !window._chuniorPtModalOpen){
+          window._chuniorPtModalOpen = true;
+          _chuniorElegirPuesto(estado.opts);
+        } else if(estado && estado.tipo === 'login'){
+          // Sesión de Chunior cerrada del todo → pedir re-login (sin reiniciar NODO)
+          _mostrarModalReloginChunior();
         }
       } catch(e){}
     }, 3000);
@@ -4068,6 +4827,71 @@ function _setChuniorStatus(loggedIn, url){
   const bar = document.getElementById('chuniorStatusBar');
   if(dot) dot.textContent = loggedIn ? '🟢' : '🔴';
   if(bar) bar.textContent = loggedIn ? 'Sesión activa' : 'Sin sesión';
+}
+
+// ── Re-login de Chunior cuando la sesión se cae a mitad de la jornada ──────────
+// No guardamos la clave de Chunior (regla de seguridad), así que cuando la sesión
+// se cierra le pedimos al operador que la reingrese. Reusa validarLoginChunior.
+let _chuniorReloginAbierto = false;
+function _mostrarModalReloginChunior(){
+  if(_chuniorReloginAbierto) return;           // ya está abierto
+  if(window._chuniorPtModalOpen) return;       // el modal de puesto tiene prioridad
+  _chuniorReloginAbierto = true;
+
+  abrirModal(
+    '🔐 Sesión de Chunior cerrada',
+    '<div style="margin-bottom:10px;color:#c0cad8;font-size:13px">La sesión del backoffice de Chunior se cerró.<br>Reingresá tus credenciales para seguir registrando movimientos.</div>' +
+    '<label style="color:#c0cad8;font-size:12px;font-weight:700">USUARIO CHUNIOR</label>' +
+    '<input id="chuReUser" type="text" autocomplete="off" placeholder="(tu usuario de Chunior)" style="margin-bottom:12px" value="">' +
+    '<label style="color:#c0cad8;font-size:12px;font-weight:700">CONTRASEÑA</label>' +
+    '<input id="chuRePass" type="password" autocomplete="off" placeholder="(tu clave)" value="">' +
+    '<div id="chuReErr" style="color:var(--red);font-size:12px;margin-top:8px;min-height:16px"></div>',
+    null,
+    'Reconectar'
+  );
+
+  const btn = document.getElementById('modalSaveBtn');
+  if(btn) btn.onclick = _ejecutarReloginChunior;
+  const cancelBtn = document.querySelector('#modalOverlay .btn-gray');
+  if(cancelBtn) cancelBtn.onclick = function(){
+    cerrarModal();
+    _chuniorReloginAbierto = false;
+    toast('Chunior sigue sin sesión · los movimientos no se registrarán', 'red');
+  };
+  setTimeout(function(){
+    const u = document.getElementById('chuReUser');
+    const p = document.getElementById('chuRePass');
+    if(u){ u.focus(); u.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); p?.focus(); } }); }
+    if(p){ p.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); _ejecutarReloginChunior(); } }); }
+  }, 80);
+}
+
+async function _ejecutarReloginChunior(){
+  const user = (document.getElementById('chuReUser')?.value || '').trim();
+  const pass = (document.getElementById('chuRePass')?.value || '').trim();
+  const errEl = document.getElementById('chuReErr');
+  const btn = document.getElementById('modalSaveBtn');
+  if(!user || !pass){ if(errEl) errEl.textContent = 'Completá usuario y contraseña.'; return; }
+  if(btn){ btn.disabled = true; btn.textContent = 'Reconectando...'; }
+  if(errEl) errEl.textContent = '';
+  try {
+    const ok = await validarLoginChunior(user, pass);
+    if(ok){
+      const sb = document.getElementById('modalSaveBtn');
+      if(sb){ sb.onclick = null; sb.disabled = false; sb.textContent = 'Guardar'; }
+      cerrarModal();
+      _chuniorReloginAbierto = false;
+      toast('✅ Sesión de Chunior reconectada', 'green');
+      // Chequear si quedó esperando selección de puesto
+      setTimeout(function(){ _checkPuestoPostLogin(); }, 800);
+    } else {
+      if(errEl) errEl.textContent = 'Usuario o clave incorrectos (rechazado por Chunior).';
+      if(btn){ btn.disabled = false; btn.textContent = 'Reconectar'; }
+    }
+  } catch(e){
+    if(errEl) errEl.textContent = 'Error: ' + (e.message || 'sin detalle');
+    if(btn){ btn.disabled = false; btn.textContent = 'Reconectar'; }
+  }
 }
 
 function _chuniorElegirPuesto(opts){
@@ -4265,6 +5089,64 @@ async function sincronizarBilleterasChunior(silencioso){
 
   await cargarBilleteras(false);
   if(!silencioso) toast('Sincronización OK · '+actualizadas+' saldo(s) actualizado(s)', 'green');
+}
+
+// Verifica DIRECTAMENTE en la lista de movimientos de Chunior si ya existe un
+// movimiento que coincida con usuario (notas) + monto, en las últimas horas.
+// Esto cubre el caso "se anotó en Chunior pero NODO no guardó el N° de movimiento".
+// Usa el buscador del admin (?q=usuario) y lee la tabla #result_list.
+// Devuelve { existe:boolean, movimientoId:string|null }.
+async function verificarMovimientoEnChunior(usuario, monto){
+  if(!window.chunior || !usuario) return { existe:false, movimientoId:null };
+  const montoAbs = Math.abs(Number(monto));
+  try {
+    const listUrl = CHUNIOR_BASE + '/transacciones/movimientoficha/?q=' + encodeURIComponent(usuario);
+    await window.chunior.navigate(listUrl);
+    // Esperar a que cargue la tabla de resultados (o el "0 resultados")
+    const t0 = Date.now();
+    let listo = false;
+    while(Date.now() - t0 < 8000){
+      listo = await window.chunior.exec('(function(){return !!(document.getElementById("result_list")||document.querySelector(".paginator"));})()').catch(function(){return false;});
+      if(listo) break;
+      await new Promise(function(r){ setTimeout(r,250); });
+    }
+    if(!listo) return { existe:false, movimientoId:null };
+
+    // Leer las filas y buscar una que matchee usuario (notas) + monto (abs).
+    // Estructura del <tr>: .field-id > a (link con ID), .field-as_money (monto),
+    // .field-notas (usuario), .field-creation (fecha).
+    const res = await window.chunior.exec(
+      '(function(){' +
+        'var rows = document.querySelectorAll("#result_list tbody tr");' +
+        'var out = [];' +
+        'for(var i=0;i<rows.length;i++){' +
+          'var r = rows[i];' +
+          'var a = r.querySelector(".field-id a, th a");' +
+          'var idm = null; if(a){ var mm=(a.href||"").match(/movimientoficha\\/(\\d+)/); if(mm) idm=mm[1]; else idm=(a.textContent||"").trim(); }' +
+          'var montoTxt = (r.querySelector(".field-as_money")||{}).textContent || "";' +
+          'var notas = ((r.querySelector(".field-notas")||{}).textContent || "").trim();' +
+          'out.push({ id:idm, montoTxt:montoTxt, notas:notas });' +
+        '}' +
+        'return out;' +
+      '})()'
+    ).catch(function(){ return []; });
+
+    if(!res || !res.length) return { existe:false, movimientoId:null };
+
+    const normU = String(usuario).trim().toLowerCase();
+    for(const r of res){
+      const notasNorm = String(r.notas||'').trim().toLowerCase();
+      // El monto en la lista viene como "$ 1.500,00" (AR). Parseamos a número.
+      const mTxt = String(r.montoTxt||'').replace(/[^\d,.-]/g,'').replace(/\./g,'').replace(',','.');
+      const mNum = Math.abs(parseFloat(mTxt));
+      if(notasNorm === normU && !isNaN(mNum) && Math.abs(mNum - montoAbs) < 1){
+        return { existe:true, movimientoId: r.id || null };
+      }
+    }
+    return { existe:false, movimientoId:null };
+  } catch(e){
+    return { existe:false, movimientoId:null };
+  }
 }
 
 // Registra una carga en Chunior (movimiento de fichas) y devuelve el número de movimiento.

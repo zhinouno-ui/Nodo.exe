@@ -71,6 +71,18 @@ function setReactInputValue(input, value) {
   input.dispatchEvent(new Event('blur', { bubbles: true }));
 }
 
+// Inyecta valor + verifica que React lo aceptó. Si no, reintenta hasta `tries` veces.
+// Devuelve true si el valor quedó seteado, false si no.
+async function setReactInputAndVerify(input, value, tries = 4) {
+  const target = String(value);
+  for (let i = 0; i < tries; i++) {
+    setReactInputValue(input, target);
+    await delay(120); // ventana de verificación
+    if (String(input.value || '') === target) return true;
+  }
+  return false;
+}
+
 function clickElement(el) {
   if (!el) throw new Error('No se encontró el elemento clickeable.');
   el.scrollIntoView({ block: 'center', inline: 'center' });
@@ -171,77 +183,104 @@ function readBalanceFromPlayerRow(playerEl) {
   return null;
 }
 
-async function leerSaldoViaModal() {
-  async function cerrarModal() {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true, cancelable: true }));
-    await delay(400);
-    const cancelBtn = Array.from(visibleElements('button')).find(b => /cancelar|cancel|cerrar|close/i.test(b.textContent || ''));
-    if (cancelBtn) { clickElement(cancelBtn); await delay(300); }
+// Lee el saldo del jugador asumiendo que el modal de depósito YA está abierto.
+// No abre ni cierra nada. Si no encuentra nada devuelve {raw:'', value:0}.
+function _leerSaldoJugadorEnModalAbierto() {
+  // ── Estrategia 1: buscar por label "Balance Jugador" / "Jugador" ──────────
+  const allLabels = Array.from(document.querySelectorAll(
+    'label, .MuiInputLabel-root, .MuiFormLabel-root, legend, [class*="InputLabel"], [class*="label"], p, span'
+  )).filter(isVisible);
+
+  for (const label of allLabels) {
+    const text = (label.textContent || label.innerText || '').trim();
+    if (!/jugador/i.test(text)) continue;
+    const container = label.closest(
+      '.MuiFormControl-root, .MuiTextField-root, .MuiOutlinedInput-root, fieldset, .form-group, .MuiInputBase-root'
+    ) || label.parentElement;
+    if (!container) continue;
+    const inp = container.querySelector('input[disabled], input.Mui-disabled, input[readonly]');
+    if (inp && isVisible(inp) && /ARS/.test(inp.value || '')) {
+      return { raw: inp.value, value: parseMoney(inp.value) };
+    }
+    const formControl = label.closest('.MuiFormControl-root') || label.parentElement?.closest('.MuiFormControl-root');
+    if (formControl) {
+      const inp2 = formControl.querySelector('input[disabled], input.Mui-disabled, input[readonly]');
+      if (inp2 && isVisible(inp2) && /ARS/.test(inp2.value || '')) {
+        return { raw: inp2.value, value: parseMoney(inp2.value) };
+      }
+    }
   }
 
+  // ── Estrategia 2: ARS inputs → el de menor valor es el jugador ───────────
+  const arsInputs = Array.from(document.querySelectorAll(
+    'input[disabled], input.Mui-disabled, input[readonly]'
+  ))
+    .filter(isVisible)
+    .filter(el => /ARS/.test(el.value || ''));
+
+  if (arsInputs.length >= 2) {
+    const sorted = arsInputs.slice().sort((a, b) => parseMoney(a.value) - parseMoney(b.value));
+    return { raw: sorted[0].value, value: parseMoney(sorted[0].value) };
+  }
+  if (arsInputs.length === 1) {
+    return { raw: arsInputs[0].value, value: parseMoney(arsInputs[0].value) };
+  }
+  return { raw: '', value: 0 };
+}
+
+// Lee los DOS balances del jugador en el modal abierto (depósito o retiro).
+// El modal de Casinodrex tiene dos inputs disabled lado a lado:
+//   - Input 0 (DOM order): saldo PREVIO / actual del jugador
+//   - Input 1 (DOM order): saldo POSTERIOR (preview cuando hay monto tipeado, o
+//                          actual después de Aplicar)
+// Si hay un tercer input ARS (balance agente) lo descartamos por ser el más alto.
+// Devuelve { pre, post }, cada uno con { raw, value } o null si no se encontró.
+function _leerBalancesEnModalDeposito() {
+  const inputs = Array.from(document.querySelectorAll(
+    'input[disabled], input.Mui-disabled, input[readonly]'
+  ))
+    .filter(isVisible)
+    .filter(el => /ARS/.test(el.value || ''));
+
+  if (inputs.length === 0) return { pre: null, post: null };
+
+  // Si hay 3+ inputs ARS, el de mayor valor es el balance del AGENTE → lo descartamos
+  let candidates = inputs;
+  if (inputs.length >= 3) {
+    const sorted = [...inputs].sort((a, b) => parseMoney(b.value) - parseMoney(a.value));
+    const agente = sorted[0];
+    candidates = inputs.filter(el => el !== agente);
+  }
+
+  // Ordenar por posición en el DOM (input 0 = pre, input 1 = post)
+  candidates.sort((a, b) => {
+    const pos = a.compareDocumentPosition(b);
+    return (pos & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1;
+  });
+
+  return {
+    pre:  candidates[0] ? { raw: candidates[0].value, value: parseMoney(candidates[0].value) } : null,
+    post: candidates[1] ? { raw: candidates[1].value, value: parseMoney(candidates[1].value) } : null
+  };
+}
+
+// Abre el modal de depósito (circle-plus) y devuelve el saldo PRE del jugador.
+// NO cierra el modal — el caller decide qué hacer.
+async function abrirModalDepositoYLeerSaldo() {
+  clickButtonByIcon('circle-plus');
+  await delay(800);
+  const balances = _leerBalancesEnModalDeposito();
+  return balances.pre || _leerSaldoJugadorEnModalAbierto();
+}
+
+// Versión completa: abre, lee, cierra. Mantiene el comportamiento histórico.
+async function leerSaldoViaModal() {
   try {
-    clickButtonByIcon('circle-plus');
-    await delay(800); // margen extra para que React monte los inputs
-
-    // ── Estrategia 1: buscar por label "Balance Jugador" / "Jugador" ──────────
-    // El modal tiene dos inputs ARS: "Balance Agente" y "Balance Jugador"
-    // Recorremos todos los labels/fieldsets para encontrar el de jugador
-    const allLabels = Array.from(document.querySelectorAll(
-      'label, .MuiInputLabel-root, .MuiFormLabel-root, legend, [class*="InputLabel"], [class*="label"], p, span'
-    )).filter(isVisible);
-
-    for (const label of allLabels) {
-      const text = (label.textContent || label.innerText || '').trim();
-      if (!/jugador/i.test(text)) continue;
-      // Sube al contenedor del campo (MuiFormControl, MuiTextField, etc.)
-      const container = label.closest(
-        '.MuiFormControl-root, .MuiTextField-root, .MuiOutlinedInput-root, fieldset, .form-group, .MuiInputBase-root'
-      ) || label.parentElement;
-      if (!container) continue;
-      // Busca el input deshabilitado con ARS dentro del contenedor o cerca
-      const inp = container.querySelector('input[disabled], input.Mui-disabled, input[readonly]');
-      if (inp && isVisible(inp) && /ARS/.test(inp.value || '')) {
-        const balance = { raw: inp.value, value: parseMoney(inp.value) };
-        await cerrarModal();
-        return balance;
-      }
-      // También busca en el padre del label o el siguiente sibling de la forma MUI
-      const formControl = label.closest('.MuiFormControl-root') || label.parentElement?.closest('.MuiFormControl-root');
-      if (formControl) {
-        const inp2 = formControl.querySelector('input[disabled], input.Mui-disabled, input[readonly]');
-        if (inp2 && isVisible(inp2) && /ARS/.test(inp2.value || '')) {
-          const balance = { raw: inp2.value, value: parseMoney(inp2.value) };
-          await cerrarModal();
-          return balance;
-        }
-      }
-    }
-
-    // ── Estrategia 2: todos los ARS inputs → elegir el de MENOR valor ─────────
-    // El saldo del jugador siempre es << saldo del agente
-    const arsInputs = Array.from(document.querySelectorAll(
-      'input[disabled], input.Mui-disabled, input[readonly]'
-    ))
-      .filter(isVisible)
-      .filter(el => /ARS/.test(el.value || ''));
-
-    if (arsInputs.length >= 2) {
-      const sorted = arsInputs.slice().sort((a, b) => parseMoney(a.value) - parseMoney(b.value));
-      const playerInput = sorted[0]; // menor valor = jugador
-      const balance = { raw: playerInput.value, value: parseMoney(playerInput.value) };
-      await cerrarModal();
-      return balance;
-    }
-    if (arsInputs.length === 1) {
-      const balance = { raw: arsInputs[0].value, value: parseMoney(arsInputs[0].value) };
-      await cerrarModal();
-      return balance;
-    }
-
-    await cerrarModal();
-    return { raw: '', value: 0 };
+    return await abrirModalDepositoYLeerSaldo();
   } catch (_) {
     return { raw: '', value: 0 };
+  } finally {
+    await cerrarModalActual();
   }
 }
 
@@ -318,6 +357,15 @@ function pageNeedsLogin() {
   // URL apunta a una ruta de login
   if (/login|signin|sign-in/i.test(window.location.href)) return true;
 
+  // /new_user: la página tiene un input[type=password] (clave del nuevo jugador),
+  // pero NO es la pantalla de login. La reconocemos como página interna válida.
+  if (/\/new_user/i.test(window.location.href)) {
+    const tieneFormulario = document.querySelector('input[name="alias"]')
+                         || document.querySelector('input[name="password"][type="password"]')
+                         || /nuevo\s+jugador/i.test(document.body.textContent || '');
+    if (tieneFormulario) return false;
+  }
+
   // Botón "ENTRAR" visible sin botón de búsqueda = pantalla de login
   const hasSearch = document.querySelector(SELECTORS.searchButton) || firstVisible(SELECTORS.playerAlias);
   if (hasSearch) return false;
@@ -327,14 +375,43 @@ function pageNeedsLogin() {
   return Boolean(entrarBtn || password);
 }
 
-// Si aparece el modal de sesión inválida, NO intenta cerrarlo: refresca la página
-// para volver al login del backoffice (que es lo que pidió el operador).
-// Programa el reload diferido para que la IPC pueda responder antes de que se vaya la página.
+// Maneja el modal de sesión inválida. Estrategia:
+//   1) Si el modal tiene un botón "Accept" / "Cerrar" / "OK" visible → lo clickea
+//      (el modal mismo redirige al login del casino, mejor que recargar a mano)
+//   2) Si no hay botón → fallback: navega a USER_SEARCH_URL para forzar el login screen
+// Espera hasta que el modal desaparezca y que aparezca el form de login.
 async function cerrarModalSesionInvalida() {
-  if (!detectarModalSesionInvalida()) return false;
-  setTimeout(() => {
-    try { window.location.assign(USER_SEARCH_URL); } catch (_) {}
-  }, 200);
+  const modal = detectarModalSesionInvalida();
+  if (!modal) return false;
+
+  // Buscar el botón dentro del modal: "Accept", "Cerrar", "OK" o el .btn-primary visible
+  const buttons = Array.from(modal.querySelectorAll('button, [role="button"], input[type="submit"], a.btn'));
+  const accept = buttons.find(b => {
+    if (!isVisible(b)) return false;
+    const t = ((b.textContent || b.value || '') + '').trim().toLowerCase();
+    return /accept|aceptar|cerrar|close|ok/.test(t);
+  }) || buttons.find(isVisible);
+
+  if (accept) {
+    try { clickElement(accept); } catch (_) {}
+  } else {
+    // Sin botón: fallback al reload diferido
+    setTimeout(() => { try { window.location.assign(USER_SEARCH_URL); } catch (_) {} }, 200);
+  }
+
+  // Esperar a que el modal desaparezca (hasta 6 segundos)
+  const tFin = Date.now() + 6000;
+  while (Date.now() < tFin) {
+    await delay(180);
+    if (!detectarModalSesionInvalida()) break;
+  }
+  // Y esperar a que aparezca el form de login o se cargue alguna página interna
+  const tFin2 = Date.now() + 6000;
+  while (Date.now() < tFin2) {
+    await delay(180);
+    if (document.querySelector('input[type="password"]')) break;
+    if (document.querySelector(SELECTORS.searchButton)) break;
+  }
   return true;
 }
 
@@ -374,50 +451,65 @@ async function buscarUsuario(usuario, options = {}) {
   if (ready.needsLogin) return ready;
 
   const searchInput = await waitFor(findSearchInput, options.timeout || DEFAULT_TIMEOUT);
-  setReactInputValue(searchInput, String(usuario).trim());
-  await delay();
-
-  clickElement(await waitFor(() => firstVisible(SELECTORS.searchButton), options.timeout || DEFAULT_TIMEOUT));
+  const wantedClean = String(usuario).trim();
+  // Inyecta con verificación: si React no aceptó el valor a los 120ms, reintenta.
+  const seteado = await setReactInputAndVerify(searchInput, wantedClean, 4);
+  if (!seteado) {
+    return { ok: false, exists: false, user: wantedClean, message: 'El campo de búsqueda no aceptó el alias después de varios intentos.' };
+  }
 
   const wanted = String(usuario).trim();
-
-  await waitFor(() => {
-    const noData = firstVisible(SELECTORS.noResults);
-    const player = firstVisible(SELECTORS.playerAlias);
-    return noData || player;
-  }, options.timeout || DEFAULT_TIMEOUT);
-
-  // Re-chequea login por si el timeout ocultó una redirección
-  await cerrarModalSesionInvalida();
-  if (pageNeedsLogin()) return status();
-
-  const noResults = firstVisible(SELECTORS.noResults);
-  if (noResults) {
-    return { ok: true, exists: false, user: wanted, message: normalizeText(noResults.textContent) };
-  }
-
-  const player = firstVisible(SELECTORS.playerAlias);
-  const playerAlias = normalizeText(player ? player.textContent : '');
-
-  // Match exacto: normaliza quitando acentos, espacios y comparando en minúsculas
   function normAlias(s) {
-    return s.toLowerCase().replace(/[\s ]+/g, '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+    return String(s || '').toLowerCase().normalize('NFD').replace(new RegExp('[\u0300-\u036f]','g'), '').replace(/\s+/g, '');
   }
-  const exactMatch = normAlias(playerAlias) === normAlias(wanted);
+  const wantedNorm = normAlias(wanted);
 
-  if (!exactMatch) {
-    return {
-      ok: true,
-      exists: false,
-      user: playerAlias,
-      message: `El alias encontrado "${playerAlias}" no coincide exactamente con "${wanted}".`
-    };
+  // Click buscar y esperar el resultado QUE COINCIDE con lo buscado.
+  // Ignoramos resultados viejos (de una busqueda anterior) que tardan en limpiarse.
+  clickElement(await waitFor(() => firstVisible(SELECTORS.searchButton), options.timeout || DEFAULT_TIMEOUT));
+  await delay(350);
+
+  const TIMEOUT = options.timeout || DEFAULT_TIMEOUT;
+  const inicioBusqueda = now();
+  let matchedAlias = null;
+  let huboNoResults = false;
+
+  while (now() - inicioBusqueda < TIMEOUT) {
+    await cerrarModalSesionInvalida();
+    if (pageNeedsLogin()) return status();
+    const players = visibleElements(SELECTORS.playerAlias);
+    const match = players.find(el => normAlias(normalizeText(el.textContent)) === wantedNorm);
+    if (match) { matchedAlias = normalizeText(match.textContent); break; }
+    if (firstVisible(SELECTORS.noResults)) {
+      const m2 = visibleElements(SELECTORS.playerAlias).find(el => normAlias(normalizeText(el.textContent)) === wantedNorm);
+      if (m2) { matchedAlias = normalizeText(m2.textContent); break; }
+      huboNoResults = true; break;
+    }
+    await delay(180);
   }
 
-  // Lee saldo abriendo el modal de depósito (más confiable que leer de la fila)
-  const balance = await leerSaldoViaModal();
+  if (!matchedAlias) {
+    return { ok: true, exists: false, user: wanted, message: huboNoResults ? ('Sin resultados para ' + wanted) : 'No aparecio el usuario buscado.' };
+  }
+  const playerAlias = matchedAlias;
 
-  return { ok: true, exists: true, user: playerAlias, balance };
+  // Modos de lectura de balance:
+  //   - options.skipBalance      → no leer (no abre modal)
+  //   - options.keepDepositModalOpen → abrir modal, leer, DEJAR ABIERTO
+  //     (el caller va a llamar cargarSaldo con modalAlreadyOpen y reusar el modal)
+  //   - default                  → abrir, leer, cerrar
+  let balance = null;
+  let modalLeftOpen = false;
+  if (options.skipBalance) {
+    // nada
+  } else if (options.keepDepositModalOpen) {
+    balance = await abrirModalDepositoYLeerSaldo();
+    modalLeftOpen = true;
+  } else {
+    balance = await leerSaldoViaModal();
+  }
+
+  return { ok: true, exists: true, user: playerAlias, balance, modalLeftOpen };
 }
 
 async function openMovementModal(iconName, options = {}) {
@@ -453,8 +545,10 @@ async function applyAmount(iconName, amount, actionName, options = {}) {
   // Espera a que el modal termine de renderizar (React necesita tiempo)
   await delay(500);
 
-  // Re-lee el balance directamente del modal (más confiable que el de openMovementModal)
-  const balance = readUserBalance() || opened.balance || { raw:'', value:0 };
+  // El modal tiene DOS inputs disabled del jugador: pre y post.
+  // Leemos ambos por orden DOM. El primero es el saldo actual (PRE).
+  const balancesAntes = _leerBalancesEnModalDeposito();
+  const balance = balancesAntes.pre || _leerSaldoJugadorEnModalAbierto() || opened.balance || { raw:'', value:0 };
 
   // Para retiros: verifica saldo suficiente (sólo si hay un balance válido conocido)
   if (actionName === 'retiro' && balance && balance.value > 0) {
@@ -484,9 +578,20 @@ async function applyAmount(iconName, amount, actionName, options = {}) {
   if (applyButton.disabled) throw new Error('El botón "Aplicar" está deshabilitado (¿monto inválido?).');
   clickElement(applyButton);
 
-  // Espera al resultado y lee el saldo nuevo
-  await delay(900);
-  const newBalance = readUserBalance() || readVisibleBalance();
+  // El segundo input del modal (DOM order #1) muestra el saldo POSTERIOR.
+  // Antes de Aplicar es un preview (pre + monto). Después de Aplicar el casino
+  // lo actualiza al saldo real. Esperamos un poco y leemos.
+  await delay(1500);
+  const balancesDespues = _leerBalancesEnModalDeposito();
+  let newBalance;
+  if (balancesDespues.post && balancesDespues.post.raw) {
+    newBalance = balancesDespues.post;
+  } else if (balancesDespues.pre && balancesDespues.pre.raw && Math.abs(balancesDespues.pre.value - balance.value) > 0.01) {
+    // Fallback: si el modal cerró y solo queda un input que cambió → ese es el post
+    newBalance = balancesDespues.pre;
+  } else {
+    newBalance = { raw: balance.raw, value: balance.value, unchanged: true };
+  }
 
   return {
     ok: true,
@@ -553,32 +658,49 @@ async function crearUsuario(alias, password, options = {}) {
 
   const aliasInput = await waitFor(() => firstVisible('input[name="alias"]'), options.timeout || DEFAULT_TIMEOUT);
   aliasInput.click(); await delay(150);
-  setReactInputValue(aliasInput, String(alias).trim());
-  await delay(400);
+  const aliasOk = await setReactInputAndVerify(aliasInput, String(alias).trim(), 5);
+  if (!aliasOk) throw new Error('No se pudo completar el campo alias (React no tomó el valor después de 5 intentos).');
 
   const passInput = await waitFor(() => firstVisible('input[name="password"][type="password"]'), options.timeout || DEFAULT_TIMEOUT);
   passInput.click(); await delay(150);
-  setReactInputValue(passInput, String(password));
-  await delay(400);
-
-  if (!aliasInput.value) throw new Error('No se pudo completar el campo alias (React no tomó el valor).');
+  const passOk = await setReactInputAndVerify(passInput, String(password), 5);
+  if (!passOk) throw new Error('No se pudo completar el campo clave (React no tomó el valor después de 5 intentos).');
 
   const registrarBtn = findActionButton(/registrar/i);
   if (!registrarBtn) throw new Error('No se encontró el botón "Registrar".');
   await delay(200);
   clickElement(registrarBtn);
 
-  await waitFor(
-    () => /registrado correctamente|duplicated alias|already exists|alias ya existe/i.test(document.body.textContent || ''),
-    options.timeout || DEFAULT_TIMEOUT
-  );
+  // Tras clickear "Registrar" hay DOS caminos posibles:
+  //   a) Aparece el error "ErrorDuplicated alias" → el alias ya existe
+  //   b) Aparece un modal de CONFIRMACIÓN con los datos + botón "Guardar"
+  // El texto "registrado correctamente" recién aparece DESPUÉS de Guardar, así que
+  // NO podemos esperarlo acá. Esperamos: error duplicado O el botón Guardar.
+  const TIMEOUT = options.timeout || DEFAULT_TIMEOUT;
+  const buscarGuardar = function(){
+    const btns = Array.from(document.querySelectorAll('button.btn.btn-primary, button')).filter(isVisible);
+    return btns.find(b => /^guardar$/i.test((b.textContent || '').trim())) || null;
+  };
+  const esDuplicado = function(){
+    return /ErrorDuplicated|duplicated alias|already exists|alias ya existe/i.test(document.body.textContent || '');
+  };
 
-  if (/duplicated alias|already exists|alias ya existe/i.test(document.body.textContent || ''))
+  await waitFor(() => esDuplicado() || buscarGuardar(), TIMEOUT);
+
+  // Dar un instante para que el modal (error o confirmación) termine de renderizar
+  await delay(300);
+
+  if (esDuplicado())
     return { ok: false, alias, error: 'duplicado', message: 'El alias ya existe.' };
 
-  await delay(400);
-  const guardarBtn = findActionButton(/guardar/i);
-  if (guardarBtn) { clickElement(guardarBtn); await delay(600); }
+  // Camino b): modal de confirmación → clickear "Guardar"
+  const guardarBtn = buscarGuardar() || findActionButton(/^guardar$/i);
+  if (guardarBtn) {
+    clickElement(guardarBtn);
+    await delay(900); // esperar la pantalla final de confirmación
+  } else {
+    console.warn('[crearUsuario] botón Guardar no encontrado tras Registrar');
+  }
 
   return { ok: true, alias, password, message: 'Usuario creado correctamente.' };
 }
@@ -593,12 +715,18 @@ async function obtenerSaldoAgente(options = {}) {
 
 // Inicia sesión en el backoffice de agentes inyectando usuario y clave.
 // Si ya hay sesión activa devuelve {ok:true} inmediatamente.
-// Soporta el modal de sesión inválida (recarga y falla para que el operador reintente).
+// Si aparece el modal de "session is invalid" → clickea Accept, espera el redirect
+// al login, y sigue con la inyección de credenciales en la misma pasada.
 async function iniciarSesion(usuario, clave) {
-  // Modal de sesión inválida → recargar y avisar
+  // Modal de sesión inválida → cerrarlo (clickeando Accept) y esperar el form de login
   if (detectarModalSesionInvalida()) {
-    await cerrarModalSesionInvalida(); // programa location.assign en 200ms
-    return { ok: false, message: 'Recargando la página del casino. Esperá unos segundos e intentá de nuevo.' };
+    await cerrarModalSesionInvalida();
+    // Después del cierre puede tardar un instante en renderizar el form
+    const t0 = now();
+    while (now() - t0 < 5000) {
+      await delay(200);
+      if (document.querySelector('input[type="password"]')) break;
+    }
   }
 
   // Ya logueado → nada que hacer
@@ -606,12 +734,18 @@ async function iniciarSesion(usuario, clave) {
     return { ok: true, message: 'Sesión ya activa.' };
   }
 
-  // Buscar el formulario de login
-  const userInput = document.querySelector('input[type="text"], input[name="username"], input[name="user"], input[autocomplete="username"]');
-  const passInput = document.querySelector('input[type="password"]');
-  const entrarBtn = Array.from(document.querySelectorAll('button')).find(btn =>
-    /entrar|ingresar|login|iniciar|sign.?in/i.test(btn.textContent || '')
-  );
+  // Buscar el formulario de login (con reintentos por si la página está montando)
+  let userInput = null, passInput = null, entrarBtn = null;
+  const tBusca = now();
+  while (now() - tBusca < 6000) {
+    userInput = document.querySelector('input[type="text"], input[name="username"], input[name="user"], input[autocomplete="username"]');
+    passInput = document.querySelector('input[type="password"]');
+    entrarBtn = Array.from(document.querySelectorAll('button')).find(btn =>
+      /entrar|ingresar|login|iniciar|sign.?in/i.test(btn.textContent || '')
+    );
+    if (userInput && passInput && entrarBtn) break;
+    await delay(250);
+  }
 
   if (!userInput || !passInput || !entrarBtn) {
     return { ok: false, message: 'No se encontró el formulario de login en el backoffice.' };
