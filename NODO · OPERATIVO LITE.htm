@@ -2044,6 +2044,15 @@ async function soloConsultarUsuario(){
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// ⛔ FLUJO BLINDADO — NO MODIFICAR ⛔
+// Esta función y su cadena (buscarUsuario, applyAmount, registrarCargaEnChunior,
+// navigateAgentTo, _leerBalancesEnModalDeposito) son el CORE de carga/retiro que
+// funciona 100%. Probado y estable (tag git: estable-flujo-carga).
+// Para features nuevas: agregar funciones APARTE y llamarlas desde acá si hace
+// falta, pero NO reescribir la lógica de este flujo. Si lo rompés, volvé con:
+//   git checkout estable-flujo-carga -- "NODO · OPERATIVO LITE.htm" agent-preload.js main.js
+// ══════════════════════════════════════════════════════════════════════════════
 // ── Operación manual automatizada ─────────────────────────────────────────────
 let _operacionManualEnCurso = false;
 async function ejecutarOperacionManual(){

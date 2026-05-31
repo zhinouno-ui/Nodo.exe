@@ -150,6 +150,9 @@ function whenAgentReady(win) {
   return new Promise(resolve => win.webContents.once('did-finish-load', resolve));
 }
 
+// ⛔ FLUJO BLINDADO — NO MODIFICAR (core de carga/retiro estable).
+// El did-finish-load antes de operar es lo que evita buscar sobre la página vieja.
+// Tag git: estable-flujo-carga.
 async function navigateAgentTo(url = AGENT_URL) {
   const win = getAgentWindow();
   // Siempre recargamos la página antes de operar para dejar el search limpio.

@@ -442,6 +442,9 @@ async function ensureUserSearchReady() {
   return status();
 }
 
+// ⛔ FLUJO BLINDADO — NO MODIFICAR (parte del core de carga/retiro estable).
+// La espera del resultado-que-coincide y la lectura de saldo pre/post están
+// calibradas. Tag git: estable-flujo-carga.
 async function buscarUsuario(usuario, options = {}) {
   if (!usuario || String(usuario).trim().length < 3) {
     throw new Error('El usuario debe tener al menos 3 caracteres.');
@@ -533,6 +536,8 @@ async function cerrarModalActual() {
   if (cancelBtn) { clickElement(cancelBtn); await delay(300); }
 }
 
+// ⛔ FLUJO BLINDADO — NO MODIFICAR (core de carga/retiro estable).
+// Abre el modal UNA vez, lee saldo pre (input 0) y post (input 1). Tag: estable-flujo-carga.
 async function applyAmount(iconName, amount, actionName, options = {}) {
   const numericAmount = Number(String(amount).replace(',', '.'));
   if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
