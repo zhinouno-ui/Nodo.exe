@@ -2160,13 +2160,21 @@ async function ejecutarOperacionManual(){
     }
   }
 
+  // ── Instrumentación del workflow (solo console.log, NO cambia comportamiento) ──
+  // Abrí la consola de NODO (F12) y filtrá por [WF] para ver tiempos y saldos reales.
+  const _wfT0 = Date.now();
+  const _wf = (msg) => { try{ console.log('[WF +'+((Date.now()-_wfT0)/1000).toFixed(2)+'s] '+msg); }catch(_){} };
+
   try {
+    _wf(tipo+' '+usuario+' · monto '+montoAbs+' · iniciando');
     toast("Abriendo backoffice...","blue");
     if(!await ensureDrexSession()){ toast("Sesión de backoffice requerida.","red"); return; }
+    _wf('sesión OK · buscando usuario...');
 
     toast("Buscando "+usuario+"...","blue");
     _wdLock();
     let busqueda;
+    const _tBuscar = Date.now();
     try {
       // CARGA: skipBalance → NO abrimos el modal acá. applyAmount (cargarSaldo)
       //        abre el modal UNA sola vez y lee pre (input 0) + post (input 1).
@@ -2175,6 +2183,21 @@ async function ejecutarOperacionManual(){
     } finally {
       _wdUnlock();
     }
+    _wf('buscarUsuario tardó '+((Date.now()-_tBuscar)/1000).toFixed(2)+'s · exists='+busqueda?.exists+' · needsLogin='+!!busqueda?.needsLogin+' · saldoPre='+(busqueda?.balance?.raw||'(no leído)'));
+
+    // ── Sesión caída a mitad: el buscar volvió con needsLogin → mostrar login YA ──
+    if(busqueda && busqueda.needsLogin){
+      _wf('SESIÓN CAÍDA en buscar → disparando login');
+      if(res) res.innerHTML = '<div class="alert-box">🔐 Sesión de agentes caída · reingresá credenciales.</div>';
+      const reconectado = await ensureDrexSession();
+      if(!reconectado){ toast("Sesión de agentes requerida.","red"); return; }
+      // Reintentar la búsqueda una vez tras reconectar
+      _wdLock();
+      try { busqueda = await callDrex("buscarUsuario", usuario, { skipBalance: tipo === "CARGA" }); }
+      finally { _wdUnlock(); }
+      _wf('re-buscar tras login · exists='+busqueda?.exists);
+    }
+
     if(!busqueda.exists){
       await registrarEnHistorial({usuario, tipo, monto:montoAbs, billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null, origen:'MANUAL', estado:'ERROR', notas:'Usuario no encontrado'});
       if(res) res.innerHTML = '<div class="err-box">❌ <b>'+escapeHtml(usuario)+'</b> no existe en el casino.</div>';
@@ -2196,6 +2219,7 @@ async function ejecutarOperacionManual(){
 
     _wdLock(); // bloqueamos watchdog para que no navegue agentes mientras opera
     let resultado;
+    const _tCargar = Date.now();
     try {
       resultado = tipo === "CARGA"
         ? await callDrex("cargarSaldo",  montoAbs)
@@ -2204,6 +2228,18 @@ async function ejecutarOperacionManual(){
       resultado = { ok:false, message: e.message || 'Error en Drex' };
     } finally {
       _wdUnlock();
+    }
+    _wf((tipo==='CARGA'?'cargarSaldo':'retirarSaldo')+' tardó '+((Date.now()-_tCargar)/1000).toFixed(2)+'s · ok='+(resultado&&resultado.ok!==false)+
+        ' · pre='+(resultado?.previousBalance?.raw||'(no leído)')+
+        ' · post='+(resultado?.newBalance?.raw||'(no leído)')+
+        (resultado?.newBalance?.unchanged?' [POST NO CONFIABLE: saldo no cambió en el modal]':''));
+
+    // Sesión caída durante la carga
+    if(resultado && resultado.needsLogin){
+      _wf('SESIÓN CAÍDA en cargar → disparando login');
+      if(res) res.innerHTML = '<div class="alert-box">🔐 Sesión de agentes caída durante la operación · reingresá credenciales.</div>';
+      await ensureDrexSession();
+      toast('Sesión reingresada · reintentá la operación con ↻ en el historial.', 'yellow');
     }
 
     const drexSinError = resultado && resultado.ok !== false;
@@ -2217,10 +2253,15 @@ async function ejecutarOperacionManual(){
     let confInfo = { confianza:'no_aplicado', saldoFinal:null };
     if(drexSinError){
       toast('Confirmando '+tipo+' en agentes...', 'blue');
+      const _tConf = Date.now();
       _wdLock();
       try { confInfo = await confirmarOperacionAgentes(usuario, saldoPre, montoAbs, tipo, resultado); }
       finally { _wdUnlock(); }
+      _wf('confirmación tardó '+((Date.now()-_tConf)/1000).toFixed(2)+'s · veredicto='+confInfo.confianza+
+          ' · saldoPre='+(saldoPre!=null?saldoPre:'(null)')+' · saldoFinal='+(confInfo.saldoFinal!=null?confInfo.saldoFinal:'(null)')+
+          ' · esperado='+(saldoPre!=null?(saldoPre+(tipo==='CARGA'?montoAbs:-montoAbs)):'(?)'));
     }
+    _wf('TOTAL '+((Date.now()-_wfT0)/1000).toFixed(2)+'s · estado final='+confInfo.confianza);
     const confianza = confInfo.confianza; // confirmado | no_aplicado | duplicado | incierto
     const aplicadoLimpio = (confianza === 'confirmado'); // único caso de éxito limpio
 
