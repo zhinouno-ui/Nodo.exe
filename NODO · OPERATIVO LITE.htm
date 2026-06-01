@@ -2044,6 +2044,47 @@ async function soloConsultarUsuario(){
   }
 }
 
+// ── Confirmación de alto nivel: ¿la operación REALMENTE se reflejó en agentes? ──
+// No miramos mensajes de UI (cambian, son externos). Miramos el DATO DURO: el saldo.
+//   esperado = saldoPre ± monto
+//   - saldo final == esperado            → 'confirmado'  (se aplicó, confianza alta)
+//   - saldo final == saldoPre            → 'no_aplicado' (NO se aplicó, confianza alta)
+//   - saldo final == saldoPre ± k·monto  → 'duplicado'   (k>=2)
+//   - no se pudo leer / valor raro       → 'incierto'    (re-lee fresco; si sigue, revisar)
+// Devuelve { confianza, saldoFinal, veces }.
+async function confirmarOperacionAgentes(usuario, saldoPre, monto, tipo, resultado){
+  const signo = tipo === 'CARGA' ? 1 : -1;
+  const esperado = (saldoPre !== null && saldoPre !== undefined) ? Number(saldoPre) + signo*Math.abs(monto) : null;
+
+  // 1) Primero usamos el post que ya leyó applyAmount del mismo modal, si es confiable.
+  let saldoFinal = (resultado && resultado.newBalance && !resultado.newBalance.unchanged
+                    && typeof resultado.newBalance.value === 'number')
+                   ? resultado.newBalance.value : null;
+
+  // 2) Si no hay post confiable, hacemos UNA lectura fresca e independiente (re-buscar).
+  if(saldoFinal === null){
+    try {
+      _wdLock();
+      const b = await callDrex("buscarUsuario", usuario);
+      saldoFinal = (b && typeof b.balance?.value === 'number') ? b.balance.value : null;
+    } catch(_){ } finally { _wdUnlock(); }
+  }
+
+  // Sin referencia (no tenemos pre o no pudimos leer final) → incierto
+  if(saldoPre === null || saldoPre === undefined || saldoFinal === null){
+    return { confianza:'incierto', saldoFinal };
+  }
+  if(Math.abs(saldoFinal - esperado) < 1)        return { confianza:'confirmado', saldoFinal };
+  if(Math.abs(saldoFinal - Number(saldoPre)) < 1) return { confianza:'no_aplicado', saldoFinal };
+  // ¿múltiplo del monto? → duplicado
+  const movido = saldoFinal - Number(saldoPre);
+  const veces  = Math.round(movido / (signo*Math.abs(monto)));
+  if(veces >= 2 && Math.abs(movido - veces*signo*Math.abs(monto)) < 1){
+    return { confianza:'duplicado', saldoFinal, veces };
+  }
+  return { confianza:'incierto', saldoFinal };
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ⛔ FLUJO BLINDADO — NO MODIFICAR ⛔
 // Esta función y su cadena (buscarUsuario, applyAmount, registrarCargaEnChunior,
@@ -2165,36 +2206,51 @@ async function ejecutarOperacionManual(){
       _wdUnlock();
     }
 
-    const ok    = resultado && resultado.ok !== false;
-    const est2  = ok ? "OK" : "ERROR";
-    const notas = ok ? (resultado?.previousBalance?.raw || busqueda.balance?.raw || null) : (resultado?.message||"error");
+    const drexSinError = resultado && resultado.ok !== false;
 
-    // Saldo PRE: lo leemos siempre (ya sea del casino o de la búsqueda inicial).
-    // Saldo POST: SIEMPRE lo calculamos (pre + monto). Es lo más confiable.
-    // La lectura post del casino se usa SOLO para detectar duplicados como bonus.
+    // Saldo PRE: del casino (previousBalance, leído en el modal) o de la búsqueda inicial.
     const saldoPreCasino = (typeof resultado?.previousBalance?.value === 'number') ? resultado.previousBalance.value : null;
     const saldoPre  = saldoPreCasino !== null ? saldoPreCasino : ((typeof busqueda.balance?.value === 'number') ? busqueda.balance.value : null);
-    const saldoPost = (ok && saldoPre !== null) ? saldoPre + (tipo === "CARGA" ? montoAbs : -montoAbs) : null;
 
-    // Detección de duplicado SOLO si la lectura post fue 100% confiable (no fallback)
-    // y muestra un múltiplo claro del monto (2x-4x). Si la lectura no funcionó, no
-    // disparamos — el historial igual queda bien con el cálculo manual.
-    const saldoPostLeido = (typeof resultado?.newBalance?.value === 'number') ? resultado.newBalance.value : null;
-    const postConfiable  = saldoPostLeido !== null && !resultado?.newBalance?.unchanged;
-    if(ok && tipo === "CARGA" && saldoPreCasino !== null && postConfiable){
-      const movido = saldoPostLeido - saldoPreCasino;
-      const veces  = Math.round(movido / montoAbs);
-      if(veces >= 2 && veces <= 4 && Math.abs(movido - veces * montoAbs) < 1){
-        toast('🚨 POSIBLE CARGA DUPLICADA ('+veces+'x) · saldo subió de '+money(saldoPreCasino)+' a '+money(saldoPostLeido)+' en una sola operación.', 'red');
-      }
+    // ── CONFIRMACIÓN DURA POR SALDO ──
+    // No confiamos en que applyAmount diga ok:true. Verificamos contra el saldo real.
+    let confInfo = { confianza:'no_aplicado', saldoFinal:null };
+    if(drexSinError){
+      toast('Confirmando '+tipo+' en agentes...', 'blue');
+      _wdLock();
+      try { confInfo = await confirmarOperacionAgentes(usuario, saldoPre, montoAbs, tipo, resultado); }
+      finally { _wdUnlock(); }
+    }
+    const confianza = confInfo.confianza; // confirmado | no_aplicado | duplicado | incierto
+    const aplicadoLimpio = (confianza === 'confirmado'); // único caso de éxito limpio
+
+    // Estado + nota para el historial según la confianza real
+    const estadoHist = (confianza === 'confirmado' || confianza === 'duplicado') ? 'OK' : 'ERROR';
+    const notaBase = resultado?.previousBalance?.raw || busqueda.balance?.raw || null;
+    const notas = confianza === 'confirmado' ? notaBase
+                : confianza === 'duplicado'  ? ('🚨 DUPLICADO x'+(confInfo.veces||'?')+' · saldo '+money(saldoPre)+'→'+money(confInfo.saldoFinal))
+                : confianza === 'no_aplicado'? 'NO se aplicó en agentes (el saldo no cambió)'
+                :                              'REVISAR: no se pudo confirmar el saldo';
+    // Saldo post: el confirmado real si lo tenemos; sino el calculado (solo si confirmado)
+    const saldoPost = (confInfo.saldoFinal !== null) ? confInfo.saldoFinal
+                    : (aplicadoLimpio && saldoPre !== null ? saldoPre + (tipo==="CARGA"?montoAbs:-montoAbs) : null);
+
+    // Avisos al operador según confianza
+    if(confianza === 'duplicado'){
+      toast('🚨 '+tipo+' DUPLICADA ('+(confInfo.veces||'?')+'x) en agentes · saldo '+money(saldoPre)+' → '+money(confInfo.saldoFinal)+'. Revisá y corregí.', 'red');
+    } else if(confianza === 'no_aplicado'){
+      toast('❌ '+tipo+' NO se aplicó en agentes (el saldo del jugador no cambió).', 'red');
+    } else if(confianza === 'incierto'){
+      toast('⚠️ No se pudo confirmar el '+tipo+' en agentes. Quedó para REVISAR — verificá manualmente.', 'red');
     }
 
-    // Registramos en historial AHORA con chunior_movimiento_id=null (se actualiza
-    // después cuando Chunior responda en background).
-    const filaHist = await registrarEnHistorial({usuario, tipo, monto:montoAbs, billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null, origen:'MANUAL', estado:est2, notas, chunior_movimiento_id:null, saldo_post:saldoPost, saldo_pre:saldoPre});
+    // Registramos en historial con el estado confirmado
+    const filaHist = await registrarEnHistorial({usuario, tipo, monto:montoAbs, billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null, origen:'MANUAL', estado:estadoHist, notas, chunior_movimiento_id:null, saldo_post:saldoPost, saldo_pre:saldoPre});
 
-    // ── Chunior EN BACKGROUND ── (solo si Drex confirmó OK)
-    const debeChunior = ok && !!(bil && bil.CHUNIOR_UID);
+    // ── Chunior EN BACKGROUND ── SOLO si la operación quedó CONFIRMADA en agentes.
+    // En duplicado/incierto/no_aplicado NO auto-anotamos (evita registrar en Chunior
+    // algo que no se aplicó limpio; el operador resuelve con el botón de reintento).
+    const debeChunior = aplicadoLimpio && !!(bil && bil.CHUNIOR_UID);
     if(debeChunior){
       const chuPromise = tipo === "CARGA"
         ? registrarCargaEnChunior (bil.CHUNIOR_UID, montoAbs, usuario)
@@ -2226,25 +2282,29 @@ async function ejecutarOperacionManual(){
     // Si no hay Chunior involucrado (billetera sin CHUNIOR_UID), NO disparamos
     // el watchdog: sabemos que va a haber discrepancia (Drex cambió, Chunior no).
 
-    if(ok){
+    if(aplicadoLimpio){
       if(bil && bil.ID_BILLETERA) await ajustarSaldoBilletera(bil.ID_BILLETERA, tipo==="CARGA" ? montoAbs : -montoAbs);
       if(res){
-        // El N° de Chunior se actualiza después si llega — por ahora mostramos OK directo
-        res.innerHTML = '<div class="ok-box">✅ '+tipo+' de '+money(montoAbs)+' → <b>'+escapeHtml(usuario)+'</b> completada</div>';
+        const detalle = (saldoPre !== null && confInfo.saldoFinal !== null)
+          ? ' <span class="small">(saldo '+money(saldoPre)+' → '+money(confInfo.saldoFinal)+')</span>' : '';
+        res.innerHTML = '<div class="ok-box">✅ '+tipo+' de '+money(montoAbs)+' → <b>'+escapeHtml(usuario)+'</b> confirmada'+detalle+'</div>';
       }
-      toast(tipo+" completada: "+usuario+" · "+money(montoAbs), "green");
+      toast(tipo+" confirmada: "+usuario+" · "+money(montoAbs), "green");
       // Auto-registrar al usuario en NODO si vino de una CARGA y no existe en la base (segundo plano)
       if(tipo === "CARGA" && busqueda?.user){
         _autoregistrarUsuarioSiFalta(busqueda.user);
       }
-      // Limpiar campos de entrada después de la operación exitosa
+      // Limpiar campos de entrada después de la operación confirmada
       const manualUsuarioEl = document.getElementById("manualUsuario");
       const manualMontoEl   = document.getElementById("manualMonto");
       if(manualUsuarioEl) manualUsuarioEl.value = "";
       if(manualMontoEl)   manualMontoEl.value   = "";
     } else {
-      if(res) res.innerHTML = '<div class="err-box">❌ '+tipo+' falló: '+escapeHtml(resultado?.message||'sin detalle')+'</div>';
-      toast("Error: "+(resultado?.message||"falló"),"red");
+      // No confirmado: mostramos el detalle según la confianza (ya avisamos por toast)
+      const msgRes = confianza === 'duplicado'  ? '🚨 '+tipo+' DUPLICADA ('+(confInfo.veces||'?')+'x) — revisá en agentes'
+                   : confianza === 'no_aplicado'? '❌ '+tipo+' NO se aplicó (el saldo no cambió)'
+                   :                              '⚠️ No se pudo confirmar el '+tipo+' — quedó para REVISAR';
+      if(res) res.innerHTML = '<div class="err-box">'+msgRes+'. Usá ↻ Reintentar en el historial.</div>';
     }
 
     await window.ctrlElectron.navigateAgent();
