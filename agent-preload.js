@@ -518,7 +518,24 @@ async function buscarUsuario(usuario, options = {}) {
 async function openMovementModal(iconName, options = {}) {
   const ready = await ensureUserSearchReady();
   if (ready.needsLogin) return ready;
-  clickButtonByIcon(iconName);
+
+  // ESPERAR a que el botón/icono de carga aparezca antes de clickear.
+  // Antes clickButtonByIcon buscaba UNA sola vez y, si el perfil del jugador
+  // todavía no había renderizado el botón, tiraba error y rechazaba al instante
+  // ("tarda y rechaza"). Ahora lo esperamos hasta el timeout.
+  const iconSelector = `svg[data-icon="${iconName}"], [data-icon="${iconName}"]`;
+  let icono;
+  try {
+    icono = await waitFor(() => firstVisible(iconSelector), options.timeout || DEFAULT_TIMEOUT);
+  } catch (_) {
+    // No apareció el botón de carga en el tiempo esperado → re-chequear sesión
+    await cerrarModalSesionInvalida();
+    if (pageNeedsLogin()) return status();
+    throw new Error(`El botón de ${iconName === 'circle-plus' ? 'carga' : 'retiro'} no apareció (¿el perfil del jugador no cargó?).`);
+  }
+  const btnCarga = icono.closest('button, [role="button"], a') || icono.parentElement;
+  clickElement(btnCarga);
+
   await delay(350);
   const amountInput = await waitFor(() => firstVisible(SELECTORS.amountInput), options.timeout || DEFAULT_TIMEOUT);
   return { ok: true, amountInput, balance: readVisibleBalance() };
