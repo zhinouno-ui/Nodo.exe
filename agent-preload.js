@@ -275,12 +275,25 @@ function _leerBalancesEnModalDeposito() {
 
   if (inputs.length === 0) return { pre: null, post: null };
 
-  // Si hay 3+ inputs ARS, el de mayor valor es el balance del AGENTE → lo descartamos
+  // El balance del AGENTE (su pool) está SIEMPRE presente en el modal y SIEMPRE supera al
+  // de un jugador. Hay que excluirlo para quedarse con el del JUGADOR. Lo identificamos:
+  //   1) por coincidir con el saldo del agente del backoffice (span.hideUserBalance), o
+  //   2) si no, como el de MAYOR valor.
+  // (El preview de monto ya se filtró arriba por no tener dígitos.)
+  // OJO: hay que hacerlo con 2+ inputs, no solo con 3+ — si no, con [agente, jugador]
+  // se agarraba el agente como "pre" (bug: daba el saldo del agente por válido).
   let candidates = inputs;
-  if (inputs.length >= 3) {
-    const sorted = [...inputs].sort((a, b) => parseMoney(b.value) - parseMoney(a.value));
-    const agente = sorted[0];
-    candidates = inputs.filter(el => el !== agente);
+  if (inputs.length > 1) {
+    const spanAgente = firstVisible('span.hideUserBalance');
+    const agenteVal  = spanAgente ? parseMoney(spanAgente.textContent || spanAgente.innerText || '') : null;
+    if (agenteVal) {
+      const sinAgente = inputs.filter(el => Math.abs(parseMoney(el.value) - agenteVal) > 1);
+      if (sinAgente.length) candidates = sinAgente;
+    }
+    if (candidates.length > 1) {
+      const sorted = [...candidates].sort((a, b) => parseMoney(b.value) - parseMoney(a.value));
+      candidates = candidates.filter(el => el !== sorted[0]); // saca el de mayor valor (agente)
+    }
   }
 
   // Ordenar por posición en el DOM (input 0 = pre, input 1 = post)
