@@ -472,7 +472,10 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
         <div class="card" style="margin-bottom:12px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
             <b>📊 Importar operaciones del agente</b>
-            <button class="mini-btn gray" onclick="toggleOpsCsv()" id="btnToggleOpsCsv">Mostrar</button>
+            <div style="display:flex;gap:8px">
+              <button class="mini-btn gray" onclick="mostrarBlacklist24h()" id="btnVerBlacklist" title="Usuarios con retiros en las últimas 24hs">🚫 Blacklist 24hs</button>
+              <button class="mini-btn gray" onclick="toggleOpsCsv()" id="btnToggleOpsCsv">Mostrar</button>
+            </div>
           </div>
           <div id="formOpsCsv" class="hidden">
             <div class="small" style="margin-bottom:12px;color:var(--muted);line-height:1.5">
@@ -550,7 +553,11 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
             <h1 style="font-size:26px">⚡ Automatización</h1>
             <div class="small">Panel de prueba — cargas y retiros automáticos en el backoffice del casino.</div>
           </div>
-          <button id="abrirBackofficeBtn" class="mini-btn purple" onclick="abrirBackoffice()">🖥 Abrir backoffice</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button id="abrirBackofficeBtn" class="mini-btn purple" onclick="abrirBackoffice()">🖥 Abrir backoffice</button>
+            <button id="limpiarDatosBtn" class="mini-btn gray" onclick="limpiarDatosAgentes()" title="Borra cookies/caché de agentes y recarga para reingresar (destraba el error 403)">🧹 Limpiar datos y reingresar</button>
+            <button id="proxyBtn" class="mini-btn gray" onclick="abrirModalProxy()" title="Configurar un proxy de salida solo para agentes (para esquivar el bloqueo 403)">🌐 Proxy</button>
+          </div>
         </div>
 
         <div class="top-grid" style="margin-bottom:18px">
@@ -2030,6 +2037,16 @@ async function soloConsultarUsuario(){
   try {
     await window.ctrlElectron.openAgentWindow();
     const busqueda = await callDrex("buscarUsuario", usuario);
+    // Sesión caída / página de error: NO es "no existe" — es que no hay sesión.
+    // Disparamos el reingreso en vez de decir falsamente que el usuario no existe.
+    if(busqueda && (busqueda.needsLogin || busqueda.pageError)){
+      if(res) res.innerHTML = '<div class="alert-box">🔐 Sesión de agentes caída · reingresá tus credenciales.</div>';
+      const reconectado = await ensureDrexSession();
+      if(res) res.innerHTML = reconectado
+        ? '<div class="alert-box">Sesión reingresada · volvé a consultar.</div>'
+        : '<div class="err-box">Sesión de agentes requerida.</div>';
+      return;
+    }
     if(!busqueda.exists){
       if(res) res.innerHTML = '<div class="err-box">❌ <b>'+escapeHtml(usuario)+'</b> no existe en el casino.</div>';
       return;
@@ -2061,13 +2078,25 @@ async function confirmarOperacionAgentes(usuario, saldoPre, monto, tipo, resulta
                     && typeof resultado.newBalance.value === 'number')
                    ? resultado.newBalance.value : null;
 
-  // 2) Si no hay post confiable, hacemos UNA lectura fresca e independiente (re-buscar).
+  // 2) Si no hay post confiable, hacemos lecturas frescas e independientes (re-buscar).
+  //    Reintentamos hasta 3 veces porque: (a) justo después de la carga la página de
+  //    agentes está ocupada y el modal de saldo puede no abrir al primer intento
+  //    (devolvía null → 'incierto' → no se detectaba el saldo final), y (b) el casino
+  //    puede tardar un instante en reflejar el nuevo saldo. Cortamos apenas leemos un
+  //    saldo que CAMBIÓ respecto al pre (señal de que ya impactó).
   if(saldoFinal === null){
-    try {
-      _wdLock();
-      const b = await callDrex("buscarUsuario", usuario);
-      saldoFinal = (b && typeof b.balance?.value === 'number') ? b.balance.value : null;
-    } catch(_){ } finally { _wdUnlock(); }
+    for(let intento=0; intento<3; intento++){
+      try {
+        _wdLock();
+        const b = await callDrex("buscarUsuario", usuario);
+        const v = (b && typeof b.balance?.value === 'number') ? b.balance.value : null;
+        if(v !== null) saldoFinal = v;
+      } catch(_){ } finally { _wdUnlock(); }
+      // Si ya tenemos un saldo distinto al pre, impactó → listo.
+      if(saldoFinal !== null && (saldoPre === null || saldoPre === undefined || Math.abs(saldoFinal - Number(saldoPre)) >= 1)) break;
+      // Sino (null o todavía igual al pre), esperamos y reintentamos.
+      if(intento < 2) await new Promise(function(r){ setTimeout(r, 1200); });
+    }
   }
 
   // Sin referencia (no tenemos pre o no pudimos leer final) → incierto
@@ -2171,118 +2200,168 @@ async function ejecutarOperacionManual(){
     if(!await ensureDrexSession()){ toast("Sesión de backoffice requerida.","red"); return; }
     _wf('sesión OK · buscando usuario...');
 
-    toast("Buscando "+usuario+"...","blue");
-    _wdLock();
-    let busqueda;
-    const _tBuscar = Date.now();
-    try {
-      // CARGA: skipBalance → NO abrimos el modal acá. applyAmount (cargarSaldo)
-      //        abre el modal UNA sola vez y lee pre (input 0) + post (input 1).
-      // RETIRO: necesitamos el saldo antes para validar suficiencia → sin skip.
-      busqueda = await callDrex("buscarUsuario", usuario, { skipBalance: tipo === "CARGA" });
-    } finally {
-      _wdUnlock();
-    }
-    _wf('buscarUsuario tardó '+((Date.now()-_tBuscar)/1000).toFixed(2)+'s · exists='+busqueda?.exists+' · needsLogin='+!!busqueda?.needsLogin+' · saldoPre='+(busqueda?.balance?.raw||'(no leído)'));
+    // ── BUSCAR + OPERAR con reintento ACOTADO ──
+    // OJO 403/CloudFront: agentes rate-limitea si hay DEMASIADOS refresh. Por eso
+    // NO re-confirmamos por re-lectura (eso navegaba 1-3 veces más por carga) y el
+    // reintento por "script no corrió" se limita a 1 refresh. El éxito se prueba con
+    // que el script CORRIÓ (leyó el saldo anterior y aplicó el monto sin error).
+    const MAX_REINTENTOS = 2;
+    let busqueda, resultado, intentoOp = 0;
 
-    // ── Sesión caída a mitad: el buscar volvió con needsLogin → mostrar login YA ──
-    if(busqueda && busqueda.needsLogin){
-      _wf('SESIÓN CAÍDA en buscar → disparando login');
-      if(res) res.innerHTML = '<div class="alert-box">🔐 Sesión de agentes caída · reingresá credenciales.</div>';
-      const reconectado = await ensureDrexSession();
-      if(!reconectado){ toast("Sesión de agentes requerida.","red"); return; }
-      // Reintentar la búsqueda una vez tras reconectar
+    while(intentoOp < MAX_REINTENTOS){
+      intentoOp++;
+
+      // ── BUSCAR (fresco; callDrex navega, y main.js ya reintenta páginas de error) ──
+      toast(intentoOp>1 ? ("↻ Reintento "+intentoOp+" · "+usuario+"...") : ("Buscando "+usuario+"..."),"blue");
       _wdLock();
+      const _tBuscar = Date.now();
       try { busqueda = await callDrex("buscarUsuario", usuario, { skipBalance: tipo === "CARGA" }); }
       finally { _wdUnlock(); }
-      _wf('re-buscar tras login · exists='+busqueda?.exists);
-    }
+      _wf('buscarUsuario tardó '+((Date.now()-_tBuscar)/1000).toFixed(2)+'s · exists='+busqueda?.exists+' · needsLogin='+!!busqueda?.needsLogin+' · pageError='+!!busqueda?.pageError+' · saldoPre='+(busqueda?.balance?.raw||'(no leído)'));
 
-    if(!busqueda.exists){
-      await registrarEnHistorial({usuario, tipo, monto:montoAbs, billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null, origen:'MANUAL', estado:'ERROR', notas:'Usuario no encontrado'});
-      if(res) res.innerHTML = '<div class="err-box">❌ <b>'+escapeHtml(usuario)+'</b> no existe en el casino.</div>';
-      toast(usuario+" no encontrado","red"); return;
-    }
-
-    // RETIRO: chequeo de saldo previo
-    if(tipo === "RETIRO"){
-      const saldo = busqueda.balance?.value ?? -1;
-      if(saldo >= 0 && saldo < montoAbs){
-        await registrarEnHistorial({usuario, tipo, monto:montoAbs, billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null, origen:'MANUAL', estado:'ERROR', notas:'Saldo insuficiente'});
-        if(res) res.innerHTML = '<div class="err-box">⚠️ Saldo insuficiente: '+escapeHtml(busqueda.balance?.raw||'')+'</div>';
-        toast("Saldo insuficiente","red"); return;
+      // Página de error del CDN (403/404) → refrescar UNA vez y reintentar
+      if(busqueda && busqueda.pageError){
+        if(intentoOp < MAX_REINTENTOS){
+          _wf('PÁGINA DE ERROR en buscar → refresco y reintento');
+          if(res) res.innerHTML = '<div class="alert-box">↻ Agentes devolvió un error · reintentando ('+intentoOp+'/'+MAX_REINTENTOS+')...</div>';
+          await window.ctrlElectron.navigateAgent();
+          continue;
+        }
+        if(res) res.innerHTML = '<div class="err-box">❌ Agentes devolvió una página de error (403). Probá <b>Limpiar datos y reingresar</b> en Automatización.</div>';
+        toast('Agentes devolvió error 403 · limpiá datos y reingresá', 'red'); return;
       }
-    }
 
-    // ── Drex SECUENCIAL ── (esperamos confirmación antes de marcar como completada)
-    toast(tipo === "CARGA" ? "Cargando "+money(montoAbs)+"..." : "Retirando "+money(montoAbs)+"...", "blue");
+      // Sesión caída → login y reintentar
+      if(busqueda && busqueda.needsLogin){
+        _wf('SESIÓN CAÍDA en buscar → disparando login');
+        if(res) res.innerHTML = '<div class="alert-box">🔐 Sesión de agentes caída · reingresá credenciales.</div>';
+        const reconectado = await ensureDrexSession();
+        if(!reconectado){ toast("Sesión de agentes requerida.","red"); return; }
+        continue;
+      }
 
-    _wdLock(); // bloqueamos watchdog para que no navegue agentes mientras opera
-    let resultado;
-    const _tCargar = Date.now();
-    try {
-      resultado = tipo === "CARGA"
-        ? await callDrex("cargarSaldo",  montoAbs)
-        : await callDrex("retirarSaldo", montoAbs);
-    } catch(e){
-      resultado = { ok:false, message: e.message || 'Error en Drex' };
-    } finally {
-      _wdUnlock();
-    }
-    _wf((tipo==='CARGA'?'cargarSaldo':'retirarSaldo')+' tardó '+((Date.now()-_tCargar)/1000).toFixed(2)+'s · ok='+(resultado&&resultado.ok!==false)+
-        ' · pre='+(resultado?.previousBalance?.raw||'(no leído)')+
-        ' · post='+(resultado?.newBalance?.raw||'(no leído)')+
-        (resultado?.newBalance?.unchanged?' [POST NO CONFIABLE: saldo no cambió en el modal]':''));
+      if(!busqueda.exists){
+        await registrarEnHistorial({usuario, tipo, monto:montoAbs, billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null, origen:'MANUAL', estado:'ERROR', notas:'Usuario no encontrado'});
+        if(res) res.innerHTML = '<div class="err-box">❌ <b>'+escapeHtml(usuario)+'</b> no existe en el casino.</div>';
+        toast(usuario+" no encontrado","red"); return;
+      }
 
-    // Sesión caída durante la carga
-    if(resultado && resultado.needsLogin){
-      _wf('SESIÓN CAÍDA en cargar → disparando login');
-      if(res) res.innerHTML = '<div class="alert-box">🔐 Sesión de agentes caída durante la operación · reingresá credenciales.</div>';
-      await ensureDrexSession();
-      toast('Sesión reingresada · reintentá la operación con ↻ en el historial.', 'yellow');
+      // RETIRO: chequeo de saldo previo
+      if(tipo === "RETIRO"){
+        const saldo = busqueda.balance?.value ?? -1;
+        if(saldo >= 0 && saldo < montoAbs){
+          await registrarEnHistorial({usuario, tipo, monto:montoAbs, billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null, origen:'MANUAL', estado:'ERROR', notas:'Saldo insuficiente'});
+          if(res) res.innerHTML = '<div class="err-box">⚠️ Saldo insuficiente: '+escapeHtml(busqueda.balance?.raw||'')+'</div>';
+          toast("Saldo insuficiente","red"); return;
+        }
+      }
+
+      // ── OPERAR (mismo modal, sin navegar) ──
+      toast(tipo === "CARGA" ? "Cargando "+money(montoAbs)+"..." : "Retirando "+money(montoAbs)+"...", "blue");
+      _wdLock();
+      const _tCargar = Date.now();
+      try {
+        resultado = tipo === "CARGA"
+          ? await callDrex("cargarSaldo",  montoAbs)
+          : await callDrex("retirarSaldo", montoAbs);
+      } catch(e){
+        resultado = { ok:false, message: e.message || 'Error en Drex' };
+      } finally {
+        _wdUnlock();
+      }
+      _wf((tipo==='CARGA'?'cargarSaldo':'retirarSaldo')+' tardó '+((Date.now()-_tCargar)/1000).toFixed(2)+'s · ok='+(resultado&&resultado.ok!==false)+
+          ' · needsRetry='+!!resultado?.needsRetry+' · pageError='+!!resultado?.pageError+
+          ' · pre='+(resultado?.previousBalance?.raw||'(no leído)')+
+          ' · post='+(resultado?.newBalance?.raw||'(no leído)'));
+
+      // ── El script NO corrió bien (no leyó el saldo anterior / página de error) ──
+      // Refrescamos UNA vez y reintentamos; si vuelve a fallar, no operamos a ciegas.
+      if(resultado && (resultado.needsRetry || resultado.pageError)){
+        if(intentoOp < MAX_REINTENTOS){
+          _wf('OP needsRetry/pageError → refresco y reintento · '+(resultado.reason||''));
+          if(res) res.innerHTML = '<div class="alert-box">↻ El script no leyó el saldo anterior · refrescando y reintentando ('+intentoOp+'/'+MAX_REINTENTOS+')...</div>';
+          await window.ctrlElectron.navigateAgent();
+          continue;
+        }
+        await registrarEnHistorial({usuario, tipo, monto:montoAbs, billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null, origen:'MANUAL', estado:'ERROR', notas:resultado.reason||'El script no respondió (no se leyó el saldo anterior)'});
+        if(res) res.innerHTML = '<div class="err-box">❌ '+tipo+' no se ejecutó: '+escapeHtml(resultado.reason||'el modal de agentes no respondió')+'. Probá <b>Limpiar datos y reingresar</b>.</div>';
+        toast(tipo+' no ejecutada · agentes no respondió', 'red'); return;
+      }
+
+      // Sesión caída durante la operación → login y reintentar
+      if(resultado && resultado.needsLogin){
+        _wf('SESIÓN CAÍDA en operar → login');
+        if(res) res.innerHTML = '<div class="alert-box">🔐 Sesión caída durante la operación · reingresá credenciales.</div>';
+        const recon = await ensureDrexSession();
+        if(!recon){ toast('Sesión de agentes requerida.','red'); return; }
+        if(intentoOp < MAX_REINTENTOS) continue;
+      }
+
+      // saldo insuficiente devuelto por applyAmount (retiro)
+      if(resultado && resultado.saldoInsuficiente){
+        await registrarEnHistorial({usuario, tipo, monto:montoAbs, billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null, origen:'MANUAL', estado:'ERROR', notas:'Saldo insuficiente'});
+        if(res) res.innerHTML = '<div class="err-box">⚠️ '+escapeHtml(resultado.message||'Saldo insuficiente')+'</div>';
+        toast('Saldo insuficiente','red'); return;
+      }
+
+      break; // ✅ el script corrió: leyó el saldo anterior y aplicó el monto
     }
 
     const drexSinError = resultado && resultado.ok !== false;
 
-    // Saldo PRE: del casino (previousBalance, leído en el modal) o de la búsqueda inicial.
+    // Saldo PRE: del casino (previousBalance, leído por el GATE dentro del modal).
     const saldoPreCasino = (typeof resultado?.previousBalance?.value === 'number') ? resultado.previousBalance.value : null;
     const saldoPre  = saldoPreCasino !== null ? saldoPreCasino : ((typeof busqueda.balance?.value === 'number') ? busqueda.balance.value : null);
 
-    // ── CONFIRMACIÓN DURA POR SALDO ──
-    // No confiamos en que applyAmount diga ok:true. Verificamos contra el saldo real.
-    let confInfo = { confianza:'no_aplicado', saldoFinal:null };
-    if(drexSinError){
-      toast('Confirmando '+tipo+' en agentes...', 'blue');
-      const _tConf = Date.now();
-      _wdLock();
-      try { confInfo = await confirmarOperacionAgentes(usuario, saldoPre, montoAbs, tipo, resultado); }
-      finally { _wdUnlock(); }
-      _wf('confirmación tardó '+((Date.now()-_tConf)/1000).toFixed(2)+'s · veredicto='+confInfo.confianza+
-          ' · saldoPre='+(saldoPre!=null?saldoPre:'(null)')+' · saldoFinal='+(confInfo.saldoFinal!=null?confInfo.saldoFinal:'(null)')+
-          ' · esperado='+(saldoPre!=null?(saldoPre+(tipo==='CARGA'?montoAbs:-montoAbs)):'(?)'));
+    // ── CONFIRMACIÓN SIN NAVEGAR ──
+    // El saldo del jugador NO se refleja al instante tras operar, así que NO re-leemos
+    // (además eso sobre-refrescaba y disparaba el 403). Usamos solo el post que ya
+    // vino en el MISMO modal. El éxito se basa en que el script corrió (gate de saldo
+    // anterior). El post del modal solo sirve para detectar un DUPLICADO con certeza.
+    // postEnModal = Balance Jugador REAL leído del modal "Resultado de la operación"
+    // (lo trae applyAmount). Es el saldo posterior de verdad, NO estimado.
+    const postEnModal = (resultado?.newBalance && !resultado.newBalance.unchanged && typeof resultado.newBalance.value === 'number')
+                        ? resultado.newBalance.value : null;
+    const signo = (tipo==="CARGA"?1:-1);
+    const esperado = (saldoPre !== null) ? saldoPre + signo*montoAbs : null;
+    // Detección de DUPLICADO con certeza: el saldo real saltó un múltiplo del monto en la
+    // dirección correcta (carga sube, retiro baja).
+    let confianza = 'confirmado', vecesDup = 0;
+    if(saldoPre !== null && postEnModal !== null){
+      const movido = postEnModal - saldoPre;
+      if(Math.sign(movido) === signo && Math.abs(movido) >= montoAbs*1.5){
+        const veces = Math.round(movido / (signo*montoAbs));
+        // Un duplicado real es 2-4x; un número absurdo (ej 4182x) = lectura mala, NO duplicado.
+        if(veces >= 2 && veces <= 6 && Math.abs(movido - veces*signo*montoAbs) < 1){ confianza = 'duplicado'; vecesDup = veces; }
+      }
     }
-    _wf('TOTAL '+((Date.now()-_wfT0)/1000).toFixed(2)+'s · estado final='+confInfo.confianza);
-    const confianza = confInfo.confianza; // confirmado | no_aplicado | duplicado | incierto
-    const aplicadoLimpio = (confianza === 'confirmado'); // único caso de éxito limpio
+    // Mostramos el saldo posterior REAL (del modal de resultado). Si no se pudo leer, el esperado.
+    const saldoFinalMostrar = (postEnModal !== null) ? postEnModal : esperado;
+    const confInfo = { confianza, saldoFinal: saldoFinalMostrar, veces: vecesDup };
+    _wf('TOTAL '+((Date.now()-_wfT0)/1000).toFixed(2)+'s · ok='+drexSinError+' · '+confianza+' · saldoPre='+(saldoPre!=null?saldoPre:'(null)')+' · saldoPost='+(saldoFinalMostrar!=null?saldoFinalMostrar:'(null)'));
 
-    // Estado + nota para el historial según la confianza real
-    const estadoHist = (confianza === 'confirmado' || confianza === 'duplicado') ? 'OK' : 'ERROR';
+    // ── DECISIÓN ──
+    // El script corrió (gate de saldo anterior superado) → la operación SE APLICÓ.
+    // Solo es ERROR si applyAmount devolvió error duro. 'duplicado' = OK pero alerta.
+    let estadoHist, aplicadoLimpio;
+    if(!drexSinError){
+      estadoHist = 'ERROR'; aplicadoLimpio = false;
+    } else if(confianza === 'duplicado'){
+      estadoHist = 'OK';    aplicadoLimpio = false; // se aplicó de más → no auto-anota, alerta
+    } else {
+      estadoHist = 'OK';    aplicadoLimpio = true;
+    }
+
     const notaBase = resultado?.previousBalance?.raw || busqueda.balance?.raw || null;
-    const notas = confianza === 'confirmado' ? notaBase
-                : confianza === 'duplicado'  ? ('🚨 DUPLICADO x'+(confInfo.veces||'?')+' · saldo '+money(saldoPre)+'→'+money(confInfo.saldoFinal))
-                : confianza === 'no_aplicado'? 'NO se aplicó en agentes (el saldo no cambió)'
-                :                              'REVISAR: no se pudo confirmar el saldo';
-    // Saldo post: el confirmado real si lo tenemos; sino el calculado (solo si confirmado)
-    const saldoPost = (confInfo.saldoFinal !== null) ? confInfo.saldoFinal
-                    : (aplicadoLimpio && saldoPre !== null ? saldoPre + (tipo==="CARGA"?montoAbs:-montoAbs) : null);
+    const notas = confianza === 'duplicado'
+                ? ('🚨 DUPLICADO x'+(vecesDup||'?')+' · saldo '+money(saldoPre)+'→'+money(saldoFinalMostrar))
+                : notaBase;
+    const saldoPost = saldoFinalMostrar !== null ? saldoFinalMostrar
+                    : (saldoPre !== null ? saldoPre + (tipo==="CARGA"?montoAbs:-montoAbs) : null);
 
-    // Avisos al operador según confianza
+    // Aviso SOLO ante duplicado con certeza
     if(confianza === 'duplicado'){
-      toast('🚨 '+tipo+' DUPLICADA ('+(confInfo.veces||'?')+'x) en agentes · saldo '+money(saldoPre)+' → '+money(confInfo.saldoFinal)+'. Revisá y corregí.', 'red');
-    } else if(confianza === 'no_aplicado'){
-      toast('❌ '+tipo+' NO se aplicó en agentes (el saldo del jugador no cambió).', 'red');
-    } else if(confianza === 'incierto'){
-      toast('⚠️ No se pudo confirmar el '+tipo+' en agentes. Quedó para REVISAR — verificá manualmente.', 'red');
+      toast('🚨 '+tipo+' DUPLICADA ('+(vecesDup||'?')+'x) en agentes · saldo '+money(saldoPre)+' → '+money(saldoFinalMostrar)+'. Revisá y corregí.', 'red');
     }
 
     // Registramos en historial con el estado confirmado
@@ -2312,6 +2391,12 @@ async function ejecutarOperacionManual(){
             }
             // Recién acá comparamos fichas: Chunior YA confirmó su movimiento.
             _watchdogTrigger(1500);
+            // Saldo de la billetera: NO se calcula. Se LEE del breadcrumb de Chunior (la
+            // "cabeza de la billetera"). Pequeña espera para que Chunior propague el valor.
+            await new Promise(function(r){ setTimeout(r, 600); });
+            await sincronizarBilleterasChunior(true).catch(function(){});
+            if(typeof renderBillerasInicio === 'function') renderBillerasInicio();
+            if(typeof poblarManualBilletera === 'function') poblarManualBilletera();
           } else if(rChu && rChu.error){
             toast('⚠️ '+tipo+' OK en casino pero falló en Chunior: '+rChu.error, 'red');
             // Chunior falló → NO chequeamos fichas (sabríamos que hay discrepancia,
@@ -2324,7 +2409,8 @@ async function ejecutarOperacionManual(){
     // el watchdog: sabemos que va a haber discrepancia (Drex cambió, Chunior no).
 
     if(aplicadoLimpio){
-      if(bil && bil.ID_BILLETERA) await ajustarSaldoBilletera(bil.ID_BILLETERA, tipo==="CARGA" ? montoAbs : -montoAbs);
+      // El saldo de la billetera NO se calcula (nada de sumar/restar fichas): se LEE del
+      // breadcrumb de Chunior tras registrar el movimiento (ver el .then de Chunior arriba).
       if(res){
         const detalle = (saldoPre !== null && confInfo.saldoFinal !== null)
           ? ' <span class="small">(saldo '+money(saldoPre)+' → '+money(confInfo.saldoFinal)+')</span>' : '';
@@ -2348,7 +2434,9 @@ async function ejecutarOperacionManual(){
       if(res) res.innerHTML = '<div class="err-box">'+msgRes+'. Usá ↻ Reintentar en el historial.</div>';
     }
 
-    await window.ctrlElectron.navigateAgent();
+    // Al finalizar NO refrescamos (refrescar tras cada carga dispara el 403): solo
+    // cerramos el modal con "Aceptar" y limpiamos el buscador en agentes.
+    await callDrex("finalizarOperacionAgentes").catch(function(){});
     await cargarHistorial();
     renderBillerasInicio();
     poblarManualBilletera();
@@ -2513,6 +2601,100 @@ async function consultarRetirosUsuarioRealtime(){
   } catch(e){
     if(miToken !== _consultaRetirosTokenActual) return;
     res.innerHTML = '<div class="alert-box" style="padding:10px"><span class="small">Error consultando retiros: '+escapeHtml(e.message||'')+'</span></div>';
+  }
+}
+
+// ── Blacklist 24hs ────────────────────────────────────────────────────────────
+// Muestra TODOS los usuarios con retiros en las últimas 24hs, agrupados,
+// destacando a los que tienen MÁS retiros (reincidentes) y los cross-oficina.
+async function mostrarBlacklist24h(){
+  abrirModal('🚫 Blacklist · retiros últimas 24hs',
+    '<div style="padding:8px 0;color:var(--muted)">Cargando retiros de las últimas 24hs...</div>', null, 'Cerrar');
+  // Modal de solo lectura → ocultamos el botón Guardar
+  const _sb = document.getElementById('modalSaveBtn'); if(_sb) _sb.style.display = 'none';
+  try {
+    const desde = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    // Sin filtrar por pc_codigo: queremos ver retiros de TODAS las oficinas para detectar reincidencia cruzada
+    const { data, error } = await supabaseClient
+      .from('historial_ops')
+      .select('usuario, monto, billetera_nombre, estado, origen, created_at, pc_codigo')
+      .eq('tipo', 'RETIRO')
+      .gte('created_at', desde)
+      .order('created_at', { ascending: false })
+      .limit(1000);
+    if(error) throw error;
+
+    const body = document.getElementById('modalBody') || document.querySelector('#modal .modal-body');
+
+    if(!data || !data.length){
+      if(body) body.innerHTML = '<div class="ok-box" style="padding:12px">✅ No hay retiros registrados en las últimas 24hs.</div>';
+      return;
+    }
+
+    // Agrupar por usuario
+    const porUsuario = {};
+    data.forEach(function(r){
+      const u = String(r.usuario || '?');
+      if(!porUsuario[u]) porUsuario[u] = { usuario:u, count:0, total:0, ultima:r.created_at, pcs:new Set(), origenes:new Set() };
+      const g = porUsuario[u];
+      g.count++;
+      g.total += Math.abs(Number(r.monto) || 0);
+      if(r.created_at > g.ultima) g.ultima = r.created_at;
+      if(r.pc_codigo) g.pcs.add(r.pc_codigo);
+      if(r.origen) g.origenes.add(r.origen);
+    });
+
+    // Ordenar: más retiros primero, luego mayor monto total
+    const lista = Object.values(porUsuario).sort(function(a,b){
+      if(b.count !== a.count) return b.count - a.count;
+      return b.total - a.total;
+    });
+
+    const reincidentes = lista.filter(function(g){ return g.count >= 2; }).length;
+
+    let filas = '';
+    lista.forEach(function(g){
+      // Resaltado escalonado según cantidad de retiros
+      let bg = 'transparent', borde = 'rgba(255,255,255,.08)';
+      if(g.count >= 3){ bg = 'rgba(220,40,40,.14)';  borde = 'rgba(220,40,40,.5)'; }
+      else if(g.count === 2){ bg = 'rgba(230,160,40,.12)'; borde = 'rgba(230,160,40,.45)'; }
+      const esCross = [...g.pcs].some(function(pc){ return pc && pc !== pcOperativa; });
+      const crossBadge = esCross
+        ? '<span class="badge badge-danger" style="font-size:9px;padding:2px 6px;margin-left:6px">🚨 otra PC</span>' : '';
+      const pcsTxt = [...g.pcs].join(', ') || '—';
+      const countBadge = '<span style="display:inline-block;min-width:22px;text-align:center;font-weight:800;border-radius:6px;padding:2px 7px;'
+        + (g.count>=3?'background:#dc2828;color:#fff':g.count===2?'background:#e6a028;color:#1a1205':'background:#2a3344;color:#c0cad8')
+        + '">'+g.count+'</span>';
+      filas += '<tr style="background:'+bg+';border-top:1px solid '+borde+'">'
+        + '<td style="padding:7px 8px"><b>'+escapeHtml(g.usuario)+'</b>'+crossBadge+'</td>'
+        + '<td style="padding:7px 8px;text-align:center">'+countBadge+'</td>'
+        + '<td style="padding:7px 8px;text-align:right;white-space:nowrap"><b>'+money(g.total)+'</b></td>'
+        + '<td style="padding:7px 8px;font-size:11px;color:#9aa4b2;white-space:nowrap">'+escapeHtml(formatFecha(g.ultima))+'</td>'
+        + '<td style="padding:7px 8px;font-size:11px;color:#9aa4b2">'+escapeHtml(pcsTxt)+'</td>'
+        + '</tr>';
+    });
+
+    if(body) body.innerHTML =
+        '<div style="display:flex;gap:14px;margin-bottom:10px;flex-wrap:wrap;font-size:13px">'
+      +   '<span>👥 <b>'+lista.length+'</b> usuarios</span>'
+      +   '<span>↩️ <b>'+data.length+'</b> retiros</span>'
+      +   (reincidentes ? '<span style="color:#ffb86b">🔁 <b>'+reincidentes+'</b> reincidentes (2+)</span>' : '')
+      + '</div>'
+      + '<div style="max-height:55vh;overflow:auto;border:1px solid rgba(255,255,255,.08);border-radius:10px">'
+      +   '<table style="width:100%;border-collapse:collapse;font-size:13px">'
+      +     '<thead><tr style="position:sticky;top:0;background:#161b26;z-index:1">'
+      +       '<th style="padding:8px;text-align:left">Usuario</th>'
+      +       '<th style="padding:8px;text-align:center">Retiros</th>'
+      +       '<th style="padding:8px;text-align:right">Total</th>'
+      +       '<th style="padding:8px;text-align:left">Último</th>'
+      +       '<th style="padding:8px;text-align:left">Oficina</th>'
+      +     '</tr></thead>'
+      +     '<tbody>'+filas+'</tbody>'
+      +   '</table>'
+      + '</div>';
+  } catch(e){
+    const body = document.getElementById('modalBody') || document.querySelector('#modal .modal-body');
+    if(body) body.innerHTML = '<div class="err-box" style="padding:12px">Error cargando blacklist: '+escapeHtml(e.message||'')+'</div>';
   }
 }
 
@@ -2836,7 +3018,8 @@ async function reintentarOperacionFallida(historialId){
   const { data: row, error } = await supabaseClient
     .from('historial_ops').select('*').eq('id', historialId).single();
   if(error || !row){ toast('No se encontró la fila del historial.', 'red'); return; }
-  const { usuario, tipo, monto, billetera_id, billetera_nombre, chunior_movimiento_id, saldo_pre, saldo_post } = row;
+  const { usuario, tipo, monto, billetera_id, billetera_nombre, chunior_movimiento_id, saldo_pre, saldo_post, created_at } = row;
+  const fechaRefMs = created_at ? new Date(created_at).getTime() : Date.now();
 
   // Resolver billetera (ID → nombre → landing) para Chunior
   let bil = billeteras.find(function(b){ return String(b.ID_BILLETERA) === String(billetera_id); });
@@ -2857,7 +3040,7 @@ async function reintentarOperacionFallida(historialId){
   let b, chuVerif = { existe:false, movimientoId:null };
   try {
     const verifChuniorPromise = (necesitaChunior && !chuniorYaHecho)
-      ? verificarMovimientoEnChunior(usuario, monto)   // corre en la ventana de Chunior (paralelo)
+      ? verificarMovimientoEnChunior(usuario, monto, fechaRefMs)   // corre en la ventana de Chunior (paralelo)
       : Promise.resolve({ existe:false, movimientoId:null });
     // Agentes y Chunior usan ventanas distintas → realmente en paralelo
     const [bRes, chuRes] = await Promise.all([
@@ -3644,6 +3827,10 @@ if(enElectron){
 // ── Saldo del agente (widget del sidebar) ─────────────────────────────────────
 async function refrescarSaldoAgente(){
   if(!enElectron) return;
+  // NO recargar agentes si hay una operación en curso: obtenerSaldoAgente navega la
+  // ventana de agentes y, si dispara a mitad de una carga/retiro, le borra el modal y
+  // deja la operación colgada. Si está ocupado, salteamos este refresco (vuelve solo).
+  if(_operacionManualEnCurso || (typeof _watchdog !== 'undefined' && _watchdog.busy > 0)) return;
   const el = document.getElementById("agentBalanceVal");
   if(el) el.textContent = "Cargando...";
   try{
@@ -3657,8 +3844,10 @@ async function refrescarSaldoAgente(){
   }
 }
 if(enElectron){
-  // Refresca el saldo del agente cada 60 segundos
-  setInterval(refrescarSaldoAgente, 60000);
+  // Refresca el saldo del agente cada 5 minutos (antes 60s). Cada refresh RECARGA la
+  // página entera de agentes → hacerlo cada minuto es tráfico robótico constante que el
+  // WAF de CloudFront marca como bot. El operador puede forzar con el botón 🔄.
+  setInterval(refrescarSaldoAgente, 300000);
   setTimeout(refrescarSaldoAgente, 4000); // 4s después del load inicial
 }
 
@@ -4223,6 +4412,163 @@ async function abrirBackoffice(){
   // Esta es la ÚNICA función que muestra la ventana de agentes (botón manual del operador)
   await window.ctrlElectron.showAgentWindow();
   await verificarEstadoBackoffice();
+}
+
+// Limpia cookies/caché de agentes y recarga para reingresar (destraba el 403 de CloudFront).
+// No toca la sesión de Chunior. Después de limpiar, mostramos la ventana para reloguear.
+async function limpiarDatosAgentes(){
+  if(!enElectron){ alert("Solo disponible en la app de escritorio."); return; }
+  if(!confirm("Esto borra las cookies y el caché de AGENTES y recarga la página para que reingreses tus credenciales.\n\nLa sesión de Chunior NO se toca.\n\n¿Continuar?")) return;
+  const btn = document.getElementById("limpiarDatosBtn");
+  if(btn){ btn.disabled = true; btn.style.opacity = '0.6'; btn.textContent = '🧹 Limpiando...'; }
+  try {
+    await window.ctrlElectron.clearAgentData();
+    toast("🧹 Datos de agentes limpiados · reingresá tus credenciales", "blue");
+    // Mostrar la ventana de agentes para que el operador vea el login y reingrese
+    await window.ctrlElectron.showAgentWindow();
+    await verificarEstadoBackoffice();
+  } catch(e){
+    toast("Error limpiando datos: "+(e.message||""), "red");
+  } finally {
+    if(btn){ btn.disabled = false; btn.style.opacity = ''; btn.textContent = '🧹 Limpiar datos y reingresar'; }
+  }
+}
+
+// ── PROXY de agentes ──────────────────────────────────────────────────────────
+// Los perfiles se guardan en localStorage SIN la contraseña (la contraseña solo
+// vive en memoria al aplicar — nunca se persiste en texto plano).
+function _cargarPerfilesProxy(){
+  try { return JSON.parse(localStorage.getItem('nodo_proxies') || '[]'); } catch(_){ return []; }
+}
+function _guardarPerfilesProxy(arr){
+  try { localStorage.setItem('nodo_proxies', JSON.stringify(arr||[])); } catch(_){}
+}
+
+function abrirModalProxy(){
+  if(!enElectron){ alert("El proxy solo funciona en la app de escritorio."); return; }
+  const perfiles = _cargarPerfilesProxy();
+  const opts = ['<option value="">— Perfil guardado —</option>']
+    .concat(perfiles.map(function(p,i){ return '<option value="'+i+'">'+escapeHtml(p.nombre||('Proxy '+(i+1)))+'</option>'; }))
+    .join('');
+  const body =
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    + '<div style="grid-column:1/-1;display:flex;gap:8px;align-items:end">'
+    +   '<div style="flex:1"><label class="small">Perfiles guardados</label>'
+    +     '<select id="proxyPerfilSelect" onchange="cargarPerfilProxy()" style="margin-top:4px">'+opts+'</select></div>'
+    +   '<button class="mini-btn gray" onclick="borrarPerfilProxy()" title="Borrar el perfil seleccionado">🗑</button>'
+    + '</div>'
+    + '<div><label class="small">Nombre</label><input id="proxyNombre" placeholder="Ej: Residencial AR" style="margin-top:4px"></div>'
+    + '<div><label class="small">Protocolo</label><select id="proxyProtocolo" style="margin-top:4px">'
+    +     '<option value="http">HTTP</option><option value="https">HTTPS</option>'
+    +     '<option value="socks5">SOCKS5</option><option value="socks4">SOCKS4</option></select></div>'
+    + '<div><label class="small">Servidor</label><input id="proxyServidor" placeholder="123.45.67.89 o host" style="margin-top:4px"></div>'
+    + '<div><label class="small">Puerto</label><input id="proxyPuerto" type="number" placeholder="8080" style="margin-top:4px"></div>'
+    + '<div><label class="small">Método de autenticación</label><select id="proxyAuth" style="margin-top:4px">'
+    +     '<option value="none">Ninguno</option><option value="basic">Usuario y contraseña</option></select></div>'
+    + '<div><label class="small">Resolución DNS</label><select id="proxyDns" style="margin-top:4px">'
+    +     '<option value="proxy">Por el proxy (remota)</option><option value="local">Local</option></select></div>'
+    + '<div><label class="small">Usuario</label><input id="proxyUsuario" autocomplete="off" placeholder="(si requiere auth)" style="margin-top:4px"></div>'
+    + '<div><label class="small">Contraseña</label><input id="proxyPassword" type="password" autocomplete="new-password" placeholder="(no se guarda en disco)" style="margin-top:4px"></div>'
+    + '<div style="grid-column:1/-1;display:flex;gap:8px;margin-top:6px">'
+    +   '<button class="mini-btn gray" onclick="guardarPerfilProxy()">💾 Guardar perfil</button>'
+    +   '<button class="mini-btn red" onclick="quitarProxyActivo()">🚫 Quitar proxy (directo)</button>'
+    + '</div>'
+    + '<div id="proxyModalMsg" style="grid-column:1/-1"></div>'
+    + '</div>';
+  abrirModal('🌐 Proxy de agentes', body, aplicarProxyDesdeModal, 'Aplicar proxy');
+}
+
+function cargarPerfilProxy(){
+  const i = document.getElementById('proxyPerfilSelect').value;
+  if(i === '') return;
+  const p = _cargarPerfilesProxy()[Number(i)];
+  if(!p) return;
+  document.getElementById('proxyNombre').value    = p.nombre || '';
+  document.getElementById('proxyProtocolo').value = p.protocolo || 'http';
+  document.getElementById('proxyServidor').value  = p.servidor || '';
+  document.getElementById('proxyPuerto').value    = p.puerto || '';
+  document.getElementById('proxyAuth').value      = p.auth || (p.usuario ? 'basic' : 'none');
+  document.getElementById('proxyDns').value       = p.dns || 'proxy';
+  document.getElementById('proxyUsuario').value   = p.usuario || '';
+  document.getElementById('proxyPassword').value  = ''; // la contraseña no se guarda
+}
+
+function _proxyLeerForm(){
+  return {
+    nombre:    (document.getElementById('proxyNombre').value||'').trim(),
+    protocolo: document.getElementById('proxyProtocolo').value,
+    servidor:  (document.getElementById('proxyServidor').value||'').trim(),
+    puerto:    (document.getElementById('proxyPuerto').value||'').trim(),
+    auth:      document.getElementById('proxyAuth').value,
+    dns:       document.getElementById('proxyDns').value,
+    usuario:   (document.getElementById('proxyUsuario').value||'').trim(),
+    password:  document.getElementById('proxyPassword').value||''
+  };
+}
+
+function guardarPerfilProxy(){
+  const f = _proxyLeerForm();
+  if(!f.nombre){ setBox('proxyModalMsg','<div class="err-box" style="margin-top:6px">Poné un nombre para guardar el perfil.</div>'); return; }
+  const arr = _cargarPerfilesProxy();
+  // SIN contraseña
+  const perfil = { nombre:f.nombre, protocolo:f.protocolo, servidor:f.servidor, puerto:f.puerto, auth:f.auth, dns:f.dns, usuario: f.auth==='basic'?f.usuario:'' };
+  const idx = arr.findIndex(function(p){ return (p.nombre||'').toLowerCase() === f.nombre.toLowerCase(); });
+  if(idx >= 0) arr[idx] = perfil; else arr.push(perfil);
+  _guardarPerfilesProxy(arr);
+  setBox('proxyModalMsg','<div class="ok-box" style="margin-top:6px">Perfil "<b>'+escapeHtml(f.nombre)+'</b>" guardado (sin la contraseña).</div>');
+  // refrescar el select
+  const sel = document.getElementById('proxyPerfilSelect');
+  const opts = ['<option value="">— Perfil guardado —</option>']
+    .concat(arr.map(function(p,i){ return '<option value="'+i+'">'+escapeHtml(p.nombre||('Proxy '+(i+1)))+'</option>'; })).join('');
+  sel.innerHTML = opts;
+}
+
+function borrarPerfilProxy(){
+  const sel = document.getElementById('proxyPerfilSelect');
+  const i = sel.value;
+  if(i === '') return;
+  const arr = _cargarPerfilesProxy();
+  const borrado = arr.splice(Number(i),1);
+  _guardarPerfilesProxy(arr);
+  abrirModalProxy(); // re-render
+  setBox('proxyModalMsg','<div class="alert-box" style="margin-top:6px">Perfil borrado'+(borrado[0]?(' ("'+escapeHtml(borrado[0].nombre||'')+'")'):'')+'.</div>');
+}
+
+async function aplicarProxyDesdeModal(){
+  const f = _proxyLeerForm();
+  if(!f.servidor || !f.puerto){ setBox('proxyModalMsg','<div class="err-box" style="margin-top:6px">Faltan servidor y/o puerto.</div>'); return; }
+  const cfg = {
+    protocolo: f.protocolo,
+    servidor:  f.servidor,
+    puerto:    f.puerto,
+    dns:       f.dns,
+    usuario:   f.auth === 'basic' ? f.usuario : '',
+    password:  f.auth === 'basic' ? f.password : ''
+  };
+  setBox('proxyModalMsg','<div class="alert-box" style="margin-top:6px">Aplicando proxy y recargando agentes...</div>');
+  try {
+    const r = await window.ctrlElectron.setProxy(cfg);
+    if(r && r.ok){
+      toast('🌐 Proxy aplicado a agentes · '+escapeHtml(f.servidor)+':'+escapeHtml(f.puerto), 'green');
+      cerrarModal();
+      await window.ctrlElectron.showAgentWindow();
+      await verificarEstadoBackoffice();
+    } else {
+      setBox('proxyModalMsg','<div class="err-box" style="margin-top:6px">No se pudo aplicar: '+escapeHtml((r&&r.error)||'error desconocido')+'</div>');
+    }
+  } catch(e){
+    setBox('proxyModalMsg','<div class="err-box" style="margin-top:6px">Error: '+escapeHtml(e.message||'')+'</div>');
+  }
+}
+
+async function quitarProxyActivo(){
+  try {
+    const r = await window.ctrlElectron.clearProxy();
+    if(r && r.ok){ toast('Proxy desactivado · agentes va directo', 'blue'); setBox('proxyModalMsg','<div class="ok-box" style="margin-top:6px">Proxy quitado. Agentes va directo (sin proxy).</div>'); }
+    else setBox('proxyModalMsg','<div class="err-box" style="margin-top:6px">No se pudo quitar: '+escapeHtml((r&&r.error)||'')+'</div>');
+  } catch(e){
+    setBox('proxyModalMsg','<div class="err-box" style="margin-top:6px">Error: '+escapeHtml(e.message||'')+'</div>');
+  }
 }
 
 async function verificarEstadoBackoffice(){
@@ -5216,7 +5562,10 @@ async function sincronizarBilleterasChunior(silencioso){
 // Esto cubre el caso "se anotó en Chunior pero NODO no guardó el N° de movimiento".
 // Usa el buscador del admin (?q=usuario) y lee la tabla #result_list.
 // Devuelve { existe:boolean, movimientoId:string|null }.
-async function verificarMovimientoEnChunior(usuario, monto){
+// fechaRefMs: timestamp (ms) de referencia de la operación que buscamos confirmar.
+// Sirve para NO emparejar un movimiento viejo (misma billetera+monto, otra hora)
+// con la operación actual. Si no se pasa, se usa "ahora".
+async function verificarMovimientoEnChunior(usuario, monto, fechaRefMs){
   if(!window.chunior || !usuario) return { existe:false, movimientoId:null };
   const montoAbs = Math.abs(Number(monto));
   try {
@@ -5234,18 +5583,21 @@ async function verificarMovimientoEnChunior(usuario, monto){
 
     // Leer las filas y buscar una que matchee usuario (notas) + monto (abs).
     // Estructura del <tr>: .field-id > a (link con ID), .field-as_money (monto),
-    // .field-notas (usuario), .field-creation (fecha).
+    // .field-notas (usuario), fecha en alguna celda (DD-MM-YYYY HH:MM:SS).
     const res = await window.chunior.exec(
       '(function(){' +
         'var rows = document.querySelectorAll("#result_list tbody tr");' +
         'var out = [];' +
+        'var dateRe=/\\d{2}[-/]\\d{2}[-/]\\d{4}[ T]\\d{2}:\\d{2}(?::\\d{2})?/;' +
         'for(var i=0;i<rows.length;i++){' +
           'var r = rows[i];' +
           'var a = r.querySelector(".field-id a, th a");' +
           'var idm = null; if(a){ var mm=(a.href||"").match(/movimientoficha\\/(\\d+)/); if(mm) idm=mm[1]; else idm=(a.textContent||"").trim(); }' +
           'var montoTxt = (r.querySelector(".field-as_money")||{}).textContent || "";' +
           'var notas = ((r.querySelector(".field-notas")||{}).textContent || "").trim();' +
-          'out.push({ id:idm, montoTxt:montoTxt, notas:notas });' +
+          'var fechaTxt = ""; var cells = r.querySelectorAll("td,th");' +
+          'for(var j=0;j<cells.length;j++){ var t=(cells[j].textContent||"").trim(); var dm=t.match(dateRe); if(dm){ fechaTxt=dm[0]; break; } }' +
+          'out.push({ id:idm, montoTxt:montoTxt, notas:notas, fechaTxt:fechaTxt });' +
         '}' +
         'return out;' +
       '})()'
@@ -5253,17 +5605,49 @@ async function verificarMovimientoEnChunior(usuario, monto){
 
     if(!res || !res.length) return { existe:false, movimientoId:null };
 
+    // Parser de fecha de Chunior "DD-MM-YYYY HH:MM:SS" → ms (hora local = hora AR de la PC).
+    function parseFechaChu(s){
+      if(!s) return null;
+      var m = String(s).match(/(\d{2})[-/](\d{2})[-/](\d{4})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+      if(!m) return null;
+      return new Date(+m[3], +m[2]-1, +m[1], +m[4], +m[5], +(m[6]||0)).getTime();
+    }
+
     const normU = String(usuario).trim().toLowerCase();
+    const refMs = (typeof fechaRefMs === 'number' && !isNaN(fechaRefMs)) ? fechaRefMs : Date.now();
+    const VENTANA_MS = 30 * 60 * 1000; // ±30 min: la op recién hecha cae acá; un mov de las 04am NO
+
+    // Juntamos todos los que matchean usuario+monto
+    const matches = [];
     for(const r of res){
       const notasNorm = String(r.notas||'').trim().toLowerCase();
       // El monto en la lista viene como "$ 1.500,00" (AR). Parseamos a número.
       const mTxt = String(r.montoTxt||'').replace(/[^\d,.-]/g,'').replace(/\./g,'').replace(',','.');
       const mNum = Math.abs(parseFloat(mTxt));
       if(notasNorm === normU && !isNaN(mNum) && Math.abs(mNum - montoAbs) < 1){
-        return { existe:true, movimientoId: r.id || null };
+        matches.push(r);
       }
     }
-    return { existe:false, movimientoId:null };
+    if(!matches.length) return { existe:false, movimientoId:null };
+
+    // Elegimos el match más CERCANO en tiempo a la referencia, y exigimos que caiga
+    // dentro de la ventana. Así evitamos emparejar un movimiento viejo con la op actual.
+    let best = null, bestDiff = Infinity, algunaFecha = false;
+    for(const r of matches){
+      const tms = parseFechaChu(r.fechaTxt);
+      if(tms != null){
+        algunaFecha = true;
+        const d = Math.abs(tms - refMs);
+        if(d < bestDiff){ bestDiff = d; best = r; }
+      }
+    }
+    if(algunaFecha){
+      if(best && bestDiff <= VENTANA_MS) return { existe:true, movimientoId: best.id || null };
+      // hay coincidencias usuario+monto pero la más cercana está fuera de ventana (otro horario) → NO afirmamos
+      return { existe:false, movimientoId:null };
+    }
+    // Ninguna fecha parseable → no podemos filtrar por tiempo; usamos el primero (comportamiento previo)
+    return { existe:true, movimientoId: matches[0].id || null };
   } catch(e){
     return { existe:false, movimientoId:null };
   }
@@ -5889,7 +6273,9 @@ async function procesarColaVerificacion(){
 
 // Arranca el procesador automático cuando hay Electron
 if(window.ctrlElectron){
-  setInterval(procesarColaVerificacion, 5000);
+  // Cada verificación CARGA la página de agentes y busca → procesar cada 5s era tráfico
+  // robótico que ayudaba a que el WAF banee la IP. Lo bajamos a cada 30s.
+  setInterval(procesarColaVerificacion, 30000);
   // Actualiza badge de pendientes cada 10s
   setInterval(async ()=>{
     const { count } = await supabaseClient.from("verificaciones")

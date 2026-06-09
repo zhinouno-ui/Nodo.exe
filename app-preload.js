@@ -9,13 +9,17 @@ const ALLOWED_AUTOMATION_METHODS = new Set([
   'cambiarClave',
   'crearUsuario',
   'obtenerSaldoAgente',
-  'iniciarSesion'
+  'iniciarSesion',
+  'finalizarOperacionAgentes'
 ]);
 
 contextBridge.exposeInMainWorld('ctrlElectron', {
   openAgentWindow: () => ipcRenderer.invoke('drex:open-agent-window'),
   showAgentWindow: () => ipcRenderer.invoke('drex:show-agent-window'),
   navigateAgent:   (url) => ipcRenderer.invoke('drex:navigate', url),
+  clearAgentData:  () => ipcRenderer.invoke('drex:clear-data'),
+  setProxy:        (cfg) => ipcRenderer.invoke('proxy:set', cfg),
+  clearProxy:      () => ipcRenderer.invoke('proxy:clear'),
   drexAutomation: (method, ...args) => {
     if (!ALLOWED_AUTOMATION_METHODS.has(method)) {
       return Promise.reject(new Error(`Método no permitido: ${method}`));

@@ -130,7 +130,7 @@ function readUserBalance() {
   const inputs = Array.from(document.querySelectorAll(
     'input.Mui-disabled, input[disabled], input[readonly]'
   )).filter(isVisible);
-  const bal = inputs.find(el => /ARS/.test(el.value || ''));
+  const bal = inputs.find(el => /ARS/.test(el.value || '') && /\d/.test(el.value || ''));
   if (bal) return { raw: bal.value, value: parseMoney(bal.value) };
   return null;
 }
@@ -199,24 +199,25 @@ function _leerSaldoJugadorEnModalAbierto() {
     ) || label.parentElement;
     if (!container) continue;
     const inp = container.querySelector('input[disabled], input.Mui-disabled, input[readonly]');
-    if (inp && isVisible(inp) && /ARS/.test(inp.value || '')) {
+    if (inp && isVisible(inp) && /ARS/.test(inp.value || '') && /\d/.test(inp.value || '')) {
       return { raw: inp.value, value: parseMoney(inp.value) };
     }
     const formControl = label.closest('.MuiFormControl-root') || label.parentElement?.closest('.MuiFormControl-root');
     if (formControl) {
       const inp2 = formControl.querySelector('input[disabled], input.Mui-disabled, input[readonly]');
-      if (inp2 && isVisible(inp2) && /ARS/.test(inp2.value || '')) {
+      if (inp2 && isVisible(inp2) && /ARS/.test(inp2.value || '') && /\d/.test(inp2.value || '')) {
         return { raw: inp2.value, value: parseMoney(inp2.value) };
       }
     }
   }
 
   // ── Estrategia 2: ARS inputs → el de menor valor es el jugador ───────────
+  // Exigir dígito: el preview de monto (value "ARS") NO es un saldo.
   const arsInputs = Array.from(document.querySelectorAll(
     'input[disabled], input.Mui-disabled, input[readonly]'
   ))
     .filter(isVisible)
-    .filter(el => /ARS/.test(el.value || ''));
+    .filter(el => /ARS/.test(el.value || '') && /\d/.test(el.value || ''));
 
   if (arsInputs.length >= 2) {
     const sorted = arsInputs.slice().sort((a, b) => parseMoney(a.value) - parseMoney(b.value));
@@ -226,6 +227,35 @@ function _leerSaldoJugadorEnModalAbierto() {
     return { raw: arsInputs[0].value, value: parseMoney(arsInputs[0].value) };
   }
   return { raw: '', value: 0 };
+}
+
+// Detecta el modal "Resultado de la operación" que el casino muestra DESPUÉS de Aplicar.
+// Trae el Balance Jugador REAL (post) y el texto "Operación correcta".
+function _detectarModalResultado() {
+  const cont = Array.from(document.querySelectorAll('.ReactModal__Content, [role="dialog"], .card-alert'));
+  for (const m of cont) {
+    if (!isVisible(m)) continue;
+    const titulo = m.querySelector('.card-title-alert');
+    if (titulo && /resultado de la operaci/i.test(titulo.textContent || '')) return m;
+    if (/resultado de la operaci/i.test(m.textContent || '')) return m;
+  }
+  return null;
+}
+
+// Lee el "Balance Jugador" DENTRO de un modal específico (scopeado, no en todo el doc,
+// porque el modal de carga también tiene un "Balance Jugador").
+function _leerBalanceJugadorEnModal(modal) {
+  if (!modal) return null;
+  const labels = Array.from(modal.querySelectorAll('label, legend, .MuiInputLabel-root, span'));
+  for (const lab of labels) {
+    if (!/jugador/i.test(lab.textContent || '')) continue;
+    const cont = lab.closest('.MuiFormControl-root, .MuiTextField-root, .col-md-6, .col-12, .MuiInputBase-root') || lab.parentElement;
+    const inp = cont && cont.querySelector('input[disabled], input.Mui-disabled, input[readonly]');
+    if (inp && isVisible(inp) && /\d/.test(inp.value || '')) {
+      return { raw: inp.value, value: parseMoney(inp.value) };
+    }
+  }
+  return null;
 }
 
 // Lee los DOS balances del jugador en el modal abierto (depósito o retiro).
@@ -240,7 +270,8 @@ function _leerBalancesEnModalDeposito() {
     'input[disabled], input.Mui-disabled, input[readonly]'
   ))
     .filter(isVisible)
-    .filter(el => /ARS/.test(el.value || ''));
+    // Exigir un DÍGITO: el preview de monto tiene value "ARS" (sin número) y NO es un saldo.
+    .filter(el => /ARS/.test(el.value || '') && /\d/.test(el.value || ''));
 
   if (inputs.length === 0) return { pre: null, post: null };
 
@@ -345,6 +376,30 @@ function detectarModalSesionInvalida() {
   return null;
 }
 
+// Detecta si la página es un ERROR del servidor/CDN (no la app de agentes):
+// CloudFront 403/404/5xx, "Request blocked", "could not be satisfied", etc.
+// Devuelve true SOLO si parece página de error Y no hay ningún elemento de la app
+// (así una pantalla de login —que sí es válida— no se confunde con un error).
+function pageIsBlocked() {
+  try {
+    const hasApp = !!(
+      document.querySelector(SELECTORS.searchButton) ||
+      document.querySelector(SELECTORS.amountInput) ||
+      firstVisible(SELECTORS.playerAlias) ||
+      document.querySelector('input[type="password"]') ||
+      document.querySelector('input[name="alias"]')
+    );
+    if (hasApp) return false;
+    const body  = (document.body && (document.body.innerText || document.body.textContent) || '').slice(0, 2000).toLowerCase();
+    const title = (document.title || '').toLowerCase();
+    const errMark = /(40[0-9]|50[0-9])\s*error|request blocked|request could not be satisfied|generated by cloudfront|service unavailable|bad gateway|gateway timeout|access denied|forbidden|algo sali|cannot read properties|errorboundary/.test(body)
+                 || /\b(403|404|500|502|503|error)\b/.test(title);
+    return errMark;
+  } catch (_) {
+    return false;
+  }
+}
+
 function pageNeedsLogin() {
   // Modal de sesión inválida (aparece cuando la sesión expira abruptamente)
   if (detectarModalSesionInvalida()) return true;
@@ -416,12 +471,16 @@ async function cerrarModalSesionInvalida() {
 }
 
 function status(extra = {}) {
-  const needsLogin = pageNeedsLogin();
+  const pageError = pageIsBlocked();
+  const needsLogin = !pageError && pageNeedsLogin();
   return {
-    ok: !needsLogin,
+    ok: !needsLogin && !pageError,
     needsLogin,
+    pageError,
     url: window.location.href,
-    message: needsLogin
+    message: pageError
+      ? 'La página de agentes respondió con un error del servidor (403/404/CDN). No se operó. Reintentá.'
+      : needsLogin
       ? 'La página de agentes requiere iniciar sesión o no respondió con el módulo esperado. Iniciá sesión manualmente y volvé a intentar.'
       : 'Módulo de agentes disponible.',
     ...extra
@@ -429,6 +488,8 @@ function status(extra = {}) {
 }
 
 async function ensureUserSearchReady() {
+  // Página de error del servidor/CDN → abortar antes de operar (no correr el script contra basura)
+  if (pageIsBlocked()) return status();
   // Cierra el modal de sesión inválida antes de evaluar el estado
   await cerrarModalSesionInvalida();
   if (pageNeedsLogin()) return status();
@@ -517,7 +578,7 @@ async function buscarUsuario(usuario, options = {}) {
 
 async function openMovementModal(iconName, options = {}) {
   const ready = await ensureUserSearchReady();
-  if (ready.needsLogin) return ready;
+  if (ready.needsLogin || ready.pageError) return ready;
 
   // ESPERAR a que el botón/icono de carga aparezca antes de clickear.
   // Antes clickButtonByIcon buscaba UNA sola vez y, si el perfil del jugador
@@ -562,7 +623,7 @@ async function applyAmount(iconName, amount, actionName, options = {}) {
   }
 
   const opened = await openMovementModal(iconName, options);
-  if (opened.needsLogin) return opened;
+  if (opened.needsLogin || opened.pageError) return opened;
 
   // Espera a que el modal termine de renderizar (React necesita tiempo)
   await delay(500);
@@ -600,18 +661,44 @@ async function applyAmount(iconName, amount, actionName, options = {}) {
   if (applyButton.disabled) throw new Error('El botón "Aplicar" está deshabilitado (¿monto inválido?).');
   clickElement(applyButton);
 
-  // El segundo input del modal (DOM order #1) muestra el saldo POSTERIOR.
-  // Antes de Aplicar es un preview (pre + monto). Después de Aplicar el casino
-  // lo actualiza al saldo real. Esperamos un poco y leemos.
-  await delay(1500);
-  const balancesDespues = _leerBalancesEnModalDeposito();
-  let newBalance;
-  if (balancesDespues.post && balancesDespues.post.raw) {
-    newBalance = balancesDespues.post;
-  } else if (balancesDespues.pre && balancesDespues.pre.raw && Math.abs(balancesDespues.pre.value - balance.value) > 0.01) {
-    // Fallback: si el modal cerró y solo queda un input que cambió → ese es el post
-    newBalance = balancesDespues.pre;
-  } else {
+  // Tras Aplicar, el casino muestra el modal "Resultado de la operación" con el Balance
+  // Jugador REAL (post) y el texto "Operación correcta". Esa es la FUENTE del saldo
+  // posterior (no estimar pre±monto). Polleamos hasta ~8s esperando NO solo a que el modal
+  // aparezca, sino a que el Balance Jugador esté POBLADO (a veces aparece con el input en
+  // 0/vacío y, si leemos ahí, agarramos un 0 transitorio).
+  let newBalance = null, exito = null, resultadoTexto = '', modalResRef = null;
+  const tFinRes = now() + 8000;
+  while (now() < tFinRes) {
+    const modalRes = _detectarModalResultado();
+    if (modalRes) {
+      modalResRef = modalRes;
+      resultadoTexto = (modalRes.textContent || '').replace(/\s+/g, ' ').trim();
+      exito = /operaci[oó]n correcta/i.test(resultadoTexto);
+      const post = _leerBalanceJugadorEnModal(modalRes); // Balance Jugador REAL del modal de resultado
+      if (post && post.raw && /\d/.test(post.raw)) {
+        // En una CARGA el post real es > 0; un 0 suele ser que todavía no pintó → seguir esperando.
+        if (actionName === 'carga' && post.value === 0) { await delay(250); continue; }
+        newBalance = post;
+        break;
+      }
+    }
+    await delay(200);
+  }
+
+  // Cerrar el modal de resultado con su botón "Aceptar" (vuelve a la pantalla inicial).
+  if (modalResRef) {
+    try {
+      const btnAcept = Array.from(modalResRef.querySelectorAll('button, [role="button"]'))
+        .find(b => /^\s*aceptar\s*$/i.test((b.textContent || '').trim()));
+      if (btnAcept) { clickElement(btnAcept); await delay(400); }
+    } catch (_) {}
+  }
+
+  // Si NO se pudo leer el post del modal de resultado, lo dejamos como "no leído"
+  // (unchanged). IMPORTANTE: no leemos el modal de carga/retiro como fallback, porque su
+  // preview de monto (value "ARS") se interpretaba como 0 → falso "duplicado". Mejor
+  // sin dato (el panel muestra el esperado) que con un 0 falso.
+  if (!newBalance) {
     newBalance = { raw: balance.raw, value: balance.value, unchanged: true };
   }
 
@@ -621,6 +708,8 @@ async function applyAmount(iconName, amount, actionName, options = {}) {
     amount: numericAmount,
     previousBalance: balance,
     newBalance,
+    exito,                 // true si el casino dijo "Operación correcta" (null si no se vio el modal)
+    resultado: resultadoTexto,
     message: `${actionName} enviado. Saldo anterior: ${balance.raw?.trim() || '—'}${newBalance?.raw ? ' → ' + newBalance.raw.trim() : ''}.`
   };
 }
@@ -631,6 +720,26 @@ function cargarSaldo(amount, options) {
 
 function retirarSaldo(amount, options) {
   return applyAmount('circle-minus', amount, 'retiro', options);
+}
+
+// Al terminar una operación: cerrar el modal de confirmación con "Aceptar" (o "OK"/
+// "Cerrar") y limpiar el buscador (el alias escrito), dejando la página lista para la
+// próxima operación SIN refrescar. Refrescar tras cada carga genera tráfico que dispara
+// el 403 de CloudFront; esto evita ese refresh.
+async function finalizarOperacionAgentes() {
+  try {
+    const modal = findActiveModal();
+    const scope = modal || document;
+    const btns = Array.from(scope.querySelectorAll('button, [role="button"], input[type="submit"], a.btn')).filter(isVisible);
+    const aceptar = btns.find(b => /^\s*(aceptar|aceptar y cerrar|ok|cerrar|close|entendido|listo|continuar)\s*$/i.test((b.textContent || b.value || '').trim()));
+    if (aceptar) { clickElement(aceptar); await delay(300); }
+    else { await cerrarModalActual(); }
+  } catch (_) {}
+  try {
+    const search = findSearchInput();
+    if (search) setReactInputValue(search, '');
+  } catch (_) {}
+  return { ok: true };
 }
 
 async function cambiarClave(password, options = {}) {
