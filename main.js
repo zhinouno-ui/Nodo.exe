@@ -6,7 +6,7 @@ const NEW_USER_URL = 'https://bo.casinodrex.com/agents/new_user';
 const CHUNIOR_URL  = 'https://bo.chunior.com/transacciones/';
 
 // Sesión propia para agentes (agentWindow + verifyWindow la comparten). Permite
-// aplicar un PROXY y limpiar datos solo para agentes, sin afectar Chunior ni Supabase.
+// aplicar un PROXY y limpiar datos solo para agentes, sin afectar Reg ni Supabase.
 const AGENT_PARTITION = 'persist:agentes';
 function agentSession() { return session.fromPartition(AGENT_PARTITION); }
 
@@ -132,7 +132,7 @@ function configurarSesionAgentes(win) {
   } catch (e) { console.warn('[main] configurarSesionAgentes:', e && e.message); }
 }
 
-// ── Ventana del backoffice del casino (Casinodrex) ────────────────────────────
+// ── Ventana del backoffice del casino (Bo) ────────────────────────────
 // OCULTA por defecto: contiene la lógica de cargas automáticas pero no se muestra.
 function createAgentWindow(url = AGENT_URL) {
   agentWindow = new BrowserWindow({
@@ -177,20 +177,20 @@ function createAgentWindow(url = AGENT_URL) {
   return agentWindow;
 }
 
-// ── Ventana de Chunior (backoffice secundario, VISIBLE) ───────────────────────
+// ── Ventana de Reg (backoffice secundario, VISIBLE) ───────────────────────
 // Contiene la lógica de login + sync de billeteras + registro de cargas.
 // El operador puede ver el flujo en vivo en esta ventana.
-function createChuniorWindow() {
+function createRegWindow() {
   chuniorWindow = new BrowserWindow({
     width:  1200,
     height: 800,
-    title:  'Chunior — Backoffice',
+    title:  'Reg — Backoffice',
     backgroundColor: '#ffffff',
     webPreferences: {
       contextIsolation:     true,
       nodeIntegration:      false,
       sandbox:              true,
-      backgroundThrottling: false, // que Chunior siga refrescando aunque no esté enfocado
+      backgroundThrottling: false, // que Reg siga refrescando aunque no esté enfocado
     }
   });
   chuniorWindow.loadURL(CHUNIOR_URL);
@@ -198,12 +198,12 @@ function createChuniorWindow() {
   return chuniorWindow;
 }
 
-function getChuniorWindow() {
+function getRegWindow() {
   if (chuniorWindow && !chuniorWindow.isDestroyed()) return chuniorWindow;
-  return createChuniorWindow();
+  return createRegWindow();
 }
 
-function whenChuniorReady(win, timeoutMs = 15000) {
+function whenRegReady(win, timeoutMs = 15000) {
   if (!win.webContents.isLoading()) return Promise.resolve();
   return new Promise(resolve => {
     let done = false;
@@ -383,7 +383,7 @@ async function sendVerification(usuario) {
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   createMainWindow();
-  createChuniorWindow();
+  createRegWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
   });
@@ -412,10 +412,10 @@ ipcMain.handle('drex:open-agent-window', (_event, url) => {
 
 // Limpia los datos del navegador de AGENTES (cookies/localStorage/cache) y recarga
 // para reingresar. Sirve para destrabar el 403 de CloudFront. Scopeado al origen de
-// casinodrex para NO desloguear la ventana de Chunior (comparte sesión por defecto).
+// casinodrex para NO desloguear la ventana de Reg (comparte sesión por defecto).
 ipcMain.handle('drex:clear-data', async () => {
   const ses = agentSession();
-  try { await ses.clearStorageData(); } // toda la sesión de agentes (no afecta Chunior ni NODO)
+  try { await ses.clearStorageData(); } // toda la sesión de agentes (no afecta Reg ni NODO)
   catch (e) { console.warn('[main] clearStorageData falló:', e && e.message); }
   try { await ses.clearCache(); } catch (e) { console.warn('[main] clearCache falló:', e && e.message); }
   // Recargar la pantalla de agentes (quedará en el login para reingresar)
@@ -424,7 +424,7 @@ ipcMain.handle('drex:clear-data', async () => {
 });
 
 // ── PROXY para agentes ────────────────────────────────────────────────────────
-// Aplica un proxy SOLO a la sesión de agentes (no a Chunior ni a Supabase/NODO).
+// Aplica un proxy SOLO a la sesión de agentes (no a Reg ni a Supabase/NODO).
 // cfg: { protocolo, servidor, puerto, usuario, password, dns, bypass }
 ipcMain.handle('proxy:set', async (_event, cfg = {}) => {
   const protocolo = String(cfg.protocolo || 'http').toLowerCase();
@@ -510,39 +510,39 @@ ipcMain.on('drex:verify:result', (_event, response = {}) => {
   else pending.reject(new Error(response.error || 'Error en verificación.'));
 });
 
-// ── IPC handlers para Chunior (ventana visible separada) ─────────────────────
-// Ejecuta JS arbitrario en la ventana de Chunior
+// ── IPC handlers para Reg (ventana visible separada) ─────────────────────
+// Ejecuta JS arbitrario en la ventana de Reg
 ipcMain.handle('chunior:exec', async (_event, script) => {
-  const win = getChuniorWindow();
-  if (win.webContents.isLoading()) await whenChuniorReady(win);
+  const win = getRegWindow();
+  if (win.webContents.isLoading()) await whenRegReady(win);
   return win.webContents.executeJavaScript(script, true);
 });
 
-// Devuelve la URL actual de la ventana de Chunior
+// Devuelve la URL actual de la ventana de Reg
 ipcMain.handle('chunior:get-url', () => {
-  const win = getChuniorWindow();
+  const win = getRegWindow();
   return win.webContents.getURL();
 });
 
-// Navega la ventana de Chunior a una URL nueva y espera a que cargue
+// Navega la ventana de Reg a una URL nueva y espera a que cargue
 ipcMain.handle('chunior:navigate', async (_event, url) => {
-  const win = getChuniorWindow();
+  const win = getRegWindow();
   win.loadURL(url);
-  await whenChuniorReady(win);
+  await whenRegReady(win);
   return { ok: true, url: win.webContents.getURL() };
 });
 
-// Recarga la ventana de Chunior
+// Recarga la ventana de Reg
 ipcMain.handle('chunior:reload', async () => {
-  const win = getChuniorWindow();
+  const win = getRegWindow();
   win.reload();
-  await whenChuniorReady(win);
+  await whenRegReady(win);
   return { ok: true };
 });
 
-// Trae la ventana de Chunior al frente
+// Trae la ventana de Reg al frente
 ipcMain.handle('chunior:focus', () => {
-  const win = getChuniorWindow();
+  const win = getRegWindow();
   win.show();
   win.focus();
   return { ok: true };

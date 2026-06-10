@@ -259,7 +259,7 @@ function _leerBalanceJugadorEnModal(modal) {
 }
 
 // Lee los DOS balances del jugador en el modal abierto (depósito o retiro).
-// El modal de Casinodrex tiene dos inputs disabled lado a lado:
+// El modal de Bo tiene dos inputs disabled lado a lado:
 //   - Input 0 (DOM order): saldo PREVIO / actual del jugador
 //   - Input 1 (DOM order): saldo POSTERIOR (preview cuando hay monto tipeado, o
 //                          actual después de Aplicar)
@@ -924,7 +924,7 @@ const api = {
   estadoPagina: status
 };
 
-contextBridge.exposeInMainWorld('drexAutomation', api);
+contextBridge.exposeInMainWorld('boAutomation', api);
 
 ipcRenderer.on('drex:automation:run', async (event, request = {}) => {
   const { requestId, method, args = [] } = request;

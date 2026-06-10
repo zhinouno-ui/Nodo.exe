@@ -20,7 +20,7 @@ contextBridge.exposeInMainWorld('ctrlElectron', {
   clearAgentData:  () => ipcRenderer.invoke('drex:clear-data'),
   setProxy:        (cfg) => ipcRenderer.invoke('proxy:set', cfg),
   clearProxy:      () => ipcRenderer.invoke('proxy:clear'),
-  drexAutomation: (method, ...args) => {
+  boAutomation: (method, ...args) => {
     if (!ALLOWED_AUTOMATION_METHODS.has(method)) {
       return Promise.reject(new Error(`Método no permitido: ${method}`));
     }
@@ -29,8 +29,8 @@ contextBridge.exposeInMainWorld('ctrlElectron', {
   verifyUser: (usuario) => ipcRenderer.invoke('drex:verify-user', { usuario })
 });
 
-// Acceso a la ventana separada de Chunior (visible, backoffice secundario)
-contextBridge.exposeInMainWorld('chunior', {
+// Acceso a la ventana separada de Reg (visible, backoffice secundario)
+contextBridge.exposeInMainWorld('reg', {
   exec:     (script) => ipcRenderer.invoke('chunior:exec', script),
   getUrl:   ()       => ipcRenderer.invoke('chunior:get-url'),
   navigate: (url)    => ipcRenderer.invoke('chunior:navigate', url),
