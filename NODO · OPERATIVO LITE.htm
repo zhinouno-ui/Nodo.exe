@@ -2986,7 +2986,8 @@ function renderHistorial(lista){
     const retryBtn = necesitaRetry
       ? '<button class="mini-btn red" onclick="reintentarOperacionFallida(\x27'+h.id+'\x27)" style="font-size:11px" title="'+(chuniorPendiente?'Falta anotar en Chunior — reintentar':'Verificar Drex/Chunior y reintentar lo que falte')+'">'+(chuniorPendiente?'⚠️ Falta Chunior':'↻ Reintentar')+'</button>'
       : '';
-    const acciones = [retryBtn, chuniorBtn, claveBtn, undoBtn].filter(Boolean).join(' ') || '-';
+    const infoBtn = '<button class="mini-btn gray" onclick="verInfoMovimiento(\x27'+h.id+'\x27)" style="font-size:11px" title="Ver toda la información del movimiento">ℹ️ Info</button>';
+    const acciones = [infoBtn, retryBtn, chuniorBtn, claveBtn, undoBtn].filter(Boolean).join(' ') || '-';
     const saldoPostTd = (h.saldo_post !== null && h.saldo_post !== undefined && h.saldo_post !== '')
       ? '<span style="font-weight:700;color:#7ee07e">'+money(h.saldo_post)+'</span>'
       : '<span class="small">—</span>';
@@ -3005,6 +3006,65 @@ function renderHistorial(lista){
   });
   html += '</tbody></table></div>';
   el.innerHTML = html;
+}
+
+// Ficha completa de un movimiento del historial (solo lectura). Junta TODO lo
+// relacionado: datos de la op, saldos pre/post, billetera + su CHUNIOR_UID, IDs de
+// Chunior/solicitud/reversión, operador, origen, estado, notas y timestamps.
+async function verInfoMovimiento(historialId){
+  abrirModal('ℹ️ Información del movimiento',
+    '<div style="padding:8px 0;color:var(--muted)">Cargando...</div>', null, 'Cerrar');
+  const _sb = document.getElementById('modalSaveBtn'); if(_sb) _sb.style.display = 'none';
+  const body = document.getElementById('modalBody');
+  try {
+    const { data: h, error } = await supabaseClient
+      .from('historial_ops').select('*').eq('id', historialId).single();
+    if(error) throw error;
+    if(!h){ if(body) body.innerHTML = '<div class="err-box" style="padding:12px">No se encontró el movimiento.</div>'; return; }
+
+    const bil = billeteras.find(function(b){ return String(b.ID_BILLETERA) === String(h.billetera_id); });
+    const dash = '<span style="color:var(--muted)">—</span>';
+    function fila(label, valor){
+      return '<tr><td style="padding:6px 10px;color:var(--muted);white-space:nowrap;vertical-align:top">'+escapeHtml(label)+'</td>'+
+             '<td style="padding:6px 10px;font-weight:600;word-break:break-word">'+(valor===''||valor===null||valor===undefined?dash:valor)+'</td></tr>';
+    }
+    function money0(v){ return (v!==null && v!==undefined && v!=='') ? money(v) : null; }
+
+    const estadoTxt = ({OK:'✅ OK', ERROR:'❌ ERROR', REVERTIDA:'↩ REVERTIDA'})[h.estado] || (h.estado||'—');
+    const movido = (h.saldo_pre!=null && h.saldo_post!=null) ? (Number(h.saldo_post)-Number(h.saldo_pre)) : null;
+    const movidoTxt = movido!=null ? (movido>=0?'+':'')+money(movido) : null;
+    const chuId = h.chunior_movimiento_id ? escapeHtml(String(h.chunior_movimiento_id)) : null;
+    const chuUid = (bil && bil.CHUNIOR_UID) ? escapeHtml(String(bil.CHUNIOR_UID)) : null;
+
+    let html = '<div style="max-height:60vh;overflow:auto">';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:13px">';
+    html += fila('Usuario', '<b>'+escapeHtml(h.usuario||'')+'</b>');
+    html += fila('Tipo', escapeHtml(h.tipo||''));
+    html += fila('Monto', h.monto ? '<b>'+money(h.monto)+'</b>' : null);
+    html += fila('Estado', estadoTxt);
+    html += fila('Origen', escapeHtml(h.origen||''));
+    html += fila('Operador', escapeHtml(h.operador||''));
+    html += fila('Oficina (PC)', escapeHtml(h.pc_codigo||''));
+    html += '<tr><td colspan="2" style="padding:8px 10px 2px;color:#7ee07e;font-weight:700;border-top:1px solid var(--border, #2e3444)">Saldos del jugador (agentes)</td></tr>';
+    html += fila('Saldo anterior', money0(h.saldo_pre));
+    html += fila('Saldo posterior', money0(h.saldo_post));
+    html += fila('Movido', movidoTxt);
+    html += '<tr><td colspan="2" style="padding:8px 10px 2px;color:#b18cff;font-weight:700;border-top:1px solid var(--border, #2e3444)">Billetera / Chunior</td></tr>';
+    html += fila('Billetera', escapeHtml(h.billetera_nombre||(bil?bil.NOMBRE_VISIBLE:'')||''));
+    html += fila('ID billetera', h.billetera_id ? escapeHtml(String(h.billetera_id)) : null);
+    html += fila('CHUNIOR_UID billetera', chuUid);
+    html += fila('N° Movimiento Chunior', chuId);
+    html += '<tr><td colspan="2" style="padding:8px 10px 2px;color:var(--muted);font-weight:700;border-top:1px solid var(--border, #2e3444)">Trazabilidad</td></tr>';
+    html += fila('ID historial', escapeHtml(String(h.id||'')));
+    html += fila('Solicitud asociada', h.solicitud_id ? escapeHtml(String(h.solicitud_id)) : null);
+    html += fila('Reversión de', h.reversion_de ? escapeHtml(String(h.reversion_de)) : null);
+    html += fila('Fecha', h.created_at ? formatFecha(h.created_at) : null);
+    html += fila('Notas', h.notas ? escapeHtml(String(h.notas)) : null);
+    html += '</table></div>';
+    if(body) body.innerHTML = html;
+  } catch(e){
+    if(body) body.innerHTML = '<div class="err-box" style="padding:12px">Error cargando el movimiento: '+escapeHtml(e.message||'')+'</div>';
+  }
 }
 
 // Reintento INTERACTIVO de una operación con problemas.

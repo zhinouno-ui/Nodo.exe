@@ -680,7 +680,9 @@ async function applyAmount(iconName, amount, actionName, options = {}) {
   // aparezca, sino a que el Balance Jugador esté POBLADO (a veces aparece con el input en
   // 0/vacío y, si leemos ahí, agarramos un 0 transitorio).
   let newBalance = null, exito = null, resultadoTexto = '', modalResRef = null;
+  let postCero = null;           // último post leído == 0 (puede ser transitorio o real)
   const tFinRes = now() + 8000;
+  const tCeroAceptable = tFinRes - 1500; // tras esto, un 0 persistente se acepta como real
   while (now() < tFinRes) {
     const modalRes = _detectarModalResultado();
     if (modalRes) {
@@ -689,14 +691,26 @@ async function applyAmount(iconName, amount, actionName, options = {}) {
       exito = /operaci[oó]n correcta/i.test(resultadoTexto);
       const post = _leerBalanceJugadorEnModal(modalRes); // Balance Jugador REAL del modal de resultado
       if (post && post.raw && /\d/.test(post.raw)) {
-        // En una CARGA el post real es > 0; un 0 suele ser que todavía no pintó → seguir esperando.
-        if (actionName === 'carga' && post.value === 0) { await delay(250); continue; }
+        // Un 0 suele ser que el campo todavía no pintó (transitorio) → seguir esperando.
+        // Aplica a CARGA y RETIRO: el bug era leer ese 0 transitorio en retiros (ej.
+        // saldo 84.378 - retiro 84.000 = 378, pero el modal mostraba 0 al aparecer).
+        // PERO un retiro total deja el saldo en 0 de verdad → si el 0 persiste hasta
+        // cerca del timeout, lo aceptamos.
+        if (post.value === 0) {
+          postCero = post;
+          if (now() < tCeroAceptable) { await delay(250); continue; }
+          // 0 persistente → es real (retiro total / saldo agotado)
+          newBalance = post;
+          break;
+        }
         newBalance = post;
         break;
       }
     }
     await delay(200);
   }
+  // Si salimos por timeout con un 0 leído (nunca se pobló otro valor), lo tomamos como real.
+  if (!newBalance && postCero) newBalance = postCero;
 
   // Cerrar el modal de resultado con su botón "Aceptar" (vuelve a la pantalla inicial).
   if (modalResRef) {
