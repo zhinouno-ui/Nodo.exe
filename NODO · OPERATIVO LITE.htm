@@ -152,8 +152,8 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
 <div id="loginView" class="login-wrap">
   <div class="login-card">
     <img src="NODO%20%C2%B7%20OPERATIVO%20LITE_files/logo-nodo.png" class="logo" alt="NODO">
-    <h2 style="margin-bottom:6px">PANEL OPERATIVO LITE</h2>
-    <div class="small" style="margin-bottom:18px;color:var(--muted)">Usá tus credenciales del backoffice. NODO valida con Reg.</div>
+    <h2 style="margin-bottom:6px">PANEL OPERATIVO</h2>
+    <div class="small" style="margin-bottom:18px;color:var(--muted)">Usá tus credenciales.</div>
     <label>Usuario</label>
     <input id="loginUsuario" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('loginClave').focus()">
     <label>Clave</label>
@@ -181,7 +181,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
           <button class="mini-btn gray" style="padding:4px 8px;font-size:11px" onclick="refrescarSaldoAgente()" title="Actualizar">🔄</button>
         </div>
         <div id="agentBalanceVal" style="font-size:18px;font-weight:900;color:#3fb950">—</div>
-        <div id="watchdogIndicator" title="Watchdog que compara saldos de Bo y Reg cada minuto">🔄 Watchdog inactivo</div>
+        <div id="watchdogIndicator" title="Watchdog que compara saldos cada minuto">🔄 Watchdog inactivo</div>
       </div>
 
       <button id="navInicio" class="nav-btn active" onclick="mostrarVista('inicio')">🏠 Inicio</button>
@@ -223,8 +223,8 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
                 <h2 class="card-title" style="margin-bottom:0">💳 Billeteras</h2>
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
-                  <button class="mini-btn gray" onclick="sincronizarBilleterasReg()" style="font-size:11px" title="Leer saldos y nombres desde Reg">🔄 Sincronizar</button>
-                  <button class="mini-btn purple" onclick="abrirModalTransferirBilleteras()" style="font-size:11px" title="Transferir entre billeteras en Reg">🔀 Transferir</button>
+                  <button class="mini-btn gray" onclick="sincronizarBilleterasChunior()" style="font-size:11px" title="Leer saldos y nombres desde Chunior">🔄 Sincronizar</button>
+                  <button class="mini-btn purple" onclick="abrirModalTransferirBilleteras()" style="font-size:11px" title="Transferir entre billeteras en Chunior">🔀 Transferir</button>
                   <button class="mini-btn gray" onclick="mostrarVista('billeteras')" style="font-size:11px">Administrar</button>
                 </div>
               </div>
@@ -669,7 +669,7 @@ let lastPendientesIds=new Set(), lastChatUnread=0;
 let chatActualId="", chatImagenBase64="", chatImagenNombre="";
 
 window.addEventListener("load",()=>{
-  // Siempre mostramos el login para capturar la clave (= clave Reg).
+  // Siempre mostramos el login para capturar la clave (= clave Chunior).
   // Solo pre-rellenamos el usuario si hay sesión guardada.
   const saved=localStorage.getItem("nodo_operador_lite");
   // No pre-rellenar usuario: cada operador entra con sus credenciales en blanco
@@ -680,10 +680,10 @@ window.addEventListener("load",()=>{
     }
   }
 
-  // Pre-cargar el webview de Reg en background para que el login sea inmediato
+  // Pre-cargar el webview de Chunior en background para que el login sea inmediato
   // y adjuntar listeners (puesto de trabajo, status) desde el inicio
   setTimeout(function(){
-    activarReg();
+    activarChunior();
   }, 300);
 
   // Consulta en tiempo real de retiros del usuario (form manual sin monto)
@@ -851,7 +851,7 @@ async function crearUsuarioPanel(){
   if(enElectron){
     try{
       await window.ctrlElectron.openAgentWindow();
-      const r = await callBo("crearUsuario", usuario_nuevo, clave);
+      const r = await callDrex("crearUsuario", usuario_nuevo, clave);
       if(r && r.ok){
         setBox("jugCrearMsg",`<div class="ok-box">✅ Usuario <b>${usuario_nuevo}</b> creado en el panel y en el casino.<br>Clave: <b>${clave}</b></div>`);
       } else if(r && r.error==="duplicado"){
@@ -1005,7 +1005,7 @@ async function importarOperacionesCSV(){
       landingPrevios = lp || [];
     } catch(_){}
     // Set de keys: usuario|monto — sin fecha, porque las fuentes pueden
-    // tener el mismo retiro con distinto created_at (Reg vs CSV).
+    // tener el mismo retiro con distinto created_at (Chunior vs CSV).
     // La política es: 1 retiro por usuario en 24hs, así que cualquier combinación
     // usuario+monto en la ventana de tiempo ya es suficiente para deduplicar.
     const keyDe = function(usr, mt){
@@ -1699,23 +1699,23 @@ async function login(){
   const usuario=val("loginUsuario").trim();
   const clave=val("loginClave").trim();
   if(!usuario||!clave){setBox("loginMsg",`<div class="alert-box">Completá usuario y clave.</div>`);return}
-  setBox("loginMsg",`<div class="alert-box">Validando en Reg...</div>`);
+  setBox("loginMsg",`<div class="alert-box">Validando en Chunior...</div>`);
 
-  // Validar contra Reg. No guardamos la clave en ningún lado.
+  // Validar contra Chunior. No guardamos la clave en ningún lado.
   let okBackoffice = false;
   try {
-    okBackoffice = await validarLoginReg(usuario, clave);
+    okBackoffice = await validarLoginChunior(usuario, clave);
   } catch(e){
-    setBox("loginMsg",`<div class="err-box">No se pudo conectar con Reg. ${escapeHtml(e.message||"")}</div>`);
+    setBox("loginMsg",`<div class="err-box">No se pudo conectar con Chunior. ${escapeHtml(e.message||"")}</div>`);
     return;
   }
   if(!okBackoffice){
-    setBox("loginMsg",`<div class="err-box">Usuario o clave incorrectos (rechazado por Reg).</div>`);
+    setBox("loginMsg",`<div class="err-box">Usuario o clave incorrectos (rechazado por Chunior).</div>`);
     return;
   }
 
   // Operador "ligero": solo lo que vino del input. La oficina (pc_codigo) se setea
-  // recién cuando el operador elija el puesto en el modal de Reg.
+  // recién cuando el operador elija el puesto en el modal de Chunior.
   operador = {
     usuario,
     nombre:        usuario,
@@ -1726,19 +1726,19 @@ async function login(){
     requiereSeleccionPc:false
   };
 
-  setBox("loginMsg",`<div class="alert-box">Reg OK. Esperando selección de puesto...</div>`);
-  // Disparar el flujo de Reg post-login. _regConfirmarPuesto
+  setBox("loginMsg",`<div class="alert-box">Chunior OK. Esperando selección de puesto...</div>`);
+  // Disparar el flujo de Chunior post-login. _chuniorConfirmarPuesto
   // se encarga de setear pcOperativa, asegurar la oficina y finalizar el login.
   _checkPuestoPostLogin();
 }
 
-// Inyecta usuario/clave en la VENTANA de Reg (separada, visible) y verifica si fue aceptado
-async function validarLoginReg(usuario, clave){
-  if(!window.reg || !window.reg.exec) throw new Error('Ventana de Reg no disponible (correr en Electron).');
+// Inyecta usuario/clave en la VENTANA de Chunior (separada, visible) y verifica si fue aceptado
+async function validarLoginChunior(usuario, clave){
+  if(!window.chunior || !window.chunior.exec) throw new Error('Ventana de Chunior no disponible (correr en Electron).');
 
-  // 1) ¿Hay sesión activa? Buscar el botón "Cerrar sesión" (presente en TODAS las páginas internas de Reg).
+  // 1) ¿Hay sesión activa? Buscar el botón "Cerrar sesión" (presente en TODAS las páginas internas de Chunior).
   //    Si existe → click → esperar a que aparezca el form de login.
-  const huboLogout = await window.reg.exec(
+  const huboLogout = await window.chunior.exec(
     '(function(){' +
     'var n=document.querySelectorAll("button,a,input[type=\'submit\']");' +
     'for(var i=0;i<n.length;i++){' +
@@ -1753,14 +1753,14 @@ async function validarLoginReg(usuario, clave){
   );
 
   if(huboLogout){
-    // Tras logout, Reg muestra una página intermedia con un link "Identificarse de nuevo".
+    // Tras logout, Chunior muestra una página intermedia con un link "Identificarse de nuevo".
     // Lo clickeamos para llegar al form de login. Después esperamos a #id_username.
     const t0 = Date.now();
     let yaClickeoIdentificar = false;
     while(Date.now() - t0 < 10000){
       await new Promise(function(r){ setTimeout(r, 300); });
       try {
-        const estado = await window.reg.exec(
+        const estado = await window.chunior.exec(
           '(function(){' +
           'if(document.getElementById("id_username")) return "login";' +
           // Buscar "Identificarse de nuevo" (link o botón) y clickearlo
@@ -1780,13 +1780,13 @@ async function validarLoginReg(usuario, clave){
     }
   } else {
     // No hay sesión activa y tampoco tenemos form de login a la vista → forzar carga del home
-    const cur = await window.reg.getUrl();
-    const enLogin = await window.reg.exec('(function(){return !!document.getElementById("id_username");})()').catch(function(){return false;});
-    if(!enLogin && !cur.includes('/login/')) await window.reg.navigate(CHUNIOR_HOME);
+    const cur = await window.chunior.getUrl();
+    const enLogin = await window.chunior.exec('(function(){return !!document.getElementById("id_username");})()').catch(function(){return false;});
+    if(!enLogin && !cur.includes('/login/')) await window.chunior.navigate(CHUNIOR_HOME);
   }
 
   // 2) Inyectar usuario + clave en la misma pasada y submit
-  const inyectado = await window.reg.exec(
+  const inyectado = await window.chunior.exec(
     '(function(){'
     + 'var u=document.getElementById("id_username");'
     + 'var p=document.getElementById("id_password");'
@@ -1800,7 +1800,7 @@ async function validarLoginReg(usuario, clave){
     + 'return true;'
     + '})()'
   );
-  if(!inyectado) throw new Error('No se encontró el formulario de login en Reg.');
+  if(!inyectado) throw new Error('No se encontró el formulario de login en Chunior.');
 
   // 3) Polling del DOM: el pt selector también está en /login/, por eso miramos el DOM, no la URL
   //    - aparece #id_pt → login OK, hay que elegir puesto
@@ -1811,7 +1811,7 @@ async function validarLoginReg(usuario, clave){
   while(Date.now() - inicio < 20000){
     await new Promise(function(r){ setTimeout(r, 400); });
     try {
-      const state = await window.reg.exec(
+      const state = await window.chunior.exec(
         '(function(){'
         + 'if(document.getElementById("id_pt")) return "pt";'
         + 'if(document.querySelector("p.errornote, .errornote")) return "error";'
@@ -1826,7 +1826,7 @@ async function validarLoginReg(usuario, clave){
   return false;
 }
 
-// finalizarLogin se llama desde _regConfirmarPuesto (ya con pcOperativa seteado).
+// finalizarLogin se llama desde _chuniorConfirmarPuesto (ya con pcOperativa seteado).
 // Ya no dispara _checkPuestoPostLogin (eso ya pasó antes en el flujo).
 function finalizarLogin(guardar=true){
   if(guardar){
@@ -2036,12 +2036,12 @@ async function soloConsultarUsuario(){
   if(res) res.innerHTML = '<div class="alert-box">Consultando...</div>';
   try {
     await window.ctrlElectron.openAgentWindow();
-    const busqueda = await callBo("buscarUsuario", usuario);
+    const busqueda = await callDrex("buscarUsuario", usuario);
     // Sesión caída / página de error: NO es "no existe" — es que no hay sesión.
     // Disparamos el reingreso en vez de decir falsamente que el usuario no existe.
     if(busqueda && (busqueda.needsLogin || busqueda.pageError)){
       if(res) res.innerHTML = '<div class="alert-box">🔐 Sesión de agentes caída · reingresá tus credenciales.</div>';
-      const reconectado = await ensureBoSession();
+      const reconectado = await ensureDrexSession();
       if(res) res.innerHTML = reconectado
         ? '<div class="alert-box">Sesión reingresada · volvé a consultar.</div>'
         : '<div class="err-box">Sesión de agentes requerida.</div>';
@@ -2088,7 +2088,7 @@ async function confirmarOperacionAgentes(usuario, saldoPre, monto, tipo, resulta
     for(let intento=0; intento<3; intento++){
       try {
         _wdLock();
-        const b = await callBo("buscarUsuario", usuario);
+        const b = await callDrex("buscarUsuario", usuario);
         const v = (b && typeof b.balance?.value === 'number') ? b.balance.value : null;
         if(v !== null) saldoFinal = v;
       } catch(_){ } finally { _wdUnlock(); }
@@ -2116,7 +2116,7 @@ async function confirmarOperacionAgentes(usuario, saldoPre, monto, tipo, resulta
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ⛔ FLUJO BLINDADO — NO MODIFICAR ⛔
-// Esta función y su cadena (buscarUsuario, applyAmount, registrarCargaEnReg,
+// Esta función y su cadena (buscarUsuario, applyAmount, registrarCargaEnChunior,
 // navigateAgentTo, _leerBalancesEnModalDeposito) son el CORE de carga/retiro que
 // funciona 100%. Probado y estable (tag git: estable-flujo-carga).
 // Para features nuevas: agregar funciones APARTE y llamarlas desde acá si hace
@@ -2197,7 +2197,7 @@ async function ejecutarOperacionManual(){
   try {
     _wf(tipo+' '+usuario+' · monto '+montoAbs+' · iniciando');
     toast("Abriendo backoffice...","blue");
-    if(!await ensureBoSession()){ toast("Sesión de backoffice requerida.","red"); return; }
+    if(!await ensureDrexSession()){ toast("Sesión de backoffice requerida.","red"); return; }
     _wf('sesión OK · buscando usuario...');
 
     // ── BUSCAR + OPERAR con reintento ACOTADO ──
@@ -2211,11 +2211,11 @@ async function ejecutarOperacionManual(){
     while(intentoOp < MAX_REINTENTOS){
       intentoOp++;
 
-      // ── BUSCAR (fresco; callBo navega, y main.js ya reintenta páginas de error) ──
+      // ── BUSCAR (fresco; callDrex navega, y main.js ya reintenta páginas de error) ──
       toast(intentoOp>1 ? ("↻ Reintento "+intentoOp+" · "+usuario+"...") : ("Buscando "+usuario+"..."),"blue");
       _wdLock();
       const _tBuscar = Date.now();
-      try { busqueda = await callBo("buscarUsuario", usuario, { skipBalance: tipo === "CARGA" }); }
+      try { busqueda = await callDrex("buscarUsuario", usuario, { skipBalance: tipo === "CARGA" }); }
       finally { _wdUnlock(); }
       _wf('buscarUsuario tardó '+((Date.now()-_tBuscar)/1000).toFixed(2)+'s · exists='+busqueda?.exists+' · needsLogin='+!!busqueda?.needsLogin+' · pageError='+!!busqueda?.pageError+' · saldoPre='+(busqueda?.balance?.raw||'(no leído)'));
 
@@ -2235,7 +2235,7 @@ async function ejecutarOperacionManual(){
       if(busqueda && busqueda.needsLogin){
         _wf('SESIÓN CAÍDA en buscar → disparando login');
         if(res) res.innerHTML = '<div class="alert-box">🔐 Sesión de agentes caída · reingresá credenciales.</div>';
-        const reconectado = await ensureBoSession();
+        const reconectado = await ensureDrexSession();
         if(!reconectado){ toast("Sesión de agentes requerida.","red"); return; }
         continue;
       }
@@ -2262,10 +2262,10 @@ async function ejecutarOperacionManual(){
       const _tCargar = Date.now();
       try {
         resultado = tipo === "CARGA"
-          ? await callBo("cargarSaldo",  montoAbs)
-          : await callBo("retirarSaldo", montoAbs);
+          ? await callDrex("cargarSaldo",  montoAbs)
+          : await callDrex("retirarSaldo", montoAbs);
       } catch(e){
-        resultado = { ok:false, message: e.message || 'Error en Bo' };
+        resultado = { ok:false, message: e.message || 'Error en Drex' };
       } finally {
         _wdUnlock();
       }
@@ -2292,7 +2292,7 @@ async function ejecutarOperacionManual(){
       if(resultado && resultado.needsLogin){
         _wf('SESIÓN CAÍDA en operar → login');
         if(res) res.innerHTML = '<div class="alert-box">🔐 Sesión caída durante la operación · reingresá credenciales.</div>';
-        const recon = await ensureBoSession();
+        const recon = await ensureDrexSession();
         if(!recon){ toast('Sesión de agentes requerida.','red'); return; }
         if(intentoOp < MAX_REINTENTOS) continue;
       }
@@ -2367,19 +2367,19 @@ async function ejecutarOperacionManual(){
     // Registramos en historial con el estado confirmado
     const filaHist = await registrarEnHistorial({usuario, tipo, monto:montoAbs, billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null, origen:'MANUAL', estado:estadoHist, notas, chunior_movimiento_id:null, saldo_post:saldoPost, saldo_pre:saldoPre});
 
-    // ── Reg EN BACKGROUND ── SOLO si la operación quedó CONFIRMADA en agentes.
-    // En duplicado/incierto/no_aplicado NO auto-anotamos (evita registrar en Reg
+    // ── Chunior EN BACKGROUND ── SOLO si la operación quedó CONFIRMADA en agentes.
+    // En duplicado/incierto/no_aplicado NO auto-anotamos (evita registrar en Chunior
     // algo que no se aplicó limpio; el operador resuelve con el botón de reintento).
-    const debeReg = aplicadoLimpio && !!(bil && bil.CHUNIOR_UID);
-    if(debeReg){
+    const debeChunior = aplicadoLimpio && !!(bil && bil.CHUNIOR_UID);
+    if(debeChunior){
       const chuPromise = tipo === "CARGA"
-        ? registrarCargaEnReg (bil.CHUNIOR_UID, montoAbs, usuario)
-        : registrarRetiroEnReg(bil.CHUNIOR_UID, montoAbs, usuario);
+        ? registrarCargaEnChunior (bil.CHUNIOR_UID, montoAbs, usuario)
+        : registrarRetiroEnChunior(bil.CHUNIOR_UID, montoAbs, usuario);
 
       chuPromise
         .then(async function(rChu){
           if(rChu && rChu.ok && rChu.movimientoId){
-            toast("📋 "+tipo+" Reg N° "+rChu.movimientoId, 'blue');
+            toast("📋 "+tipo+" Chunior N° "+rChu.movimientoId, 'blue');
             // Actualizar el historial con el chunior_movimiento_id real
             if(filaHist && filaHist.id){
               try {
@@ -2389,28 +2389,28 @@ async function ejecutarOperacionManual(){
                 if(typeof cargarHistorial === 'function') await cargarHistorial();
               } catch(e){ console.warn('update chunior_movimiento_id falló:', e); }
             }
-            // Recién acá comparamos fichas: Reg YA confirmó su movimiento.
+            // Recién acá comparamos fichas: Chunior YA confirmó su movimiento.
             _watchdogTrigger(1500);
-            // Saldo de la billetera: NO se calcula. Se LEE del breadcrumb de Reg (la
-            // "cabeza de la billetera"). Pequeña espera para que Reg propague el valor.
+            // Saldo de la billetera: NO se calcula. Se LEE del breadcrumb de Chunior (la
+            // "cabeza de la billetera"). Pequeña espera para que Chunior propague el valor.
             await new Promise(function(r){ setTimeout(r, 600); });
-            await sincronizarBilleterasReg(true).catch(function(){});
+            await sincronizarBilleterasChunior(true).catch(function(){});
             if(typeof renderBillerasInicio === 'function') renderBillerasInicio();
             if(typeof poblarManualBilletera === 'function') poblarManualBilletera();
           } else if(rChu && rChu.error){
-            toast('⚠️ '+tipo+' OK en casino pero falló en Reg: '+rChu.error, 'red');
-            // Reg falló → NO chequeamos fichas (sabríamos que hay discrepancia,
+            toast('⚠️ '+tipo+' OK en casino pero falló en Chunior: '+rChu.error, 'red');
+            // Chunior falló → NO chequeamos fichas (sabríamos que hay discrepancia,
             // no aporta info nueva).
           }
         })
-        .catch(function(e){ toast('⚠️ Error registrando en Reg: '+(e.message||''), 'red'); });
+        .catch(function(e){ toast('⚠️ Error registrando en Chunior: '+(e.message||''), 'red'); });
     }
-    // Si no hay Reg involucrado (billetera sin CHUNIOR_UID), NO disparamos
-    // el watchdog: sabemos que va a haber discrepancia (Bo cambió, Reg no).
+    // Si no hay Chunior involucrado (billetera sin CHUNIOR_UID), NO disparamos
+    // el watchdog: sabemos que va a haber discrepancia (Drex cambió, Chunior no).
 
     if(aplicadoLimpio){
       // El saldo de la billetera NO se calcula (nada de sumar/restar fichas): se LEE del
-      // breadcrumb de Reg tras registrar el movimiento (ver el .then de Reg arriba).
+      // breadcrumb de Chunior tras registrar el movimiento (ver el .then de Chunior arriba).
       if(res){
         const detalle = (saldoPre !== null && confInfo.saldoFinal !== null)
           ? ' <span class="small">(saldo '+money(saldoPre)+' → '+money(confInfo.saldoFinal)+')</span>' : '';
@@ -2436,7 +2436,7 @@ async function ejecutarOperacionManual(){
 
     // Al finalizar NO refrescamos (refrescar tras cada carga dispara el 403): solo
     // cerramos el modal con "Aceptar" y limpiamos el buscador en agentes.
-    await callBo("finalizarOperacionAgentes").catch(function(){});
+    await callDrex("finalizarOperacionAgentes").catch(function(){});
     await cargarHistorial();
     renderBillerasInicio();
     poblarManualBilletera();
@@ -2460,16 +2460,16 @@ async function _ejecutarBlanqueoClave(usuario, opciones){
 
   if(resEl) resEl.innerHTML = '<div class="alert-box">Buscando '+escapeHtml(usuario)+'...</div>';
   try {
-    if(!await ensureBoSession()){ if(resEl) resEl.innerHTML = ''; return { ok:false }; }
+    if(!await ensureDrexSession()){ if(resEl) resEl.innerHTML = ''; return { ok:false }; }
     toast("Buscando "+usuario+"...", "blue");
-    const b = await callBo("buscarUsuario", usuario);
+    const b = await callDrex("buscarUsuario", usuario);
     if(!b.exists){
       if(resEl) resEl.innerHTML = '<div class="err-box">❌ <b>'+escapeHtml(usuario)+'</b> no existe en el casino.</div>';
       toast(usuario+" no encontrado", "red");
       return { ok:false };
     }
     toast("Cambiando clave de "+usuario+"...", "blue");
-    const r = await callBo("cambiarClave", clave);
+    const r = await callDrex("cambiarClave", clave);
     const ok = r && r.ok !== false;
     await registrarEnHistorial({usuario, tipo:'RESET_CLAVE', monto:0, origen:'MANUAL', estado: ok ? 'OK' : 'ERROR', notas:'clave → '+clave});
     if(ok){
@@ -2744,8 +2744,8 @@ async function _ejecutarCrearUsuario(){
   if(btn){ btn.disabled = true; btn.textContent = "Creando..."; }
   if(resEl) resEl.innerHTML = '<span style="color:#c0cad8;font-size:12px">Procesando...</span>';
   try {
-    if(!await ensureBoSession()){ if(btn){btn.disabled=false;btn.textContent='Crear y copiar';} return; }
-    const r = await callBo("crearUsuario", usuario, clave);
+    if(!await ensureDrexSession()){ if(btn){btn.disabled=false;btn.textContent='Crear y copiar';} return; }
+    const r = await callDrex("crearUsuario", usuario, clave);
     if(r && r.ok !== false){
       const aliasFinal = r.alias || usuario;
       const claveFinal = r.password || clave;
@@ -2829,7 +2829,7 @@ async function _resetClaveManual(usuario, clave){
   // Compatibilidad: ahora se usa blanquearClaveManual() desde el botón
   try {
     toast("Cambiando clave de "+usuario+"...","blue");
-    const r = await callBo("cambiarClave", clave);
+    const r = await callDrex("cambiarClave", clave);
     await registrarEnHistorial({usuario, tipo:'RESET_CLAVE', monto:0, origen:'MANUAL', estado:(r&&r.ok!==false)?'OK':'ERROR', notas:'clave → '+clave});
     toast("Clave cambiada OK","green");
   } catch(e) { toast("Error al cambiar clave: "+(e.message||""),"red"); }
@@ -2974,9 +2974,9 @@ function renderHistorial(lista){
       ? '<button class="mini-btn yellow" onclick="blanquearClaveUsuario(\x27'+escapeHtml(String(h.usuario))+'\x27)" style="font-size:11px" title="Blanquear clave de '+escapeHtml(String(h.usuario))+' a 12345a">🔑 Clave</button>'
       : '';
     // Botón de reintento. Aparece en dos casos:
-    //   1) estado ERROR → verifica Bo/Reg y reintenta lo que falte
+    //   1) estado ERROR → verifica Drex/Chunior y reintenta lo que falte
     //   2) estado OK pero SIN chunior_movimiento_id y la billetera TIENE chunior_uid
-    //      → la carga entró en Bo pero NO se anotó en Reg (queda discrepancia)
+    //      → la carga entró en Drex pero NO se anotó en Chunior (queda discrepancia)
     const _bilDeFila = billeteras.find(function(b){ return String(b.ID_BILLETERA) === String(h.billetera_id); });
     const chuniorPendiente = (h.estado === 'OK')
       && !h.chunior_movimiento_id
@@ -2984,7 +2984,7 @@ function renderHistorial(lista){
       && _bilDeFila && _bilDeFila.CHUNIOR_UID;
     const necesitaRetry = (h.estado === 'ERROR' && h.usuario && (h.tipo === 'CARGA' || h.tipo === 'RETIRO')) || chuniorPendiente;
     const retryBtn = necesitaRetry
-      ? '<button class="mini-btn red" onclick="reintentarOperacionFallida(\x27'+h.id+'\x27)" style="font-size:11px" title="'+(chuniorPendiente?'Falta anotar en Reg — reintentar':'Verificar Bo/Reg y reintentar lo que falte')+'">'+(chuniorPendiente?'⚠️ Falta Reg':'↻ Reintentar')+'</button>'
+      ? '<button class="mini-btn red" onclick="reintentarOperacionFallida(\x27'+h.id+'\x27)" style="font-size:11px" title="'+(chuniorPendiente?'Falta anotar en Chunior — reintentar':'Verificar Drex/Chunior y reintentar lo que falte')+'">'+(chuniorPendiente?'⚠️ Falta Chunior':'↻ Reintentar')+'</button>'
       : '';
     const acciones = [retryBtn, chuniorBtn, claveBtn, undoBtn].filter(Boolean).join(' ') || '-';
     const saldoPostTd = (h.saldo_post !== null && h.saldo_post !== undefined && h.saldo_post !== '')
@@ -3010,8 +3010,8 @@ function renderHistorial(lista){
 // Reintento INTERACTIVO de una operación con problemas.
 // En vez de adivinar si la op se hizo (no siempre tenemos datos confiables para eso),
 // le mostramos al operador el estado REAL de cada sistema y lo dejamos decidir:
-//   - Reg: detectable por chunior_movimiento_id (null = NO registrado)
-//   - Bo/Agentes: leemos el saldo ACTUAL del jugador y lo mostramos. El operador
+//   - Chunior: detectable por chunior_movimiento_id (null = NO registrado)
+//   - Drex/Agentes: leemos el saldo ACTUAL del jugador y lo mostramos. El operador
 //     ve el número y decide si la carga ya está reflejada o falta.
 async function reintentarOperacionFallida(historialId){
   if(!window.ctrlElectron){ alert("La automatización solo funciona en la app de escritorio."); return; }
@@ -3021,31 +3021,31 @@ async function reintentarOperacionFallida(historialId){
   const { usuario, tipo, monto, billetera_id, billetera_nombre, chunior_movimiento_id, saldo_pre, saldo_post, created_at } = row;
   const fechaRefMs = created_at ? new Date(created_at).getTime() : Date.now();
 
-  // Resolver billetera (ID → nombre → landing) para Reg
+  // Resolver billetera (ID → nombre → landing) para Chunior
   let bil = billeteras.find(function(b){ return String(b.ID_BILLETERA) === String(billetera_id); });
   if(!bil && billetera_nombre) bil = billeteras.find(function(b){ return String(b.NOMBRE_VISIBLE) === String(billetera_nombre); });
   if(!bil) bil = getBilleraLanding();
-  const necesitaReg = !!(bil && bil.CHUNIOR_UID);
+  const necesitaChunior = !!(bil && bil.CHUNIOR_UID);
   let chuniorYaHecho     = !!chunior_movimiento_id;
   let movChuVerificado   = chunior_movimiento_id;
 
-  // 1) Leer agentes (saldo) Y verificar Reg EN PARALELO.
+  // 1) Leer agentes (saldo) Y verificar Chunior EN PARALELO.
   //    - Agentes: buscarUsuario (saldo actual)
-  //    - Reg: si NO tenemos chunior_movimiento_id pero la billetera usa Reg,
+  //    - Chunior: si NO tenemos chunior_movimiento_id pero la billetera usa Chunior,
   //      buscamos el movimiento en la lista real (cubre "se anotó pero no se guardó el N°")
-  toast('Verificando estado de '+usuario+' en agentes y Reg...', 'blue');
-  if(!await ensureBoSession()){ toast("Sesión backoffice requerida", "red"); return; }
+  toast('Verificando estado de '+usuario+' en agentes y Chunior...', 'blue');
+  if(!await ensureDrexSession()){ toast("Sesión backoffice requerida", "red"); return; }
 
   _wdLock();
   let b, chuVerif = { existe:false, movimientoId:null };
   try {
-    const verifRegPromise = (necesitaReg && !chuniorYaHecho)
-      ? verificarMovimientoEnReg(usuario, monto, fechaRefMs)   // corre en la ventana de Reg (paralelo)
+    const verifChuniorPromise = (necesitaChunior && !chuniorYaHecho)
+      ? verificarMovimientoEnChunior(usuario, monto, fechaRefMs)   // corre en la ventana de Chunior (paralelo)
       : Promise.resolve({ existe:false, movimientoId:null });
-    // Agentes y Reg usan ventanas distintas → realmente en paralelo
+    // Agentes y Chunior usan ventanas distintas → realmente en paralelo
     const [bRes, chuRes] = await Promise.all([
-      callBo("buscarUsuario", usuario),
-      verifRegPromise
+      callDrex("buscarUsuario", usuario),
+      verifChuniorPromise
     ]);
     b = bRes;
     chuVerif = chuRes || { existe:false, movimientoId:null };
@@ -3056,13 +3056,13 @@ async function reintentarOperacionFallida(historialId){
   if(!b || !b.exists){ toast('Usuario '+usuario+' no encontrado en agentes', 'red'); return; }
   const saldoActual = (typeof b.balance?.value === 'number') ? b.balance.value : null;
 
-  // Si la verificación en vivo encontró el movimiento → Reg ya está hecho
+  // Si la verificación en vivo encontró el movimiento → Chunior ya está hecho
   if(chuVerif.existe){
     chuniorYaHecho = true;
     if(chuVerif.movimientoId) movChuVerificado = chuVerif.movimientoId;
   }
 
-  // 2) Inferir si Bo ya hizo la op (solo si tenemos referencia confiable)
+  // 2) Inferir si Drex ya hizo la op (solo si tenemos referencia confiable)
   //    saldo esperado si la op se hizo = saldo_pre ± monto
   const m = Number(monto);
   const signo = tipo === 'CARGA' ? 1 : -1;
@@ -3084,7 +3084,7 @@ async function reintentarOperacionFallida(historialId){
         : '<span style="color:#e0c070">? No se pudo inferir</span>';
   const chuniorBadge = chuniorYaHecho
       ? '<span style="color:#7ee07e">✓ Registrado'+(movChuVerificado?' (N° '+escapeHtml(String(movChuVerificado))+')':' (verificado en lista)')+'</span>'
-      : (necesitaReg ? '<span style="color:var(--red)">✗ NO registrado</span>' : '<span style="color:var(--muted)">N/A (billetera sin Reg)</span>');
+      : (necesitaChunior ? '<span style="color:var(--red)">✗ NO registrado</span>' : '<span style="color:var(--muted)">N/A (billetera sin Chunior)</span>');
 
   const body =
     '<div style="font-size:13px;line-height:1.6;color:#c0cad8">' +
@@ -3093,29 +3093,29 @@ async function reintentarOperacionFallida(historialId){
         '💰 Saldo actual en agentes: <b style="color:#fff">'+(saldoActual!==null?money(saldoActual):'—')+'</b><br>' +
         (saldo_pre!=null ? '↳ Saldo antes de la op: '+money(saldo_pre)+'<br>' : '') +
         '↳ Agentes: '+drexBadge+'<br>' +
-        '↳ Reg: '+chuniorBadge +
+        '↳ Chunior: '+chuniorBadge +
       '</div>' +
       '<div style="font-weight:700;margin-bottom:6px">¿Qué querés reintentar?</div>' +
       '<label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer">' +
-        '<input type="checkbox" id="retryBo" '+(drexInferido==='pendiente'?'checked':'')+' style="width:16px;height:16px"> ' +
+        '<input type="checkbox" id="retryDrex" '+(drexInferido==='pendiente'?'checked':'')+' style="width:16px;height:16px"> ' +
         'Cargar/retirar en <b>agentes</b> '+(drexInferido==='hecho'?'<span style="color:var(--red);font-size:11px">(¡cuidado, parece hecho — duplicaría!)</span>':'')+
       '</label>' +
-      (necesitaReg && !chuniorYaHecho ?
+      (necesitaChunior && !chuniorYaHecho ?
       '<label style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
-        '<input type="checkbox" id="retryReg" checked style="width:16px;height:16px"> ' +
-        'Anotar en <b>Reg</b> ('+escapeHtml(bil.NOMBRE_VISIBLE||'')+')' +
+        '<input type="checkbox" id="retryChunior" checked style="width:16px;height:16px"> ' +
+        'Anotar en <b>Chunior</b> ('+escapeHtml(bil.NOMBRE_VISIBLE||'')+')' +
       '</label>' : '') +
     '</div>';
 
   abrirModal('↻ Reintentar '+tipo, body, async function(){
-    const hacerBo    = document.getElementById('retryBo')?.checked;
-    const hacerReg = document.getElementById('retryReg')?.checked;
+    const hacerDrex    = document.getElementById('retryDrex')?.checked;
+    const hacerChunior = document.getElementById('retryChunior')?.checked;
     cerrarModal();
 
     let drexOk = drexInferido === 'hecho', movChu = movChuVerificado;
 
-    // Bo
-    if(hacerBo){
+    // Drex
+    if(hacerDrex){
       toast('Reintentando '+tipo+' en agentes...', 'blue');
       _wdLock();
       try {
@@ -3124,13 +3124,13 @@ async function reintentarOperacionFallida(historialId){
         // pegados, sin gap) y evita que cargarSaldo corra sobre un estado sucio
         // que quedó de la lectura de saldo al abrir el modal (por eso antes
         // fallaba la 1ª vez y andaba la 2ª).
-        const bb = await callBo("buscarUsuario", usuario, { skipBalance: true });
+        const bb = await callDrex("buscarUsuario", usuario, { skipBalance: true });
         if(!bb || !bb.exists){
           toast('✗ Usuario no encontrado al reintentar en agentes', 'red');
         } else {
           const r = (tipo === 'CARGA')
-            ? await callBo("cargarSaldo", m)
-            : await callBo("retirarSaldo", m);
+            ? await callDrex("cargarSaldo", m)
+            : await callDrex("retirarSaldo", m);
           if(r && r.ok !== false){ drexOk = true; toast('✓ '+tipo+' OK en agentes', 'green'); }
           else toast('✗ Agentes falló: '+(r?.message||''), 'red');
         }
@@ -3138,20 +3138,20 @@ async function reintentarOperacionFallida(historialId){
       finally { _wdUnlock(); }
     }
 
-    // Reg
-    if(hacerReg && necesitaReg){
-      toast('Anotando en Reg...', 'blue');
+    // Chunior
+    if(hacerChunior && necesitaChunior){
+      toast('Anotando en Chunior...', 'blue');
       try {
         const rChu = (tipo === 'CARGA')
-          ? await registrarCargaEnReg(bil.CHUNIOR_UID, m, usuario)
-          : await registrarRetiroEnReg(bil.CHUNIOR_UID, m, usuario);
-        if(rChu && rChu.ok && rChu.movimientoId){ movChu = rChu.movimientoId; toast('✓ Reg N° '+rChu.movimientoId, 'green'); }
-        else toast('✗ Reg: '+(rChu?.error||'falló'), 'red');
-      } catch(e){ toast('Error Reg: '+(e.message||''), 'red'); }
+          ? await registrarCargaEnChunior(bil.CHUNIOR_UID, m, usuario)
+          : await registrarRetiroEnChunior(bil.CHUNIOR_UID, m, usuario);
+        if(rChu && rChu.ok && rChu.movimientoId){ movChu = rChu.movimientoId; toast('✓ Chunior N° '+rChu.movimientoId, 'green'); }
+        else toast('✗ Chunior: '+(rChu?.error||'falló'), 'red');
+      } catch(e){ toast('Error Chunior: '+(e.message||''), 'red'); }
     }
 
     // Actualizar fila
-    const chuOk = !!movChu || !necesitaReg;
+    const chuOk = !!movChu || !necesitaChunior;
     const nuevoEstado = (drexOk && chuOk) ? 'OK' : 'ERROR';
     try {
       await supabaseClient.from('historial_ops').update({
@@ -3177,12 +3177,12 @@ async function deshacerOperacion(id, usuario, tipoOriginal, monto, bilId){
 
   toast("Procesando reversión...","blue");
   try {
-    if(!await ensureBoSession()){ toast("Sesión de backoffice requerida.","red"); return; }
+    if(!await ensureDrexSession()){ toast("Sesión de backoffice requerida.","red"); return; }
 
-    await callBo("buscarUsuario", usuario);
+    await callDrex("buscarUsuario", usuario);
     let r;
-    if(tipoReversion==='CARGA') r = await callBo("cargarSaldo", montoNum);
-    else r = await callBo("retirarSaldo", montoNum);
+    if(tipoReversion==='CARGA') r = await callDrex("cargarSaldo", montoNum);
+    else r = await callDrex("retirarSaldo", montoNum);
 
     const ok = r && r.ok !== false;
     await supabaseClient.from("historial_ops").update({estado:"REVERTIDA"}).eq("id", id);
@@ -3445,7 +3445,7 @@ function abrirAprobarSolicitud(id){
     cerrarModal();
     toast("Carga aprobada","green");
     await registrarEnHistorial({usuario, tipo:'CARGA', monto:montoFinal, origen:'PANEL', estado:'OK', notas:obs||null, solicitud_id:id});
-    // Panel de aprobar carga no toca Reg → no comparamos fichas
+    // Panel de aprobar carga no toca Chunior → no comparamos fichas
     await refrescarTodo(false);
   },"Aprobar");
 }
@@ -3507,17 +3507,17 @@ async function abrirCerrarRetiro(id){
     cerrarModal();
     toast("Retiro cerrado","green");
     const bilObjR = billeteras.find(function(b){ return b.ID_BILLETERA===bilId; }) || {};
-    let movRegP = null;
+    let movChuniorP = null;
     if(bilObjR.CHUNIOR_UID && usuario){
       try {
-        const rChu = await registrarRetiroEnReg(bilObjR.CHUNIOR_UID, montoFinal, usuario);
-        if(rChu.ok && rChu.movimientoId) movRegP = rChu.movimientoId;
-        else if(rChu.error) toast('⚠️ Retiro OK pero falló en Reg: '+rChu.error, 'red');
-      } catch(e){ toast('⚠️ Error en Reg: '+(e.message||''), 'red'); }
+        const rChu = await registrarRetiroEnChunior(bilObjR.CHUNIOR_UID, montoFinal, usuario);
+        if(rChu.ok && rChu.movimientoId) movChuniorP = rChu.movimientoId;
+        else if(rChu.error) toast('⚠️ Retiro OK pero falló en Chunior: '+rChu.error, 'red');
+      } catch(e){ toast('⚠️ Error en Chunior: '+(e.message||''), 'red'); }
     }
-    await registrarEnHistorial({usuario, tipo:'RETIRO', monto:montoFinal, billetera_id:bilId||null, billetera_nombre:bilObjR.NOMBRE_VISIBLE||null, origen:'PANEL', estado:'OK', notas:obs||null, solicitud_id:id, chunior_movimiento_id:movRegP});
-    // Comparamos fichas solo si Reg confirmó
-    if(movRegP) _watchdogTrigger(1500);
+    await registrarEnHistorial({usuario, tipo:'RETIRO', monto:montoFinal, billetera_id:bilId||null, billetera_nombre:bilObjR.NOMBRE_VISIBLE||null, origen:'PANEL', estado:'OK', notas:obs||null, solicitud_id:id, chunior_movimiento_id:movChuniorP});
+    // Comparamos fichas solo si Chunior confirmó
+    if(movChuniorP) _watchdogTrigger(1500);
     await refrescarTodo(false);
   },"Pagar retiro");
 
@@ -3818,6 +3818,11 @@ function cerrarModal(){document.getElementById("modalOverlay").classList.add("hi
 // ── Automatización (solo disponible en Electron) ──────────────────────────────
 const enElectron = !!window.ctrlElectron;
 
+// Compat: el preload expone window.reg (backoffice secundario visible). El resto del
+// renderer todavía usa el identificador histórico window.chunior. Lo aliasamos para no
+// reescribir ~50 llamadas. (La anonimización completa del renderer se termina aparte.)
+if(!window.chunior && window.reg) window.chunior = window.reg;
+
 if(enElectron){
   document.getElementById("navAuto")?.classList.remove("hidden");
   document.getElementById("agentBalanceCard")?.classList.remove("hidden");
@@ -3835,7 +3840,7 @@ async function refrescarSaldoAgente(){
   if(el) el.textContent = "Cargando...";
   try{
     await window.ctrlElectron.openAgentWindow();
-    const r = await callBo("obtenerSaldoAgente");
+    const r = await callDrex("obtenerSaldoAgente");
     if(r && r.balance && r.balance.raw){ if(el) el.textContent = r.balance.raw.trim(); }
     else if(r && r.needsLogin){ if(el) el.textContent = "🔐 Login"; }
     else { if(el) el.textContent = "—"; }
@@ -3851,19 +3856,19 @@ if(enElectron){
   setTimeout(refrescarSaldoAgente, 4000); // 4s después del load inicial
 }
 
-// ── Watchdog de fichas: detecta discrepancias entre Bo y Reg ────────────
+// ── Watchdog de fichas: detecta discrepancias entre Drex y Chunior ────────────
 // Cada 60s lee ambos saldos y los compara. En operaciones normales se mueven en
-// direcciones OPUESTAS con el mismo monto (carga: Bo -X, Reg +X). Si no
+// direcciones OPUESTAS con el mismo monto (carga: Drex -X, Chunior +X). Si no
 // se cumple, hay alguien moviendo plata fuera de NODO o una carga repetida.
 const _watchdog = {
-  drexFichas: null,      // último Saldo agente leído de Bo (= fichas del agente)
-  chuniorFichas: null,   // último "Saldo Fichas" leído de Reg (mismo concepto)
+  drexFichas: null,      // último Saldo agente leído de Drex (= fichas del agente)
+  chuniorFichas: null,   // último "Saldo Fichas" leído de Chunior (mismo concepto)
   lastCheck: null,
   intervalId: null,
   alertaActiva: false,
   // Recovery
-  drexLoginInProgress: false,   // evita abrir el modal de login Bo más de una vez
-  chuniorFails: 0,              // contador de polls consecutivos sin Reg
+  drexLoginInProgress: false,   // evita abrir el modal de login Drex más de una vez
+  chuniorFails: 0,              // contador de polls consecutivos sin Chunior
   chuniorRecoveryScheduled: false,
   // Lock: si una operación está usando la ventana de agentes, el watchdog
   // NO debe hacer su poll (porque navega la página y rompe la operación).
@@ -3882,8 +3887,8 @@ function _wdParseMontoAR(s){
 }
 
 // Lee el saldo de fichas del agente desde los DOS sistemas:
-//   - Bo: agentBalance (lo que la página de agentes dice que tiene el agente)
-//   - Reg: "Saldo Fichas: $X" del header (lo que Reg dice que tiene el agente)
+//   - Drex: agentBalance (lo que la página de agentes dice que tiene el agente)
+//   - Chunior: "Saldo Fichas: $X" del header (lo que Chunior dice que tiene el agente)
 // Estos DOS valores representan LO MISMO desde dos sistemas → deben matchear siempre.
 // Las billeteras MP son cash, no fichas — no entran acá.
 async function _watchdogLeer(){
@@ -3900,8 +3905,8 @@ async function _watchdogLeer(){
     }
   } catch(_){}
   try {
-    if(window.reg){
-      const data = await window.reg.exec(
+    if(window.chunior){
+      const data = await window.chunior.exec(
         '(function(){' +
           // Buscar "Saldo Fichas: $X" (con o sin "Fichas"/"Ficha" y con ":" opcional)
           'var bodyText = document.body.textContent || "";' +
@@ -3928,7 +3933,7 @@ function _wdActualizarUI(estado, texto){
   ind.textContent = texto;
 }
 
-// Banner para discrepancia absoluta (Bo saldo agente != Reg Saldo Fichas)
+// Banner para discrepancia absoluta (Drex saldo agente != Chunior Saldo Fichas)
 function _wdMostrarBannerAbs(info){
   _watchdog.alertaActiva = true;
   let banner = document.getElementById("watchdogBanner");
@@ -3945,13 +3950,13 @@ function _wdMostrarBannerAbs(info){
       '<span style="font-size:18px">⚠️</span>' +
       '<span><b>DISCREPANCIA de fichas detectada</b><br>' +
         '<span style="font-weight:400;font-size:12px">' +
-          'Bo: <b>'+drexTxt+'</b> · Reg: <b>'+chuniorTxt+'</b> · Diferencia: <b>'+diffTxt+'</b> · '+
+          'Drex: <b>'+drexTxt+'</b> · Chunior: <b>'+chuniorTxt+'</b> · Diferencia: <b>'+diffTxt+'</b> · '+
           formatFecha(new Date().toISOString()) +
         '</span>' +
       '</span>' +
     '</div>' +
     '<button onclick="_wdDismissBanner()">Entendido</button>';
-  toast('⚠️ Bo '+drexTxt+' ≠ Reg '+chuniorTxt+' (Δ '+diffTxt+')', 'red');
+  toast('⚠️ Drex '+drexTxt+' ≠ Chunior '+chuniorTxt+' (Δ '+diffTxt+')', 'red');
 }
 
 function _wdDismissBanner(){
@@ -3970,12 +3975,12 @@ async function _watchdogPoll(){
 
   const ahora = await _watchdogLeer();
 
-  // ── Recovery Bo: sesión cerrada → modal de login ──────────────────────
+  // ── Recovery Drex: sesión cerrada → modal de login ──────────────────────
   if(ahora.drexNeedsLogin){
     if(!_watchdog.drexLoginInProgress){
       _watchdog.drexLoginInProgress = true;
       toast("⚠️ Sesión de backoffice (agentes) cerrada · Reingresá credenciales", "red");
-      Promise.resolve(ensureBoSession()).finally(function(){
+      Promise.resolve(ensureDrexSession()).finally(function(){
         _watchdog.drexLoginInProgress = false;
       });
     }
@@ -3983,13 +3988,13 @@ async function _watchdogPoll(){
     return;
   }
 
-  // ── Recovery Reg: 3 fallos consecutivos (~3 min) → reload total ─────
+  // ── Recovery Chunior: 3 fallos consecutivos (~3 min) → reload total ─────
   if(!ahora.chuniorReachable){
     _watchdog.chuniorFails++;
-    _wdActualizarUI('alerta', '⚠ Reg inalcanzable ('+_watchdog.chuniorFails+'/3)');
+    _wdActualizarUI('alerta', '⚠ Chunior inalcanzable ('+_watchdog.chuniorFails+'/3)');
     if(_watchdog.chuniorFails >= 3 && !_watchdog.chuniorRecoveryScheduled){
       _watchdog.chuniorRecoveryScheduled = true;
-      toast("⚠️ Reg cerrado · Reiniciando NODO en 4s...", "red");
+      toast("⚠️ Chunior cerrado · Reiniciando NODO en 4s...", "red");
       setTimeout(function(){ location.reload(); }, 4000);
     }
     return;
@@ -3999,12 +4004,12 @@ async function _watchdogPoll(){
 
   // Si falta alguna lectura, mostrar estado pero no comparar
   if(ahora.drexFichas === null || ahora.chuniorFichas === null){
-    const falta = ahora.drexFichas === null ? 'Bo' : 'Reg "Saldo Fichas"';
+    const falta = ahora.drexFichas === null ? 'Drex' : 'Chunior "Saldo Fichas"';
     _wdActualizarUI('', '⏸ Sin lectura de ' + falta);
     return;
   }
 
-  // ── Comparación ABSOLUTA: Bo saldo agente == Reg Saldo Fichas ──
+  // ── Comparación ABSOLUTA: Drex saldo agente == Chunior Saldo Fichas ──
   const diff = ahora.drexFichas - ahora.chuniorFichas;
   const TOL  = 1; // $1 de tolerancia para redondeos
   const matchOk = Math.abs(diff) <= TOL;
@@ -4019,18 +4024,18 @@ async function _watchdogPoll(){
   if(matchOk){
     if(_watchdog.alertaActiva){ _wdDismissBanner(); }
     _wdActualizarUI('ok',
-      '✓ Fichas OK · Bo '+fmt(ahora.drexFichas)+' = Reg '+fmt(ahora.chuniorFichas)+' · '+horaCheck
+      '✓ Fichas OK · Drex '+fmt(ahora.drexFichas)+' = Chunior '+fmt(ahora.chuniorFichas)+' · '+horaCheck
     );
     _watchdog.pendingReconfirm = false;
     return;
   }
 
   // ── Discrepancia detectada — puede ser TRANSITORIA ──
-  // Reg tarda en propagar el "Saldo Fichas" del breadcrumb. Re-leemos en 4s.
+  // Chunior tarda en propagar el "Saldo Fichas" del breadcrumb. Re-leemos en 4s.
   // Si en la 2da lectura coinciden, era transitoria. Si siguen sin coincidir → alerta REAL.
   if(!_watchdog.pendingReconfirm){
     _watchdog.pendingReconfirm = true;
-    console.log('[watchdog] discrepancia detectada · Bo='+ahora.drexFichas+' Reg='+ahora.chuniorFichas+' diff='+diff+' · re-confirmando en 4s...');
+    console.log('[watchdog] discrepancia detectada · Drex='+ahora.drexFichas+' Chunior='+ahora.chuniorFichas+' diff='+diff+' · re-confirmando en 4s...');
     _wdActualizarUI('', '⏳ Verificando fichas (puede ser transitorio)...');
     setTimeout(async function(){
       const recheck = await _watchdogLeer();
@@ -4047,7 +4052,7 @@ async function _watchdogPoll(){
         _watchdog.drexFichas    = recheck.drexFichas;
         _watchdog.chuniorFichas = recheck.chuniorFichas;
         _wdActualizarUI('ok',
-          '✓ Fichas OK · Bo '+fmt(recheck.drexFichas)+' = Reg '+fmt(recheck.chuniorFichas)+' · '+horaR+' (re-confirmado)'
+          '✓ Fichas OK · Drex '+fmt(recheck.drexFichas)+' = Chunior '+fmt(recheck.chuniorFichas)+' · '+horaR+' (re-confirmado)'
         );
       } else {
         // Discrepancia CONFIRMADA después del re-check
@@ -4055,7 +4060,7 @@ async function _watchdogPoll(){
         _watchdog.drexFichas    = recheck.drexFichas;
         _watchdog.chuniorFichas = recheck.chuniorFichas;
         _wdActualizarUI('alerta',
-          '⚠ DISCREPANCIA · Bo '+fmt(recheck.drexFichas)+' ≠ Reg '+fmt(recheck.chuniorFichas)+' (Δ '+fmt(Math.abs(diffR))+')'
+          '⚠ DISCREPANCIA · Drex '+fmt(recheck.drexFichas)+' ≠ Chunior '+fmt(recheck.chuniorFichas)+' (Δ '+fmt(Math.abs(diffR))+')'
         );
         _wdMostrarBannerAbs({
           drex: recheck.drexFichas,
@@ -4077,7 +4082,7 @@ function _watchdogIniciar(){
 }
 
 // Trigger debounced: se llama después de cada operación. Espera unos segundos
-// para que Reg alcance a actualizar su "Saldo Fichas" y después compara.
+// para que Chunior alcance a actualizar su "Saldo Fichas" y después compara.
 let _watchdogTriggerTimer = null;
 function _watchdogTrigger(delayMs){
   if(_watchdog.busy > 0){
@@ -4091,7 +4096,7 @@ function _watchdogTrigger(delayMs){
 }
 
 if(enElectron){
-  // Arranca el watchdog 12s después del load (da tiempo a que la ventana de Reg esté lista)
+  // Arranca el watchdog 12s después del load (da tiempo a que la ventana de Chunior esté lista)
   setTimeout(_watchdogIniciar, 12000);
 }
 
@@ -4265,7 +4270,7 @@ async function _resolverAliasParaCasino(usuario){
   }
 }
 
-async function callBo(method, ...args){
+async function callDrex(method, ...args){
   // Solo buscarUsuario resuelve el alias inteligentemente.
   // crearUsuario / cambiarClave NO se tocan.
   if(method === 'buscarUsuario' && args.length > 0 && typeof args[0] === 'string'){
@@ -4314,17 +4319,17 @@ async function _autoregistrarUsuarioSiFalta(aliasCasino){
   } catch(_){}
 }
 
-// ── Login modal de Bo ─────────────────────────────────────────────────
+// ── Login modal de Casinodrex ─────────────────────────────────────────────────
 // Abre el modal si hay que loguearse. Devuelve true si la sesión quedó lista,
 // false si el operador canceló o las credenciales fallaron.
 // NO guarda credenciales en disco ni en memoria persistente.
 let _drexLoginResolve = null;
 
-function _mostrarModalLoginBo() {
+function _mostrarModalLoginDrex() {
   return new Promise(function(resolve) {
     _drexLoginResolve = resolve;
     abrirModal(
-      '🔐 Login — Bo Agentes',
+      '🔐 Login — Casinodrex Agentes',
       '<div style="margin-bottom:10px;color:#c0cad8;font-size:13px">La sesión del backoffice expiró o no está abierta.<br>Ingresá tus credenciales de agente para continuar.</div>' +
       '<label style="color:#c0cad8;font-size:12px;font-weight:700">USUARIO</label>' +
       '<input id="drexLUser" type="text" autocomplete="off" placeholder="(tu usuario de agente)" style="margin-bottom:12px" value="">' +
@@ -4336,7 +4341,7 @@ function _mostrarModalLoginBo() {
     );
     // Sobrescribir el botón Guardar con lógica propia
     var btn = document.getElementById("modalSaveBtn");
-    if(btn) btn.onclick = _ejecutarLoginBo;
+    if(btn) btn.onclick = _ejecutarLoginDrex;
     // Cancelar → resolver false
     var cancelBtn = document.querySelector('#modalOverlay .btn-gray');
     if(cancelBtn) cancelBtn.onclick = function(){ cerrarModal(); if(_drexLoginResolve){ _drexLoginResolve(false); _drexLoginResolve=null; } };
@@ -4353,14 +4358,14 @@ function _mostrarModalLoginBo() {
       if(p){
         p.value = '';
         p.addEventListener("keydown", function(e){
-          if(e.key==="Enter"){ e.preventDefault(); _ejecutarLoginBo(); }
+          if(e.key==="Enter"){ e.preventDefault(); _ejecutarLoginDrex(); }
         });
       }
     }, 120);
   });
 }
 
-async function _ejecutarLoginBo() {
+async function _ejecutarLoginDrex() {
   var user = (document.getElementById("drexLUser")?.value || "").trim();
   var pass = (document.getElementById("drexLPass")?.value || "").trim();
   var errEl = document.getElementById("drexLErr");
@@ -4372,7 +4377,7 @@ async function _ejecutarLoginBo() {
   if(btn){ btn.disabled = true; btn.textContent = "Conectando..."; }
   if(errEl) errEl.textContent = "";
   try {
-    var r = await callBo("iniciarSesion", user, pass);
+    var r = await callDrex("iniciarSesion", user, pass);
     if(r && r.ok){
       // Limpiar handlers ANTES de cerrar para que el próximo modal arranque limpio
       const saveB = document.getElementById('modalSaveBtn');
@@ -4393,12 +4398,12 @@ async function _ejecutarLoginBo() {
 // Helper usado en TODAS las operaciones automáticas.
 // Abre la ventana, verifica sesión, y si falta → modal de login.
 // Devuelve true si la sesión está lista para operar.
-async function ensureBoSession() {
+async function ensureDrexSession() {
   await window.ctrlElectron.openAgentWindow();
-  var estado = await callBo("estadoPagina");
+  var estado = await callDrex("estadoPagina");
   if(!estado.needsLogin) return true;
   toast("Se requiere iniciar sesión en el backoffice.", "yellow");
-  return await _mostrarModalLoginBo();
+  return await _mostrarModalLoginDrex();
 }
 
 function autoResBox(id, ok, texto){
@@ -4415,10 +4420,10 @@ async function abrirBackoffice(){
 }
 
 // Limpia cookies/caché de agentes y recarga para reingresar (destraba el 403 de CloudFront).
-// No toca la sesión de Reg. Después de limpiar, mostramos la ventana para reloguear.
+// No toca la sesión de Chunior. Después de limpiar, mostramos la ventana para reloguear.
 async function limpiarDatosAgentes(){
   if(!enElectron){ alert("Solo disponible en la app de escritorio."); return; }
-  if(!confirm("Esto borra las cookies y el caché de AGENTES y recarga la página para que reingreses tus credenciales.\n\nLa sesión de Reg NO se toca.\n\n¿Continuar?")) return;
+  if(!confirm("Esto borra las cookies y el caché de AGENTES y recarga la página para que reingreses tus credenciales.\n\nLa sesión de Chunior NO se toca.\n\n¿Continuar?")) return;
   const btn = document.getElementById("limpiarDatosBtn");
   if(btn){ btn.disabled = true; btn.style.opacity = '0.6'; btn.textContent = '🧹 Limpiando...'; }
   try {
@@ -4574,7 +4579,7 @@ async function quitarProxyActivo(){
 async function verificarEstadoBackoffice(){
   if(!enElectron) return;
   try{
-    const e = await callBo("estadoPagina");
+    const e = await callDrex("estadoPagina");
     const ok = !e.needsLogin;
     document.getElementById("autoEstadoVal").textContent = ok ? "✅ Listo" : "🔐 Requiere login";
     document.getElementById("autoEstadoVal").style.color  = ok ? "var(--green)" : "var(--yellow)";
@@ -4592,7 +4597,7 @@ async function testBuscar(){
   autoResBox("autoBuscarRes", true, "Buscando...");
   try{
     await window.ctrlElectron.openAgentWindow();
-    const r = await callBo("buscarUsuario", usuario);
+    const r = await callDrex("buscarUsuario", usuario);
     if(r.exists){
       const bal = r.balance ? ` · Saldo: ${r.balance.raw}` : "";
       autoResBox("autoBuscarRes", true, `✅ Encontrado: <b>${r.user}</b>${bal}`);
@@ -4610,10 +4615,10 @@ async function testCargar(){
   autoResBox("autoCargarRes", true, "Buscando usuario...");
   try{
     await window.ctrlElectron.openAgentWindow();
-    const b = await callBo("buscarUsuario", usuario); // navega y busca en página limpia
+    const b = await callDrex("buscarUsuario", usuario); // navega y busca en página limpia
     if(!b.exists){ autoResBox("autoCargarRes", false, `❌ Usuario "${usuario}" no encontrado.`); return; }
     autoResBox("autoCargarRes", true, "Cargando saldo...");
-    const r = await callBo("cargarSaldo", monto);
+    const r = await callDrex("cargarSaldo", monto);
     document.getElementById("autoResultVal").textContent = `CARGA · ${usuario} · $${monto.toLocaleString("es-AR")}`;
     autoResBox("autoCargarRes", true, `✅ ${r.message || "Carga realizada."}`);
     await window.ctrlElectron.navigateAgent(); // refresca después de cargar
@@ -4637,7 +4642,7 @@ async function testRetirar(){
   autoResBox("autoRetirarRes", true, "Buscando usuario...");
   try{
     await window.ctrlElectron.openAgentWindow();
-    const b = await callBo("buscarUsuario", usuario);
+    const b = await callDrex("buscarUsuario", usuario);
     if(!b.exists){ autoResBox("autoRetirarRes", false, `❌ Usuario "${usuario}" no encontrado.`); return; }
     const saldo = b.balance?.value ?? -1;
     if(saldo >= 0 && saldo < monto){
@@ -4646,7 +4651,7 @@ async function testRetirar(){
       return;
     }
     autoResBox("autoRetirarRes", true, `Encontrado · Saldo: ${b.balance?.raw?.trim() || "—"} · Retirando...`);
-    const r = await callBo("retirarSaldo", monto);
+    const r = await callDrex("retirarSaldo", monto);
     document.getElementById("autoResultVal").textContent = `RETIRO · ${usuario} · $${monto.toLocaleString("es-AR")}`;
     autoResBox("autoRetirarRes", true, `✅ ${r.message || "Retiro realizado."}`);
     
@@ -4732,10 +4737,10 @@ async function ejecutarAutoClave(id){
   if(!usuario){ alert("La solicitud no tiene usuario."); return; }
 
   toast("Abriendo backoffice...","blue");
-  if(!await ensureBoSession()){ toast("Sesión de backoffice requerida.","red"); return; }
+  if(!await ensureDrexSession()){ toast("Sesión de backoffice requerida.","red"); return; }
 
   toast(`Buscando ${usuario}...`,"blue");
-  const b = await callBo("buscarUsuario", usuario);
+  const b = await callDrex("buscarUsuario", usuario);
 
   if(!b.exists){
     await actualizarSolicitudSupabase(id, {
@@ -4751,7 +4756,7 @@ async function ejecutarAutoClave(id){
   }
 
   toast(`Cambiando clave a "${claveNueva}"...`,"blue");
-  const r = await callBo("cambiarClave", claveNueva);
+  const r = await callDrex("cambiarClave", claveNueva);
 
   if(r && r.ok === false){
     await actualizarSolicitudSupabase(id, {
@@ -4783,12 +4788,12 @@ async function resetClaveRapido(usuario, claveNueva="12345a"){
   if(!usuario){ alert("Sin usuario."); return; }
 
   toast(`Reseteando clave de ${usuario}...`,"blue");
-  if(!await ensureBoSession()){ toast("Sesión de backoffice requerida.","red"); return; }
+  if(!await ensureDrexSession()){ toast("Sesión de backoffice requerida.","red"); return; }
 
-  const b = await callBo("buscarUsuario", usuario);
+  const b = await callDrex("buscarUsuario", usuario);
   if(!b.exists){ toast(`Usuario "${usuario}" no encontrado.`,"red"); return; }
 
-  const r = await callBo("cambiarClave", claveNueva);
+  const r = await callDrex("cambiarClave", claveNueva);
   if(r && r.ok === false){ toast("Error: "+(r.message||"falló"),"red"); return; }
 
   toast(`Clave reseteada a "${claveNueva}"`, "green");
@@ -4801,9 +4806,9 @@ async function retirarSaldoRapido(usuario, monto){
   if(!usuario || !monto || monto <= 0){ alert("Usuario y monto requeridos."); return; }
 
   toast(`Retirando $${monto.toLocaleString("es-AR")} de ${usuario}...`, "blue");
-  if(!await ensureBoSession()){ toast("Sesión de backoffice requerida.","red"); return; }
+  if(!await ensureDrexSession()){ toast("Sesión de backoffice requerida.","red"); return; }
 
-  const b = await callBo("buscarUsuario", usuario);
+  const b = await callDrex("buscarUsuario", usuario);
   if(!b.exists){ toast(`Usuario "${usuario}" no encontrado.`,"red"); return; }
 
   const saldo = b.balance?.value ?? -1;
@@ -4813,7 +4818,7 @@ async function retirarSaldoRapido(usuario, monto){
     return;
   }
 
-  const r = await callBo("retirarSaldo", monto);
+  const r = await callDrex("retirarSaldo", monto);
   if(r && r.ok === false){ toast("Error: " + (r.message||"falló"), "red"); return; }
 
   // Registrar en solicitudes para validar política de 24hs
@@ -4835,13 +4840,13 @@ async function retirarSaldoRapido(usuario, monto){
 
   // Registrar en historial de operaciones para que aparezca en el panel
   const bilR = getBilleraLanding();
-  let movRegR = null;
+  let movChuniorR = null;
   if(bilR && bilR.CHUNIOR_UID){
     try {
-      const rChu = await registrarRetiroEnReg(bilR.CHUNIOR_UID, monto, usuario);
-      if(rChu.ok && rChu.movimientoId) movRegR = rChu.movimientoId;
-      else if(rChu.error) toast('⚠️ Retiro OK en casino pero falló en Reg: '+rChu.error, 'red');
-    } catch(e){ toast('⚠️ Error en Reg: '+(e.message||''), 'red'); }
+      const rChu = await registrarRetiroEnChunior(bilR.CHUNIOR_UID, monto, usuario);
+      if(rChu.ok && rChu.movimientoId) movChuniorR = rChu.movimientoId;
+      else if(rChu.error) toast('⚠️ Retiro OK en casino pero falló en Chunior: '+rChu.error, 'red');
+    } catch(e){ toast('⚠️ Error en Chunior: '+(e.message||''), 'red'); }
   }
   await registrarEnHistorial({
     usuario,
@@ -4851,11 +4856,11 @@ async function retirarSaldoRapido(usuario, monto){
     billetera_nombre:    bilR ? bilR.NOMBRE_VISIBLE : null,
     origen: 'CHAT',
     estado: 'OK',
-    chunior_movimiento_id: movRegR,
+    chunior_movimiento_id: movChuniorR,
     saldo_post: saldoPostR
   });
-  // Recién comparamos fichas si Reg confirmó el movimiento
-  if(movRegR) _watchdogTrigger(1500);
+  // Recién comparamos fichas si Chunior confirmó el movimiento
+  if(movChuniorR) _watchdogTrigger(1500);
 
   toast(`Retiro completado · ${usuario} · $${monto.toLocaleString("es-AR")}`, "green");
   await window.ctrlElectron.navigateAgent();
@@ -4867,13 +4872,13 @@ async function cargarSaldoRapido(usuario, monto){
   if(!usuario || !monto || monto<=0){ alert("Usuario y monto requeridos."); return; }
 
   toast(`Cargando $${monto} a ${usuario}...`,"blue");
-  if(!await ensureBoSession()){ toast("Sesión de backoffice requerida.","red"); return; }
+  if(!await ensureDrexSession()){ toast("Sesión de backoffice requerida.","red"); return; }
 
   // CARGA: no necesitamos balance → skipBalance evita abrir/cerrar modal extra
-  const b = await callBo("buscarUsuario", usuario, { skipBalance: true });
+  const b = await callDrex("buscarUsuario", usuario, { skipBalance: true });
   if(!b.exists){ toast(`Usuario "${usuario}" no encontrado.`,"red"); return; }
 
-  const r = await callBo("cargarSaldo", monto);
+  const r = await callDrex("cargarSaldo", monto);
   if(r && r.ok === false){ toast("Error: "+(r.message||"falló"),"red"); return; }
 
   // Saldo PRE leído del casino o de la búsqueda. POST siempre calculado.
@@ -4907,7 +4912,7 @@ async function cargarSaldoRapido(usuario, monto){
     estado: 'OK',
     saldo_post: saldoPostC
   });
-  // Sin registro en Reg → no comparamos fichas (daría discrepancia segura)
+  // Sin registro en Chunior → no comparamos fichas (daría discrepancia segura)
 
   toast(`Carga completada · ${usuario} · $${monto.toLocaleString("es-AR")}`,"green");
   await window.ctrlElectron.navigateAgent();
@@ -4943,10 +4948,10 @@ async function ejecutarAutoRetiro(id){
   }
 
   toast("Abriendo backoffice...","blue");
-  if(!await ensureBoSession()){ toast("Sesión de backoffice requerida.","red"); return; }
+  if(!await ensureDrexSession()){ toast("Sesión de backoffice requerida.","red"); return; }
 
   toast(`Buscando ${usuario}...`,"blue");
-  const b = await callBo("buscarUsuario", usuario);
+  const b = await callDrex("buscarUsuario", usuario);
   if(!b.exists){
     await actualizarSolicitudSupabase(id, {
       estado: "RECHAZADA",
@@ -4983,7 +4988,7 @@ async function ejecutarAutoRetiro(id){
   }
 
   toast(`Retirando $${monto.toLocaleString("es-AR")}...`,"blue");
-  const r = await callBo("retirarSaldo", monto);
+  const r = await callDrex("retirarSaldo", monto);
 
   if(r && r.ok === false){
     await actualizarSolicitudSupabase(id, {
@@ -5011,20 +5016,20 @@ async function ejecutarAutoRetiro(id){
   toast(`Retiro automático completado · ${usuario} · ${monto.toLocaleString("es-AR")}`, "green");
   {
     const bilR = getBilleraLanding();
-    let movRegAR = null;
+    let movChuniorAR = null;
     if(bilR && bilR.CHUNIOR_UID){
       try {
-        const rChu = await registrarRetiroEnReg(bilR.CHUNIOR_UID, monto, usuario);
-        if(rChu.ok && rChu.movimientoId) movRegAR = rChu.movimientoId;
-        else if(rChu.error) toast('⚠️ Retiro OK pero falló en Reg: '+rChu.error, 'red');
-      } catch(e){ toast('⚠️ Error en Reg: '+(e.message||''), 'red'); }
+        const rChu = await registrarRetiroEnChunior(bilR.CHUNIOR_UID, monto, usuario);
+        if(rChu.ok && rChu.movimientoId) movChuniorAR = rChu.movimientoId;
+        else if(rChu.error) toast('⚠️ Retiro OK pero falló en Chunior: '+rChu.error, 'red');
+      } catch(e){ toast('⚠️ Error en Chunior: '+(e.message||''), 'red'); }
     }
     const saldoPreCasinoAR  = (typeof r?.previousBalance?.value === 'number') ? r.previousBalance.value : null;
     const saldoPostCasinoAR = (typeof r?.newBalance?.value === 'number')      ? r.newBalance.value      : null;
     const saldoPreAR  = saldoPreCasinoAR  !== null ? saldoPreCasinoAR  : (b.balance?.value ?? null);
     const saldoPostAR = saldoPostCasinoAR !== null ? saldoPostCasinoAR : (saldoPreAR !== null ? saldoPreAR - monto : null);
-    await registrarEnHistorial({usuario, tipo:'RETIRO', monto, billetera_id:bilR?bilR.ID_BILLETERA:null, billetera_nombre:bilR?bilR.NOMBRE_VISIBLE:null, origen:'AUTO', estado:'OK', solicitud_id:id, chunior_movimiento_id:movRegAR, saldo_post:saldoPostAR});
-    if(movRegAR) _watchdogTrigger(1500);
+    await registrarEnHistorial({usuario, tipo:'RETIRO', monto, billetera_id:bilR?bilR.ID_BILLETERA:null, billetera_nombre:bilR?bilR.NOMBRE_VISIBLE:null, origen:'AUTO', estado:'OK', solicitud_id:id, chunior_movimiento_id:movChuniorAR, saldo_post:saldoPostAR});
+    if(movChuniorAR) _watchdogTrigger(1500);
   }
   await window.ctrlElectron.navigateAgent();
   await refrescarTodo(false);
@@ -5043,11 +5048,11 @@ async function ejecutarAutoCarga(id){
   if(!monto)  { alert("La solicitud no tiene monto válido."); return; }
 
   toast("Abriendo backoffice...","blue");
-  if(!await ensureBoSession()){ toast("Sesión de backoffice requerida.","red"); return; }
+  if(!await ensureDrexSession()){ toast("Sesión de backoffice requerida.","red"); return; }
 
   toast(`Buscando usuario ${usuario}...`,"blue");
   // CARGA auto: no necesitamos balance del jugador → evitamos el abrir/cerrar modal
-  const busqueda = await callBo("buscarUsuario", usuario, { skipBalance: true });
+  const busqueda = await callDrex("buscarUsuario", usuario, { skipBalance: true });
   if(!busqueda.exists){
     await actualizarSolicitudSupabase(id, {
       estado: "RECHAZADA",
@@ -5061,7 +5066,7 @@ async function ejecutarAutoCarga(id){
   }
 
   toast(`Cargando $${monto.toLocaleString("es-AR")}...`,"blue");
-  const resultado = await callBo("cargarSaldo", monto);
+  const resultado = await callDrex("cargarSaldo", monto);
 
   if(!resultado.ok && resultado.ok !== undefined){
     await actualizarSolicitudSupabase(id, {
@@ -5088,19 +5093,19 @@ async function ejecutarAutoCarga(id){
 
   toast(`Carga automática completada · ${usuario} · ${monto.toLocaleString("es-AR")}`, "green");
 
-  // Registrar el movimiento en Reg (solo si la billetera tiene chunior_uid configurado)
-  let movimientoReg = null;
+  // Registrar el movimiento en Chunior (solo si la billetera tiene chunior_uid configurado)
+  let movimientoChunior = null;
   const bilL = getBilleraLanding();
   if(bilL && bilL.CHUNIOR_UID){
     try {
-      const rChu = await registrarCargaEnReg(bilL.CHUNIOR_UID, monto, usuario);
+      const rChu = await registrarCargaEnChunior(bilL.CHUNIOR_UID, monto, usuario);
       if(rChu.ok && rChu.movimientoId){
-        movimientoReg = rChu.movimientoId;
-        toast(`📋 Movimiento Reg N° ${rChu.movimientoId}`, 'blue');
+        movimientoChunior = rChu.movimientoId;
+        toast(`📋 Movimiento Chunior N° ${rChu.movimientoId}`, 'blue');
       } else if(rChu.error){
-        toast('⚠️ Carga OK en casino pero falló en Reg: '+rChu.error, 'red');
+        toast('⚠️ Carga OK en casino pero falló en Chunior: '+rChu.error, 'red');
       }
-    } catch(e){ toast('⚠️ Error registrando en Reg: '+(e.message||''), 'red'); }
+    } catch(e){ toast('⚠️ Error registrando en Chunior: '+(e.message||''), 'red'); }
   }
 
   // Saldo PRE leído del casino o busqueda. POST siempre calculado.
@@ -5120,8 +5125,8 @@ async function ejecutarAutoCarga(id){
   }
   // Auto-registrar al usuario en NODO si no existe (segundo plano)
   if(busqueda?.user) _autoregistrarUsuarioSiFalta(busqueda.user);
-  await registrarEnHistorial({usuario, tipo:'CARGA', monto, billetera_id:bilL?bilL.ID_BILLETERA:null, billetera_nombre:bilL?bilL.NOMBRE_VISIBLE:null, origen:'AUTO', estado:'OK', solicitud_id:id, chunior_movimiento_id:movimientoReg, saldo_post:saldoPostAC});
-  if(movimientoReg) _watchdogTrigger(1500);
+  await registrarEnHistorial({usuario, tipo:'CARGA', monto, billetera_id:bilL?bilL.ID_BILLETERA:null, billetera_nombre:bilL?bilL.NOMBRE_VISIBLE:null, origen:'AUTO', estado:'OK', solicitud_id:id, chunior_movimiento_id:movimientoChunior, saldo_post:saldoPostAC});
+  if(movimientoChunior) _watchdogTrigger(1500);
   await window.ctrlElectron.navigateAgent();
   await refrescarTodo(false);
 }
@@ -5131,9 +5136,9 @@ function cerrarMenuMobile(e){if(!e||e.target.id==="mobileMenu"){const menu=docum
 function cerrarSesion(){
   localStorage.removeItem("nodo_operador_lite");
   localStorage.removeItem("nodo_pc_operativa_lite");
-  // Cerrar también sesión de Reg antes de recargar
+  // Cerrar también sesión de Chunior antes de recargar
   try {
-    if(window.reg) window.reg.navigate(CHUNIOR_BASE + '/accounts/logout/');
+    if(window.chunior) window.chunior.navigate(CHUNIOR_BASE + '/accounts/logout/');
   } catch(e){}
   setTimeout(function(){ location.reload(); }, 400);
 }
@@ -5219,28 +5224,28 @@ async function reintentarVerificacion(id, usuario){
 // JSON seguro para usar dentro de un atributo HTML (onclick="..."), reemplaza " por &quot;
 function _jsonAttr(v){ return JSON.stringify(v).replace(/"/g, '&quot;'); }
 
-// ── Reg ───────────────────────────────────────────────────────────────────
-// La autenticación ocurre en el login principal de NODO (validarLoginReg).
-// La sección Reg es sólo un visor de la sesión ya iniciada.
+// ── Chunior ───────────────────────────────────────────────────────────────────
+// La autenticación ocurre en el login principal de NODO (validarLoginChunior).
+// La sección Chunior es sólo un visor de la sesión ya iniciada.
 const CHUNIOR_BASE = 'https://bo.chunior.com';
 const CHUNIOR_HOME = CHUNIOR_BASE + '/transacciones/';
-let _regInited = false;
+let _chuniorInited = false;
 let _nodoListo    = false;  // true después de finalizarLogin, gatea el modal de puesto
 
-function activarReg(){
-  if(!window.reg) return;
-  if(!_regInited){
-    _regInited = true;
-    // Polling de status cada 3s: la lógica de Reg corre en una ventana separada (visible).
+function activarChunior(){
+  if(!window.chunior) return;
+  if(!_chuniorInited){
+    _chuniorInited = true;
+    // Polling de status cada 3s: la lógica de Chunior corre en una ventana separada (visible).
     setInterval(async function(){
       try {
-        const url = await window.reg.getUrl();
+        const url = await window.chunior.getUrl();
         if(!url || url.includes('about:blank')) return;
-        _setRegStatus(!url.includes('/login/'), url);
+        _setChuniorStatus(!url.includes('/login/'), url);
         if(!_nodoListo) return; // todavía en el login inicial de NODO
 
-        // Inspeccionar el DOM de Reg: ¿selector de puesto? ¿form de login?
-        const estado = await window.reg.exec(
+        // Inspeccionar el DOM de Chunior: ¿selector de puesto? ¿form de login?
+        const estado = await window.chunior.exec(
           '(function(){' +
             'var s=document.getElementById("id_pt");' +
             'if(s){var o=Array.from(s.options).filter(function(x){return x.value!=="";}).map(function(x){return{value:x.value,text:x.text.trim()};});return{tipo:"pt", opts:o};}' +
@@ -5250,65 +5255,65 @@ function activarReg(){
           '})()'
         );
 
-        if(estado && estado.tipo === 'pt' && estado.opts.length > 0 && !window._regPtModalOpen){
-          window._regPtModalOpen = true;
-          _regElegirPuesto(estado.opts);
+        if(estado && estado.tipo === 'pt' && estado.opts.length > 0 && !window._chuniorPtModalOpen){
+          window._chuniorPtModalOpen = true;
+          _chuniorElegirPuesto(estado.opts);
         } else if(estado && estado.tipo === 'login'){
-          // Sesión de Reg cerrada del todo → pedir re-login (sin reiniciar NODO)
-          _mostrarModalReloginReg();
+          // Sesión de Chunior cerrada del todo → pedir re-login (sin reiniciar NODO)
+          _mostrarModalReloginChunior();
         }
       } catch(e){}
     }, 3000);
   }
 }
 
-// Después del login, chequear si Reg está esperando selección de puesto y arrancar el flujo
+// Después del login, chequear si Chunior está esperando selección de puesto y arrancar el flujo
 async function _checkPuestoPostLogin(){
-  if(!window.reg) return;
+  if(!window.chunior) return;
   await new Promise(function(r){setTimeout(r,500);});
   try {
-    const ptData = await window.reg.exec(
+    const ptData = await window.chunior.exec(
       '(function(){var s=document.getElementById("id_pt");if(!s)return null;var o=Array.from(s.options).filter(function(x){return x.value!=="";}).map(function(x){return{value:x.value,text:x.text.trim()};});return{isPt:true,opts:o};})()'
     );
     if(ptData && ptData.isPt && ptData.opts.length > 0){
-      _regElegirPuesto(ptData.opts);
+      _chuniorElegirPuesto(ptData.opts);
     } else {
       // Ya está en una página normal: sincronizar billeteras directamente
-      setTimeout(function(){ sincronizarBilleterasReg(true).catch(function(){}); }, 800);
+      setTimeout(function(){ sincronizarBilleterasChunior(true).catch(function(){}); }, 800);
     }
   } catch(e){}
 }
 
 function chuniorCerrarSesion(){
-  if(!confirm('¿Cerrar sesión de Reg?\n\nEsto también te va a deslogear de NODO.')) return;
-  if(window.reg) window.reg.navigate(CHUNIOR_BASE + '/accounts/logout/');
+  if(!confirm('¿Cerrar sesión de Chunior?\n\nEsto también te va a deslogear de NODO.')) return;
+  if(window.chunior) window.chunior.navigate(CHUNIOR_BASE + '/accounts/logout/');
   // Cerrar NODO también
   localStorage.removeItem('nodo_operador_lite');
   localStorage.removeItem('nodo_pc_operativa_lite');
   setTimeout(function(){ location.reload(); }, 600);
 }
 
-function _setRegStatus(loggedIn, url){
+function _setChuniorStatus(loggedIn, url){
   const dot = document.getElementById('chuniorStatus');
   const bar = document.getElementById('chuniorStatusBar');
   if(dot) dot.textContent = loggedIn ? '🟢' : '🔴';
   if(bar) bar.textContent = loggedIn ? 'Sesión activa' : 'Sin sesión';
 }
 
-// ── Re-login de Reg cuando la sesión se cae a mitad de la jornada ──────────
-// No guardamos la clave de Reg (regla de seguridad), así que cuando la sesión
-// se cierra le pedimos al operador que la reingrese. Reusa validarLoginReg.
-let _regReloginAbierto = false;
-function _mostrarModalReloginReg(){
-  if(_regReloginAbierto) return;           // ya está abierto
-  if(window._regPtModalOpen) return;       // el modal de puesto tiene prioridad
-  _regReloginAbierto = true;
+// ── Re-login de Chunior cuando la sesión se cae a mitad de la jornada ──────────
+// No guardamos la clave de Chunior (regla de seguridad), así que cuando la sesión
+// se cierra le pedimos al operador que la reingrese. Reusa validarLoginChunior.
+let _chuniorReloginAbierto = false;
+function _mostrarModalReloginChunior(){
+  if(_chuniorReloginAbierto) return;           // ya está abierto
+  if(window._chuniorPtModalOpen) return;       // el modal de puesto tiene prioridad
+  _chuniorReloginAbierto = true;
 
   abrirModal(
-    '🔐 Sesión de Reg cerrada',
-    '<div style="margin-bottom:10px;color:#c0cad8;font-size:13px">La sesión del backoffice de Reg se cerró.<br>Reingresá tus credenciales para seguir registrando movimientos.</div>' +
+    '🔐 Sesión de Chunior cerrada',
+    '<div style="margin-bottom:10px;color:#c0cad8;font-size:13px">La sesión del backoffice de Chunior se cerró.<br>Reingresá tus credenciales para seguir registrando movimientos.</div>' +
     '<label style="color:#c0cad8;font-size:12px;font-weight:700">USUARIO CHUNIOR</label>' +
-    '<input id="chuReUser" type="text" autocomplete="off" placeholder="(tu usuario de Reg)" style="margin-bottom:12px" value="">' +
+    '<input id="chuReUser" type="text" autocomplete="off" placeholder="(tu usuario de Chunior)" style="margin-bottom:12px" value="">' +
     '<label style="color:#c0cad8;font-size:12px;font-weight:700">CONTRASEÑA</label>' +
     '<input id="chuRePass" type="password" autocomplete="off" placeholder="(tu clave)" value="">' +
     '<div id="chuReErr" style="color:var(--red);font-size:12px;margin-top:8px;min-height:16px"></div>',
@@ -5317,22 +5322,22 @@ function _mostrarModalReloginReg(){
   );
 
   const btn = document.getElementById('modalSaveBtn');
-  if(btn) btn.onclick = _ejecutarReloginReg;
+  if(btn) btn.onclick = _ejecutarReloginChunior;
   const cancelBtn = document.querySelector('#modalOverlay .btn-gray');
   if(cancelBtn) cancelBtn.onclick = function(){
     cerrarModal();
-    _regReloginAbierto = false;
-    toast('Reg sigue sin sesión · los movimientos no se registrarán', 'red');
+    _chuniorReloginAbierto = false;
+    toast('Chunior sigue sin sesión · los movimientos no se registrarán', 'red');
   };
   setTimeout(function(){
     const u = document.getElementById('chuReUser');
     const p = document.getElementById('chuRePass');
     if(u){ u.focus(); u.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); p?.focus(); } }); }
-    if(p){ p.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); _ejecutarReloginReg(); } }); }
+    if(p){ p.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); _ejecutarReloginChunior(); } }); }
   }, 80);
 }
 
-async function _ejecutarReloginReg(){
+async function _ejecutarReloginChunior(){
   const user = (document.getElementById('chuReUser')?.value || '').trim();
   const pass = (document.getElementById('chuRePass')?.value || '').trim();
   const errEl = document.getElementById('chuReErr');
@@ -5341,17 +5346,17 @@ async function _ejecutarReloginReg(){
   if(btn){ btn.disabled = true; btn.textContent = 'Reconectando...'; }
   if(errEl) errEl.textContent = '';
   try {
-    const ok = await validarLoginReg(user, pass);
+    const ok = await validarLoginChunior(user, pass);
     if(ok){
       const sb = document.getElementById('modalSaveBtn');
       if(sb){ sb.onclick = null; sb.disabled = false; sb.textContent = 'Guardar'; }
       cerrarModal();
-      _regReloginAbierto = false;
-      toast('✅ Sesión de Reg reconectada', 'green');
+      _chuniorReloginAbierto = false;
+      toast('✅ Sesión de Chunior reconectada', 'green');
       // Chequear si quedó esperando selección de puesto
       setTimeout(function(){ _checkPuestoPostLogin(); }, 800);
     } else {
-      if(errEl) errEl.textContent = 'Usuario o clave incorrectos (rechazado por Reg).';
+      if(errEl) errEl.textContent = 'Usuario o clave incorrectos (rechazado por Chunior).';
       if(btn){ btn.disabled = false; btn.textContent = 'Reconectar'; }
     }
   } catch(e){
@@ -5360,11 +5365,11 @@ async function _ejecutarReloginReg(){
   }
 }
 
-function _regElegirPuesto(opts){
+function _chuniorElegirPuesto(opts){
   const optsHtml = opts.map(function(o){
-    return '<button class="btn btn-primary" style="margin-bottom:8px" onclick="_regConfirmarPuesto('+_jsonAttr(o.value)+','+_jsonAttr(o.text)+')">'+escapeHtml(o.text)+'</button>';
+    return '<button class="btn btn-primary" style="margin-bottom:8px" onclick="_chuniorConfirmarPuesto('+_jsonAttr(o.value)+','+_jsonAttr(o.text)+')">'+escapeHtml(o.text)+'</button>';
   }).join('');
-  abrirModal('📋 Reg — Seleccioná tu puesto',
+  abrirModal('📋 Chunior — Seleccioná tu puesto',
     '<div class="small" style="margin-bottom:14px;color:var(--muted)">Elegí el puesto de trabajo para esta sesión. Si cancelás, NODO se reinicia.</div>'+
     '<div style="display:flex;flex-direction:column;gap:4px">'+optsHtml+'</div>',
     null, null
@@ -5394,17 +5399,17 @@ function _restaurarBotonesModal(){
   if(saveBtn) saveBtn.style.display = '';
 }
 
-async function _regConfirmarPuesto(value, text){
+async function _chuniorConfirmarPuesto(value, text){
   _restaurarBotonesModal();
   cerrarModal();
-  window._regPtModalOpen = false;
-  if(!window.reg) return;
+  window._chuniorPtModalOpen = false;
+  if(!window.chunior) return;
   try {
-    // 1. Submit del puesto en Reg
-    await window.reg.exec(
+    // 1. Submit del puesto en Chunior
+    await window.chunior.exec(
       '(function(){var s=document.getElementById("id_pt");var b=document.querySelector("input[type=\'submit\'],button[type=\'submit\'],.btn");if(s&&b){s.value='+JSON.stringify(value)+';b.click();}})()'
     );
-    toast('Reg: puesto '+text+' seleccionado', 'green');
+    toast('Chunior: puesto '+text+' seleccionado', 'green');
 
     // 2. Normalizar el nombre del puesto → pc_codigo de la oficina
     const pcCodigoNuevo = normalizarPcCodigo(text);
@@ -5432,17 +5437,17 @@ async function _regConfirmarPuesto(value, text){
 
     // 6. Sincronizar billeteras
     //    - Oficina nueva → sync silencioso pero completo (sube todas las que falten)
-    //    - Oficina existente → sync silencioso normal (avisa si hay nuevas en Reg)
+    //    - Oficina existente → sync silencioso normal (avisa si hay nuevas en Chunior)
     if(oficina.esNueva){
       toast('🏢 Oficina nueva detectada: '+text+' · Sincronizando billeteras...', 'blue');
       setTimeout(function(){
-        sincronizarBilleterasReg(false).catch(function(e){
+        sincronizarBilleterasChunior(false).catch(function(e){
           console.warn('sync inicial oficina nueva:', e);
         });
       }, 2500);
     } else {
       setTimeout(function(){
-        sincronizarBilleterasReg(true).catch(function(){});
+        sincronizarBilleterasChunior(true).catch(function(){});
       }, 2500);
     }
   } catch(e){
@@ -5450,30 +5455,30 @@ async function _regConfirmarPuesto(value, text){
   }
 }
 
-// ── Sincronización de billeteras con Reg ──────────────────────────────────
+// ── Sincronización de billeteras con Chunior ──────────────────────────────────
 // Lee /transacciones/movimientoficha/add/ y extrae:
 //   • opciones del select id_cuenta_destino (uid + nombre)
 //   • saldos reales del breadcrumb (.billetera spans)
 // Resultado: actualiza saldos en NODO y agrega billeteras nuevas si las encuentra.
-async function sincronizarBilleterasReg(silencioso){
-  if(!window.reg){ if(!silencioso) toast('Ventana de Reg no disponible.','red'); return; }
+async function sincronizarBilleterasChunior(silencioso){
+  if(!window.chunior){ if(!silencioso) toast('Ventana de Chunior no disponible.','red'); return; }
   if(!pcOperativa){
     if(!silencioso) toast('Sincronización pospuesta: NODO todavía no terminó de loguear.','red');
     return;
   }
 
-  if(!silencioso) toast('Sincronizando con Reg...','blue');
+  if(!silencioso) toast('Sincronizando con Chunior...','blue');
 
   const addUrl = CHUNIOR_BASE + '/transacciones/movimientoficha/add/';
-  const cur = await window.reg.getUrl();
+  const cur = await window.chunior.getUrl();
   if(!cur.includes('/movimientoficha/add')){
-    await window.reg.navigate(addUrl);
+    await window.chunior.navigate(addUrl);
     await new Promise(function(r){setTimeout(r,500);});
   }
 
   let data = null;
   try {
-    data = await window.reg.exec(
+    data = await window.chunior.exec(
       '(function(){' +
       'var sel=document.getElementById("id_cuenta_destino");' +
       'if(!sel)return null;' +
@@ -5493,17 +5498,17 @@ async function sincronizarBilleterasReg(silencioso){
       '})()'
     );
   } catch(e){
-    if(!silencioso) toast('Error leyendo Reg: '+(e.message||''), 'red');
+    if(!silencioso) toast('Error leyendo Chunior: '+(e.message||''), 'red');
     return;
   }
 
   if(!data || !data.opts || !data.opts.length){
-    if(!silencioso) toast('No se pudieron leer billeteras de Reg. ¿Estás en la página correcta?', 'red');
+    if(!silencioso) toast('No se pudieron leer billeteras de Chunior. ¿Estás en la página correcta?', 'red');
     return;
   }
 
   // Combinar uid + nombre + saldo
-  const walletsReg = data.opts.map(function(o){
+  const walletsChunior = data.opts.map(function(o){
     const b = data.balances[o.uid];
     return { uid: o.uid, nombre: (b && b.nombre) || o.nombre, saldo: b ? b.saldo : 0 };
   });
@@ -5513,7 +5518,7 @@ async function sincronizarBilleterasReg(silencioso){
 
   const matchByUid = {};
   const noEnBase  = [];
-  walletsReg.forEach(function(w){
+  walletsChunior.forEach(function(w){
     // Buscar en billeteras locales por chunior_uid o por nombre (fallback)
     const local = billeteras.find(function(b){
       if(b.CHUNIOR_UID && String(b.CHUNIOR_UID) === String(w.uid)) return true;
@@ -5523,29 +5528,29 @@ async function sincronizarBilleterasReg(silencioso){
     else { noEnBase.push(w); }
   });
 
-  // Billeteras nuevas detectadas en Reg que no están en NODO
+  // Billeteras nuevas detectadas en Chunior que no están en NODO
   if(noEnBase.length > 0){
     if(silencioso){
       // Modo silencioso (sync inicial / poll automático): subir todas sin preguntar
-      await _crearBilleterasNuevasReg(noEnBase);
+      await _crearBilleterasNuevasChunior(noEnBase);
     } else if(noEnBase.length >= 3){
       // Muchas billeteras nuevas en sync manual → pedir confirmación
       const lista = noEnBase.map(function(w){ return '• '+w.uid+' — '+w.nombre+' ('+money(w.saldo)+')'; }).join('\n');
-      const msg = '🆕 '+noEnBase.length+' billeteras de Reg no están en NODO:\n\n'+lista+'\n\n¿Crearlas ahora?\n(Después vas a tener que cargar CBU, titular y alias en cada una)';
+      const msg = '🆕 '+noEnBase.length+' billeteras de Chunior no están en NODO:\n\n'+lista+'\n\n¿Crearlas ahora?\n(Después vas a tener que cargar CBU, titular y alias en cada una)';
       if(!confirm(msg)){
         toast('Sincronización cancelada — las billeteras nuevas no se crearon.', 'blue');
         return;
       }
-      await _crearBilleterasNuevasReg(noEnBase);
+      await _crearBilleterasNuevasChunior(noEnBase);
     } else {
       // Pocas billeteras nuevas en sync manual: las creamos sin preguntar
-      await _crearBilleterasNuevasReg(noEnBase);
+      await _crearBilleterasNuevasChunior(noEnBase);
     }
   }
 
   // Actualizar saldos de las que ya existen
   let actualizadas = 0;
-  for(const w of walletsReg){
+  for(const w of walletsChunior){
     const local = matchByUid[w.uid];
     if(local && Math.abs(Number(local.SALDO||0) - w.saldo) > 0.01){
       await supabaseClient.from('billeteras').update({ saldo: w.saldo }).eq('id', local.ID_BILLETERA);
@@ -5557,25 +5562,25 @@ async function sincronizarBilleterasReg(silencioso){
   if(!silencioso) toast('Sincronización OK · '+actualizadas+' saldo(s) actualizado(s)', 'green');
 }
 
-// Verifica DIRECTAMENTE en la lista de movimientos de Reg si ya existe un
+// Verifica DIRECTAMENTE en la lista de movimientos de Chunior si ya existe un
 // movimiento que coincida con usuario (notas) + monto, en las últimas horas.
-// Esto cubre el caso "se anotó en Reg pero NODO no guardó el N° de movimiento".
+// Esto cubre el caso "se anotó en Chunior pero NODO no guardó el N° de movimiento".
 // Usa el buscador del admin (?q=usuario) y lee la tabla #result_list.
 // Devuelve { existe:boolean, movimientoId:string|null }.
 // fechaRefMs: timestamp (ms) de referencia de la operación que buscamos confirmar.
 // Sirve para NO emparejar un movimiento viejo (misma billetera+monto, otra hora)
 // con la operación actual. Si no se pasa, se usa "ahora".
-async function verificarMovimientoEnReg(usuario, monto, fechaRefMs){
-  if(!window.reg || !usuario) return { existe:false, movimientoId:null };
+async function verificarMovimientoEnChunior(usuario, monto, fechaRefMs){
+  if(!window.chunior || !usuario) return { existe:false, movimientoId:null };
   const montoAbs = Math.abs(Number(monto));
   try {
     const listUrl = CHUNIOR_BASE + '/transacciones/movimientoficha/?q=' + encodeURIComponent(usuario);
-    await window.reg.navigate(listUrl);
+    await window.chunior.navigate(listUrl);
     // Esperar a que cargue la tabla de resultados (o el "0 resultados")
     const t0 = Date.now();
     let listo = false;
     while(Date.now() - t0 < 8000){
-      listo = await window.reg.exec('(function(){return !!(document.getElementById("result_list")||document.querySelector(".paginator"));})()').catch(function(){return false;});
+      listo = await window.chunior.exec('(function(){return !!(document.getElementById("result_list")||document.querySelector(".paginator"));})()').catch(function(){return false;});
       if(listo) break;
       await new Promise(function(r){ setTimeout(r,250); });
     }
@@ -5584,7 +5589,7 @@ async function verificarMovimientoEnReg(usuario, monto, fechaRefMs){
     // Leer las filas y buscar una que matchee usuario (notas) + monto (abs).
     // Estructura del <tr>: .field-id > a (link con ID), .field-as_money (monto),
     // .field-notas (usuario), fecha en alguna celda (DD-MM-YYYY HH:MM:SS).
-    const res = await window.reg.exec(
+    const res = await window.chunior.exec(
       '(function(){' +
         'var rows = document.querySelectorAll("#result_list tbody tr");' +
         'var out = [];' +
@@ -5605,7 +5610,7 @@ async function verificarMovimientoEnReg(usuario, monto, fechaRefMs){
 
     if(!res || !res.length) return { existe:false, movimientoId:null };
 
-    // Parser de fecha de Reg "DD-MM-YYYY HH:MM:SS" → ms (hora local = hora AR de la PC).
+    // Parser de fecha de Chunior "DD-MM-YYYY HH:MM:SS" → ms (hora local = hora AR de la PC).
     function parseFechaChu(s){
       if(!s) return null;
       var m = String(s).match(/(\d{2})[-/](\d{2})[-/](\d{4})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
@@ -5653,33 +5658,33 @@ async function verificarMovimientoEnReg(usuario, monto, fechaRefMs){
   }
 }
 
-// Registra una carga en Reg (movimiento de fichas) y devuelve el número de movimiento.
-// chunior_uid: ID de la billetera en Reg (string, ej "918")
+// Registra una carga en Chunior (movimiento de fichas) y devuelve el número de movimiento.
+// chunior_uid: ID de la billetera en Chunior (string, ej "918")
 // monto: positivo (acreditación al jugador)
 // usuario: nombre del usuario para escribir en notas
 // Retorna: { ok:boolean, movimientoId:string|null, error:string|null }
-async function registrarCargaEnReg(chunior_uid, monto, usuario){
-  if(!window.reg) return { ok:false, movimientoId:null, error:'Ventana de Reg no disponible' };
+async function registrarCargaEnChunior(chunior_uid, monto, usuario){
+  if(!window.chunior) return { ok:false, movimientoId:null, error:'Ventana de Chunior no disponible' };
   if(!chunior_uid) return { ok:false, movimientoId:null, error:'La billetera no tiene chunior_uid configurado' };
 
   const addUrl = CHUNIOR_BASE + '/transacciones/movimientoficha/add/';
-  await window.reg.navigate(addUrl);
+  await window.chunior.navigate(addUrl);
 
-  // Esperar a que aparezcan los 3 campos del formulario (DOM ready ≠ form ready en Reg)
+  // Esperar a que aparezcan los 3 campos del formulario (DOM ready ≠ form ready en Chunior)
   const t0 = Date.now();
   let ready = false;
   while(Date.now() - t0 < 10000){
-    ready = await window.reg.exec(
+    ready = await window.chunior.exec(
       '(function(){return !!(document.getElementById("id_cuenta_destino")&&document.getElementById("id_monto")&&document.getElementById("id_notas")&&document.querySelector("input[name=\'_addanother\']"));})()'
     ).catch(function(){return false;});
     if(ready) break;
     await new Promise(function(r){ setTimeout(r,300); });
   }
-  if(!ready) return { ok:false, movimientoId:null, error:'Formulario de Reg no apareció en 10s' };
+  if(!ready) return { ok:false, movimientoId:null, error:'Formulario de Chunior no apareció en 10s' };
 
   let injectRes;
   try {
-    injectRes = await window.reg.exec(
+    injectRes = await window.chunior.exec(
       '(function(){' +
       'var s=document.getElementById("id_cuenta_destino");' +
       'var m=document.getElementById("id_monto");' +
@@ -5702,13 +5707,13 @@ async function registrarCargaEnReg(chunior_uid, monto, usuario){
     return { ok:false, movimientoId:null, error:'Inyección falló: '+JSON.stringify(injectRes) };
   }
 
-  // Esperar la respuesta de Reg (recarga la página con mensaje de éxito)
+  // Esperar la respuesta de Chunior (recarga la página con mensaje de éxito)
   await new Promise(function(r){setTimeout(r,2500);});
 
   let movimientoId = null;
   let errorMsg = null;
   try {
-    const res = await window.reg.exec(
+    const res = await window.chunior.exec(
       '(function(){' +
       'var ok=document.querySelector("li.success");' +
       'if(ok){' +
@@ -5721,7 +5726,7 @@ async function registrarCargaEnReg(chunior_uid, monto, usuario){
       '}' +
       'var err=document.querySelector("ul.errorlist") || document.querySelector(".errornote");' +
       'if(err) return {ok:false, error:(err.textContent||"Error en formulario").trim().substring(0,200)};' +
-      'return {ok:false, error:"Respuesta inesperada de Reg"};' +
+      'return {ok:false, error:"Respuesta inesperada de Chunior"};' +
       '})()'
     );
     if(res && res.ok){ movimientoId = res.id; }
@@ -5733,50 +5738,50 @@ async function registrarCargaEnReg(chunior_uid, monto, usuario){
   return { ok: !!movimientoId || !errorMsg, movimientoId: movimientoId, error: errorMsg };
 }
 
-// Retiro en Reg: igual que carga pero monto negativo
-async function registrarRetiroEnReg(chunior_uid, monto, usuario){
-  return registrarCargaEnReg(chunior_uid, -Math.abs(Number(monto)), usuario);
+// Retiro en Chunior: igual que carga pero monto negativo
+async function registrarRetiroEnChunior(chunior_uid, monto, usuario){
+  return registrarCargaEnChunior(chunior_uid, -Math.abs(Number(monto)), usuario);
 }
 
-// Cambia la billetera destino del movimiento N° {movId} en Reg, sin que el operador lo vea.
+// Cambia la billetera destino del movimiento N° {movId} en Chunior, sin que el operador lo vea.
 // Devuelve {ok, error?, movimientoId?}.
-async function _cambiarBilleteraReg(movId, nuevoRegUid){
-  if(!window.reg) return { ok:false, error:'Ventana de Reg no disponible' };
+async function _cambiarBilleteraChunior(movId, nuevoChuniorUid){
+  if(!window.chunior) return { ok:false, error:'Ventana de Chunior no disponible' };
   const changeUrl = CHUNIOR_BASE + '/transacciones/movimientoficha/' + encodeURIComponent(movId) + '/change/';
   try {
-    await window.reg.navigate(changeUrl);
+    await window.chunior.navigate(changeUrl);
   } catch(e){
-    return { ok:false, error:'No se pudo navegar a Reg: ' + (e.message||'') };
+    return { ok:false, error:'No se pudo navegar a Chunior: ' + (e.message||'') };
   }
 
   // Esperar a que aparezcan el select y el botón "Guardar y agregar otro"
   const t0 = Date.now();
   let ready = false;
   while(Date.now() - t0 < 10000){
-    ready = await window.reg.exec(
+    ready = await window.chunior.exec(
       '(function(){return !!(document.getElementById("id_cuenta_destino") && document.querySelector("input[name=\'_addanother\']"));})()'
     ).catch(function(){ return false; });
     if(ready) break;
     await new Promise(function(r){ setTimeout(r, 300); });
   }
-  if(!ready) return { ok:false, error:'Formulario de Reg no apareció en 10s' };
+  if(!ready) return { ok:false, error:'Formulario de Chunior no apareció en 10s' };
 
   // Verificar que el chunior_uid pedido exista como option válida
-  const opcionExiste = await window.reg.exec(
+  const opcionExiste = await window.chunior.exec(
     '(function(){var s=document.getElementById("id_cuenta_destino"); if(!s) return false;' +
-    'for(var i=0;i<s.options.length;i++){ if(String(s.options[i].value)===' + JSON.stringify(String(nuevoRegUid)) + ') return true; } return false; })()'
+    'for(var i=0;i<s.options.length;i++){ if(String(s.options[i].value)===' + JSON.stringify(String(nuevoChuniorUid)) + ') return true; } return false; })()'
   ).catch(function(){ return false; });
-  if(!opcionExiste) return { ok:false, error:'La billetera elegida no figura en el select de Reg' };
+  if(!opcionExiste) return { ok:false, error:'La billetera elegida no figura en el select de Chunior' };
 
   // Inyectar el cambio y disparar el submit (igual que en la carga: _addanother → vuelve a /add/)
   let injectRes;
   try {
-    injectRes = await window.reg.exec(
+    injectRes = await window.chunior.exec(
       '(function(){' +
         'var s=document.getElementById("id_cuenta_destino");' +
         'var b=document.querySelector("input[name=\'_addanother\']");' +
         'if(!s||!b) return {ok:false,err:"campos faltantes"};' +
-        's.value=' + JSON.stringify(String(nuevoRegUid)) + ';' +
+        's.value=' + JSON.stringify(String(nuevoChuniorUid)) + ';' +
         's.dispatchEvent(new Event("change",{bubbles:true}));' +
         'var snap={ok:true, valS:s.value};' +
         'b.click();' +
@@ -5788,11 +5793,11 @@ async function _cambiarBilleteraReg(movId, nuevoRegUid){
   }
   if(!injectRes || !injectRes.ok) return { ok:false, error:'Inyección falló: ' + JSON.stringify(injectRes) };
 
-  // Esperar la confirmación (Reg redirige a /add/ con li.success "Se modificó con éxito ...")
+  // Esperar la confirmación (Chunior redirige a /add/ con li.success "Se modificó con éxito ...")
   await new Promise(function(r){ setTimeout(r, 2500); });
 
   try {
-    const conf = await window.reg.exec(
+    const conf = await window.chunior.exec(
       '(function(){' +
         'var li = document.querySelector("li.success");' +
         'if(li){' +
@@ -5813,7 +5818,7 @@ async function _cambiarBilleteraReg(movId, nuevoRegUid){
       '})()'
     );
     if(!conf || !conf.ok){
-      return { ok:false, error: conf?.error || 'Reg no confirmó el cambio' };
+      return { ok:false, error: conf?.error || 'Chunior no confirmó el cambio' };
     }
     return { ok:true, movId: conf.movId || null, mensaje: conf.mensaje || '' };
   } catch(e){
@@ -5821,22 +5826,22 @@ async function _cambiarBilleteraReg(movId, nuevoRegUid){
   }
 }
 
-// Transferir fichas de una billetera a otra en Reg (form /movimientointerno/add/).
+// Transferir fichas de una billetera a otra en Chunior (form /movimientointerno/add/).
 // Devuelve {ok, error?}.
-async function _transferirEntreBilleterasReg(origenUid, destinoUid, monto, notas){
-  if(!window.reg) return { ok:false, error:'Ventana de Reg no disponible' };
+async function _transferirEntreBilleterasChunior(origenUid, destinoUid, monto, notas){
+  if(!window.chunior) return { ok:false, error:'Ventana de Chunior no disponible' };
   const url = CHUNIOR_BASE + '/transacciones/movimientointerno/add/';
   try {
-    await window.reg.navigate(url);
+    await window.chunior.navigate(url);
   } catch(e){
-    return { ok:false, error:'No se pudo navegar a Reg: ' + (e.message||'') };
+    return { ok:false, error:'No se pudo navegar a Chunior: ' + (e.message||'') };
   }
 
   // Esperar el formulario
   const t0 = Date.now();
   let ready = false;
   while(Date.now() - t0 < 10000){
-    ready = await window.reg.exec(
+    ready = await window.chunior.exec(
       '(function(){return !!(document.getElementById("id_cuenta_origen")&&document.getElementById("id_cuenta_destino")&&document.getElementById("id_monto")&&document.querySelector("input[name=\'_addanother\']"));})()'
     ).catch(function(){ return false; });
     if(ready) break;
@@ -5845,7 +5850,7 @@ async function _transferirEntreBilleterasReg(origenUid, destinoUid, monto, notas
   if(!ready) return { ok:false, error:'Formulario de transferencia no apareció en 10s' };
 
   // Verificar que ambas billeteras existan como options
-  const verif = await window.reg.exec(
+  const verif = await window.chunior.exec(
     '(function(){' +
       'function tiene(id,v){var s=document.getElementById(id); if(!s) return false;' +
       'for(var i=0;i<s.options.length;i++){ if(String(s.options[i].value)===String(v)) return true; } return false; }' +
@@ -5853,13 +5858,13 @@ async function _transferirEntreBilleterasReg(origenUid, destinoUid, monto, notas
               ' destino: tiene("id_cuenta_destino", ' + JSON.stringify(String(destinoUid)) + ') };' +
     '})()'
   ).catch(function(){ return { origen:false, destino:false }; });
-  if(!verif.origen)  return { ok:false, error:'La billetera origen no figura en Reg (UID '+origenUid+')' };
-  if(!verif.destino) return { ok:false, error:'La billetera destino no figura en Reg (UID '+destinoUid+')' };
+  if(!verif.origen)  return { ok:false, error:'La billetera origen no figura en Chunior (UID '+origenUid+')' };
+  if(!verif.destino) return { ok:false, error:'La billetera destino no figura en Chunior (UID '+destinoUid+')' };
 
   // Inyectar y submit
   let injectRes;
   try {
-    injectRes = await window.reg.exec(
+    injectRes = await window.chunior.exec(
       '(function(){' +
         'var o=document.getElementById("id_cuenta_origen");' +
         'var d=document.getElementById("id_cuenta_destino");' +
@@ -5883,7 +5888,7 @@ async function _transferirEntreBilleterasReg(origenUid, destinoUid, monto, notas
   // Esperar confirmación
   await new Promise(function(r){ setTimeout(r, 2500); });
   try {
-    const ok = await window.reg.exec(
+    const ok = await window.chunior.exec(
       '(function(){' +
         'if(document.querySelector("li.success")) return true;' +
         'var u=window.location.href||""; if(u.indexOf("/movimientointerno/add/") >= 0 && !document.querySelector(".errorlist,.errornote")) return true;' +
@@ -5891,10 +5896,10 @@ async function _transferirEntreBilleterasReg(origenUid, destinoUid, monto, notas
       '})()'
     );
     if(!ok){
-      const errMsg = await window.reg.exec(
+      const errMsg = await window.chunior.exec(
         '(function(){var e=document.querySelector(".errorlist,.errornote"); return e ? (e.textContent||"").trim() : null;})()'
       ).catch(function(){ return null; });
-      return { ok:false, error: errMsg || 'Reg no confirmó la transferencia' };
+      return { ok:false, error: errMsg || 'Chunior no confirmó la transferencia' };
     }
   } catch(_){}
 
@@ -5903,11 +5908,11 @@ async function _transferirEntreBilleterasReg(origenUid, destinoUid, monto, notas
 
 // Modal NODO para transferir entre billeteras.
 function abrirModalTransferirBilleteras(){
-  if(!window.reg){ toast("Reg no disponible", "red"); return; }
+  if(!window.chunior){ toast("Chunior no disponible", "red"); return; }
   const bilsConUid = billeteras.filter(function(b){ return b.CHUNIOR_UID; });
   if(!bilsConUid.length){
     abrirModal('🔀 Transferir entre billeteras',
-      '<div class="err-box">No hay billeteras con UID de Reg. Sincronizá primero.</div>',
+      '<div class="err-box">No hay billeteras con UID de Chunior. Sincronizá primero.</div>',
       function(){ cerrarModal(); }, 'Entendido');
     return;
   }
@@ -5953,14 +5958,14 @@ function abrirModalTransferirBilleteras(){
       const bilOrigen  = billeteras.find(function(b){ return String(b.ID_BILLETERA) === String(origenId); });
       const bilDestino = billeteras.find(function(b){ return String(b.ID_BILLETERA) === String(destinoId); });
       if(!bilOrigen?.CHUNIOR_UID || !bilDestino?.CHUNIOR_UID){
-        if(resEl) resEl.innerHTML = '<span style="color:var(--red);font-size:12px">Alguna billetera no tiene UID de Reg.</span>'; return;
+        if(resEl) resEl.innerHTML = '<span style="color:var(--red);font-size:12px">Alguna billetera no tiene UID de Chunior.</span>'; return;
       }
 
       if(btn){ btn.disabled = true; btn.textContent = "Transfiriendo..."; }
-      if(resEl) resEl.innerHTML = '<span class="small">Aplicando en Reg...</span>';
+      if(resEl) resEl.innerHTML = '<span class="small">Aplicando en Chunior...</span>';
 
       try {
-        const r = await _transferirEntreBilleterasReg(bilOrigen.CHUNIOR_UID, bilDestino.CHUNIOR_UID, monto, notas);
+        const r = await _transferirEntreBilleterasChunior(bilOrigen.CHUNIOR_UID, bilDestino.CHUNIOR_UID, monto, notas);
         if(r.ok){
           // Ajustar saldos locales: -monto del origen, +monto al destino
           if(bilOrigen.ID_BILLETERA)  await ajustarSaldoBilletera(bilOrigen.ID_BILLETERA, -monto);
@@ -5982,10 +5987,10 @@ function abrirModalTransferirBilleteras(){
 }
 
 // Modal NODO para cambiar la billetera de un movimiento ya registrado.
-// El operador NUNCA ve Reg — toda la maniobra se hace en background.
+// El operador NUNCA ve Chunior — toda la maniobra se hace en background.
 function cambiarBilleteraMovimiento(movId, historialId, currentBilId){
-  if(!window.reg){ toast("Reg no disponible", "red"); return; }
-  if(!movId){ toast("Esta operación no tiene movimiento de Reg", "red"); return; }
+  if(!window.chunior){ toast("Chunior no disponible", "red"); return; }
+  if(!movId){ toast("Esta operación no tiene movimiento de Chunior", "red"); return; }
 
   // Construir opciones del select: solo billeteras con CHUNIOR_UID configurado
   const bilsConUid = billeteras.filter(function(b){ return b.CHUNIOR_UID; });
@@ -5998,14 +6003,14 @@ function cambiarBilleteraMovimiento(movId, historialId, currentBilId){
 
   if(!bilsConUid.length){
     abrirModal('💳 Cambiar billetera',
-      '<div class="err-box">No hay billeteras configuradas con UID de Reg. Sincronizá billeteras primero.</div>',
+      '<div class="err-box">No hay billeteras configuradas con UID de Chunior. Sincronizá billeteras primero.</div>',
       function(){ cerrarModal(); }, 'Entendido');
     return;
   }
 
   abrirModal(
     '💳 Cambiar billetera · Mov. N° ' + escapeHtml(String(movId)),
-    '<div style="color:#c0cad8;font-size:13px;margin-bottom:10px">Elegí la nueva billetera destino. Se actualiza en Reg y en el historial automáticamente.</div>' +
+    '<div style="color:#c0cad8;font-size:13px;margin-bottom:10px">Elegí la nueva billetera destino. Se actualiza en Chunior y en el historial automáticamente.</div>' +
     '<label style="color:#c0cad8;font-size:12px;font-weight:700">NUEVA BILLETERA</label>' +
     '<select id="cambioBilSel">' + opciones + '</select>' +
     '<div id="cambioBilRes" style="min-height:16px;margin-top:6px"></div>',
@@ -6020,13 +6025,13 @@ function cambiarBilleteraMovimiento(movId, historialId, currentBilId){
       }
       const bilNueva = billeteras.find(function(b){ return String(b.ID_BILLETERA) === String(nuevoBilId); });
       if(!bilNueva || !bilNueva.CHUNIOR_UID){
-        if(resEl) resEl.innerHTML = '<span style="color:var(--red);font-size:12px">La billetera no tiene UID de Reg.</span>';
+        if(resEl) resEl.innerHTML = '<span style="color:var(--red);font-size:12px">La billetera no tiene UID de Chunior.</span>';
         return;
       }
       if(btn){ btn.disabled = true; btn.textContent = "Cambiando..."; }
-      if(resEl) resEl.innerHTML = '<span class="small">Aplicando cambio en Reg...</span>';
+      if(resEl) resEl.innerHTML = '<span class="small">Aplicando cambio en Chunior...</span>';
       try {
-        const r = await _cambiarBilleteraReg(movId, bilNueva.CHUNIOR_UID);
+        const r = await _cambiarBilleteraChunior(movId, bilNueva.CHUNIOR_UID);
         if(r.ok){
           // Actualizar la fila en historial_ops
           if(historialId){
@@ -6053,7 +6058,7 @@ function cambiarBilleteraMovimiento(movId, historialId, currentBilId){
   );
 }
 
-async function _crearBilleterasNuevasReg(nuevas){
+async function _crearBilleterasNuevasChunior(nuevas){
   const inserts = nuevas.map(function(w){
     return {
       nombre_visible: w.nombre,
@@ -6076,12 +6081,12 @@ async function _crearBilleterasNuevasReg(nuevas){
   const alertas = document.getElementById('alertas');
   if(alertas){
     const lista = nuevas.map(function(w){ return escapeHtml(w.nombre); }).join(', ');
-    alertas.innerHTML += '<div class="alert-box" style="background:#1a3a5a;color:#cde0ff">⚠️ Nuevas billeteras de Reg: <b>'+lista+'</b>. Falta cargar CBU, titular y alias en Administrar billeteras.</div>';
+    alertas.innerHTML += '<div class="alert-box" style="background:#1a3a5a;color:#cde0ff">⚠️ Nuevas billeteras de Chunior: <b>'+lista+'</b>. Falta cargar CBU, titular y alias en Administrar billeteras.</div>';
   }
 }
 
 function chuniorNav(path){
-  if(window.reg) window.reg.navigate(CHUNIOR_BASE + path);
+  if(window.chunior) window.chunior.navigate(CHUNIOR_BASE + path);
 }
 
 // ── Macros del chat ───────────────────────────────────────────────────────────
