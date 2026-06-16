@@ -185,7 +185,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
       </div>
 
       <button id="navInicio" class="nav-btn active" onclick="mostrarVista('inicio')">🏠 Inicio</button>
-      <button id="navSolicitudes" class="nav-btn" onclick="mostrarVista('solicitudes')">📋 Solicitudes <span id="badgeSolicitudes" class="badge-alert hidden">0</span></button>
+      <button id="navSolicitudes" class="nav-btn" onclick="mostrarVista('solicitudes')">🗂️ Historial <span id="badgeSolicitudes" class="badge-alert hidden">0</span></button>
       <button id="navBilleteras" class="nav-btn" onclick="mostrarVista('billeteras')">💳 Billeteras</button>
       <button id="navChat" class="nav-btn" onclick="mostrarVista('chat')">💬 Chat <span id="badgeChat" class="badge-alert badge-chat hidden">0</span></button>
       <button id="navJugadores" class="nav-btn" onclick="mostrarVista('jugadores')">🏅 Jugadores</button>
@@ -307,22 +307,41 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
       </section>
 
       <section id="viewSolicitudes" class="hidden">
+        <div class="card" style="margin-bottom:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+            <h2 class="card-title" style="margin-bottom:0">📋 Solicitudes pendientes</h2>
+            <span id="resumenPendientesHist" class="small" style="color:var(--muted)"></span>
+          </div>
+          <div id="tablaSolicitudesPendientes" style="margin-top:10px"></div>
+        </div>
+
         <div class="card">
-          <h2 class="card-title">📋 Solicitudes</h2>
+          <h2 class="card-title">🗂️ Historial completo</h2>
           <div class="filters">
-            <select id="filtroEstado" onchange="renderSolicitudes()">
-              <option value="" selected="selected">Todas</option>
+            <select id="filtroEstado" onchange="renderHistorialUnificado()">
+              <option value="" selected="selected">Todos los estados</option>
               <option value="PENDIENTE">Pendientes</option>
-              <option value="REALIZADAS">Realizadas</option>
+              <option value="REALIZADAS">Realizadas / OK</option>
               <option value="RECHAZADA">Rechazadas</option>
+              <option value="ERROR">Con error</option>
             </select>
-            <select id="filtroTipo" onchange="renderSolicitudes()">
+            <select id="filtroTipo" onchange="renderHistorialUnificado()">
               <option value="" selected="selected">Todos los tipos</option>
               <option value="CARGA">Carga</option>
               <option value="RETIRO">Retiro</option>
               <option value="CAMBIO_CLAVE">Cambio de clave</option>
             </select>
-            <input id="filtroTexto" placeholder="Buscar usuario / nombre / billetera" oninput="renderSolicitudes()">
+            <select id="filtroFuente" onchange="renderHistorialUnificado()">
+              <option value="" selected="selected">Solicitudes + Operaciones</option>
+              <option value="SOLICITUD">Solo solicitudes</option>
+              <option value="OPERACION">Solo operaciones</option>
+            </select>
+            <input id="filtroTexto" placeholder="Buscar usuario / nombre / billetera / N° mov" oninput="renderHistorialUnificado()">
+          </div>
+          <div id="barraLoteBilletera" class="hidden" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#1b2233;border:1px solid #2e3a52;border-radius:10px;padding:8px 12px;margin:8px 0">
+            <span id="loteSeleccionInfo" style="font-weight:700;color:#cde0ff">0 seleccionados</span>
+            <button class="mini-btn purple" onclick="abrirCambioBilleteraLote()">💳 Cambiar billetera (lote)</button>
+            <button class="mini-btn gray" onclick="limpiarSeleccionLote()">Limpiar selección</button>
           </div>
           <div id="tablaSolicitudesCompleta"></div>
         </div>
@@ -692,7 +711,31 @@ window.addEventListener("load",()=>{
 
 function money(v){return Number(v||0).toLocaleString("es-AR",{style:"currency",currency:"ARS",maximumFractionDigits:0})}
 function normalizar(v){return String(v||"").trim().toUpperCase()}
-function setBox(id,html){const el=document.getElementById(id);if(el)el.innerHTML=html}
+// setBox con dos protecciones anti "scroll que salta":
+//   1) Si el HTML es IDÉNTICO al último que pintamos, no toca el DOM (el polling de
+//      4,5s repintaba lo mismo y reseteaba el scroll interno de las tablas).
+//   2) Si hay que repintar, guarda y restaura el scroll de los .table-wrap internos
+//      y del propio contenedor.
+function setBox(id,html){
+  const el=document.getElementById(id);
+  if(!el)return;
+  if(el.__lastHtml===html)return;                 // nada cambió → no re-render
+  const guardados=[];
+  try{
+    el.querySelectorAll('.table-wrap').forEach(function(w,i){
+      if(w.scrollTop||w.scrollLeft)guardados.push({i:i,top:w.scrollTop,left:w.scrollLeft});
+    });
+  }catch(_){}
+  const selfTop=el.scrollTop, selfLeft=el.scrollLeft;
+  el.innerHTML=html;
+  el.__lastHtml=html;
+  try{
+    const nuevos=el.querySelectorAll('.table-wrap');
+    guardados.forEach(function(s){const w=nuevos[s.i];if(w){w.scrollTop=s.top;w.scrollLeft=s.left;}});
+  }catch(_){}
+  if(selfTop)el.scrollTop=selfTop;
+  if(selfLeft)el.scrollLeft=selfLeft;
+}
 function val(id){return document.getElementById(id)?.value||""}
 function toast(msg,type="blue"){const div=document.createElement("div");div.className="toast";div.style.background=type==="red"?"#f04438":type==="green"?"#12b76a":"#3d5afe";div.innerText=msg;document.body.appendChild(div);setTimeout(()=>div.remove(),3500)}
 function formatFecha(fechaRaw){
@@ -1893,7 +1936,13 @@ function mostrarVista(vista){
   // El chat ocupa toda la altura de .main sin scroll externo
   const mainEl = document.querySelector('.main');
   if(mainEl) mainEl.classList.toggle('is-chat', vista === 'chat');
-  if(vista==="solicitudes")renderSolicitudes();
+  if(vista==="solicitudes"){
+    pintarHistorialDesdeCache();       // pinta YA desde localStorage (no se pierde nada)
+    renderSolicitudes();
+    // Aseguramos tener las operaciones (historial_ops) para el historial unificado.
+    if(!_historialCargado){ cargarHistorial().then(renderHistorialUnificado).catch(function(){}); }
+    else renderHistorialUnificado();
+  }
   if(vista==="billeteras")cargarBilleteras();
   if(vista==="chat")cargarChats();
   if(vista==="jugadores")cargarJugadores();
@@ -2615,14 +2664,16 @@ async function mostrarBlacklist24h(){
   try {
     const desde = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     // Sin filtrar por pc_codigo: queremos ver retiros de TODAS las oficinas para detectar reincidencia cruzada
-    const { data, error } = await supabaseClient
+    let { data, error } = await supabaseClient
       .from('historial_ops')
-      .select('usuario, monto, billetera_nombre, estado, origen, created_at, pc_codigo')
+      .select('id, usuario, monto, billetera_nombre, estado, origen, created_at, pc_codigo, notas')
       .eq('tipo', 'RETIRO')
       .gte('created_at', desde)
       .order('created_at', { ascending: false })
       .limit(1000);
     if(error) throw error;
+    // Excluir los retiros marcados como cargados de más (fuera de blacklist)
+    data = (data || []).filter(function(r){ return !/\[BL_EXCLUIDO\]/.test(String(r.notas||'')); });
 
     const body = document.getElementById('modalBody') || document.querySelector('#modal .modal-body');
 
@@ -2635,13 +2686,14 @@ async function mostrarBlacklist24h(){
     const porUsuario = {};
     data.forEach(function(r){
       const u = String(r.usuario || '?');
-      if(!porUsuario[u]) porUsuario[u] = { usuario:u, count:0, total:0, ultima:r.created_at, pcs:new Set(), origenes:new Set() };
+      if(!porUsuario[u]) porUsuario[u] = { usuario:u, count:0, total:0, ultima:r.created_at, pcs:new Set(), origenes:new Set(), retiros:[] };
       const g = porUsuario[u];
       g.count++;
       g.total += Math.abs(Number(r.monto) || 0);
       if(r.created_at > g.ultima) g.ultima = r.created_at;
       if(r.pc_codigo) g.pcs.add(r.pc_codigo);
       if(r.origen) g.origenes.add(r.origen);
+      g.retiros.push(r);
     });
 
     // Ordenar: más retiros primero, luego mayor monto total
@@ -2665,13 +2717,25 @@ async function mostrarBlacklist24h(){
       const countBadge = '<span style="display:inline-block;min-width:22px;text-align:center;font-weight:800;border-radius:6px;padding:2px 7px;'
         + (g.count>=3?'background:#dc2828;color:#fff':g.count===2?'background:#e6a028;color:#1a1205':'background:#2a3344;color:#c0cad8')
         + '">'+g.count+'</span>';
-      filas += '<tr style="background:'+bg+';border-top:1px solid '+borde+'">'
-        + '<td style="padding:7px 8px"><b>'+escapeHtml(g.usuario)+'</b>'+crossBadge+'</td>'
+      const uKey = 'bl_'+btoa(unescape(encodeURIComponent(g.usuario))).replace(/[^a-zA-Z0-9]/g,'');
+      filas += '<tr style="background:'+bg+';border-top:1px solid '+borde+';cursor:pointer" onclick="(function(e){var d=document.getElementById(\''+uKey+'\');if(d)d.classList.toggle(\'hidden\');})()" title="Ver retiros individuales">'
+        + '<td style="padding:7px 8px"><span style="color:#7c8aa0">▸</span> <b>'+escapeHtml(g.usuario)+'</b>'+crossBadge+'</td>'
         + '<td style="padding:7px 8px;text-align:center">'+countBadge+'</td>'
         + '<td style="padding:7px 8px;text-align:right;white-space:nowrap"><b>'+money(g.total)+'</b></td>'
         + '<td style="padding:7px 8px;font-size:11px;color:#9aa4b2;white-space:nowrap">'+escapeHtml(formatFecha(g.ultima))+'</td>'
         + '<td style="padding:7px 8px;font-size:11px;color:#9aa4b2">'+escapeHtml(pcsTxt)+'</td>'
         + '</tr>';
+      // Sub-fila expandible: retiros individuales con botón "quitar de blacklist"
+      let subRetiros = '';
+      g.retiros.forEach(function(r){
+        subRetiros += '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0;border-top:1px solid rgba(255,255,255,.06);font-size:12px">'
+          + '<span style="color:#c0cad8">'+escapeHtml(formatFecha(r.created_at))+' · <b>'+money(Math.abs(Number(r.monto)||0))+'</b> · '+escapeHtml(r.billetera_nombre||'—')+'</span>'
+          + '<button class="mini-btn yellow" style="font-size:10px" onclick="event.stopPropagation();excluirRetiroBlacklistModal(\''+escapeHtml(String(r.id))+'\',this)">🚫 Quitar</button>'
+          + '</div>';
+      });
+      filas += '<tr id="'+uKey+'" class="hidden"><td colspan="5" style="padding:6px 14px;background:#10141d">'
+        + '<div class="small" style="color:var(--muted);margin-bottom:2px">Retiros de las últimas 24hs (quitar = no cuenta en blacklist):</div>'
+        + subRetiros + '</td></tr>';
     });
 
     if(body) body.innerHTML =
@@ -2695,6 +2759,26 @@ async function mostrarBlacklist24h(){
   } catch(e){
     const body = document.getElementById('modalBody') || document.querySelector('#modal .modal-body');
     if(body) body.innerHTML = '<div class="err-box" style="padding:12px">Error cargando blacklist: '+escapeHtml(e.message||'')+'</div>';
+  }
+}
+
+// Excluir un retiro desde el modal de blacklist (marca [BL_EXCLUIDO] y recarga el modal).
+async function excluirRetiroBlacklistModal(historialId, btn){
+  if(btn){ btn.disabled = true; btn.textContent = '...'; }
+  try {
+    // Traer notas actuales (el modal no las tiene en memoria de forma confiable)
+    const { data: row } = await supabaseClient.from('historial_ops').select('notas').eq('id', historialId).single();
+    const notas = (String(row?.notas||'').trim() + ' [BL_EXCLUIDO]').trim();
+    const { error } = await supabaseClient.from('historial_ops').update({ notas }).eq('id', historialId);
+    if(error) throw error;
+    // reflejar en _historialData si está cargado
+    const h = (_historialData||[]).find(function(x){ return String(x.id)===String(historialId); });
+    if(h) h.notas = notas;
+    toast('🚫 Retiro excluido de la blacklist.', 'green');
+    await mostrarBlacklist24h();   // recarga el modal recalculando sin el excluido
+  } catch(e){
+    toast('Error al excluir: '+(e.message||''), 'red');
+    if(btn){ btn.disabled = false; btn.textContent = '🚫 Quitar'; }
   }
 }
 
@@ -2883,7 +2967,9 @@ async function registrarEnHistorial(op){
 async function cargarHistorial(){
   _historialCargado = true;
   const el = document.getElementById("historialTable");
-  if(el) el.innerHTML = '<div class="small" style="text-align:center;padding:20px;color:var(--muted)">Cargando...</div>';
+  // "Cargando..." SOLO la primera vez: en refrescos de fondo no pisamos la tabla
+  // (pisarla reseteaba el scroll del operador).
+  if(el && !el.querySelector('table')) setBox("historialTable",'<div class="small" style="text-align:center;padding:20px;color:var(--muted)">Cargando...</div>');
 
   // Excluimos origen='LANDING' porque son retiros importados de CSV (para el
   // chequeo de 24hs) y no son operaciones reales que hizo el operador. Las
@@ -2897,7 +2983,7 @@ async function cargarHistorial(){
     .limit(200);
 
   if(error){
-    if(el) el.innerHTML = '<div class="err-box">Error: '+escapeHtml(error.message||'')+'</div>';
+    setBox("historialTable",'<div class="err-box">Error: '+escapeHtml(error.message||'')+'</div>');
     return;
   }
   _historialData = data || [];
@@ -2905,8 +2991,15 @@ async function cargarHistorial(){
   const bilSel = document.getElementById("filtHistBilletera");
   if(bilSel){
     const bils = [...new Set(_historialData.map(function(h){return h.billetera_nombre;}).filter(Boolean))];
-    bilSel.innerHTML = '<option value="">Todas las billeteras</option>' +
+    const nuevoHtml = '<option value="">Todas las billeteras</option>' +
       bils.map(function(b){ return '<option value="'+escapeHtml(b)+'">'+escapeHtml(b)+'</option>'; }).join('');
+    // Reconstruir el select SOLO si cambió, y SIN perder lo que el operador eligió
+    if(bilSel.__lastHtml !== nuevoHtml){
+      const valorPrevio = bilSel.value;
+      bilSel.innerHTML = nuevoHtml;
+      bilSel.__lastHtml = nuevoHtml;
+      if(valorPrevio) bilSel.value = valorPrevio;
+    }
   }
   filtrarHistorial();
 }
@@ -2931,7 +3024,7 @@ function renderHistorial(lista){
   const el = document.getElementById("historialTable");
   if(!el) return;
   if(!lista.length){
-    el.innerHTML = '<div class="small" style="text-align:center;padding:20px;color:var(--muted)">Sin operaciones para mostrar.</div>';
+    setBox("historialTable",'<div class="small" style="text-align:center;padding:20px;color:var(--muted)">Sin operaciones para mostrar.</div>');
     return;
   }
 
@@ -3005,7 +3098,7 @@ function renderHistorial(lista){
       '</tr>';
   });
   html += '</tbody></table></div>';
-  el.innerHTML = html;
+  setBox("historialTable", html);   // setBox = skip si idéntico + preserva scroll
 }
 
 // Ficha completa de un movimiento del historial (solo lectura). Junta TODO lo
@@ -3260,14 +3353,13 @@ async function deshacerOperacion(id, usuario, tipoOriginal, monto, bilId){
   } catch(e) { toast("Error: "+(e.message||"sin detalle"),"red"); }
 }
 function renderSolicitudes(){
-  let lista=solicitudes.slice();
-  const estado=val("filtroEstado"), tipo=val("filtroTipo"), texto=normalizar(val("filtroTexto"));
-  if(estado==="PENDIENTE")lista=lista.filter(esPendiente);
-  if(estado==="REALIZADAS")lista=lista.filter(esRealizada);
-  if(estado==="RECHAZADA")lista=lista.filter(s=>normalizar(s.ESTADO)==="RECHAZADA");
-  if(tipo)lista=lista.filter(s=>normalizar(s.TIPO_SOLICITUD||s.TIPO)===tipo);
-  if(texto)lista=lista.filter(s=>normalizar(`${s.USUARIO||""} ${s.NOMBRE_COMPLETO||""} ${s.BILLETERA_NOMBRE||""} ${s.ID||""}`).includes(texto));
-  setBox("tablaSolicitudesCompleta",tablaSolicitudesHTML(lista));
+  // 1) Bloque superior: SOLO pendientes (con sus acciones Tomar/Aprobar/Rechazar/Auto)
+  const pendientes = solicitudes.filter(esPendiente);
+  setBox("tablaSolicitudesPendientes", tablaSolicitudesHTML(pendientes));
+  const resumen = document.getElementById("resumenPendientesHist");
+  if(resumen) resumen.textContent = pendientes.length ? (pendientes.length+" pendiente"+(pendientes.length!==1?"s":"")) : "Sin pendientes";
+  // 2) Bloque inferior: historial unificado (solicitudes de todos los estados + operaciones)
+  renderHistorialUnificado();
 }
 function tablaSolicitudesHTML(lista){
   if(!lista.length)return`<div class="alert-box">No hay solicitudes para mostrar.</div>`;
@@ -3302,6 +3394,400 @@ function tablaSolicitudesHTML(lista){
   });
   html+=`</tbody></table></div>`;
   return html;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// HISTORIAL UNIFICADO (solicitudes de todos los estados + operaciones)
+// + selección múltiple para cambio de billetera en lote.
+// 100% renderer. La cola de cambio de billetera corre sobre la ventana de Chunior
+// y CEDE el paso a las cargas (espera el lock del watchdog) para no pisarse.
+// ════════════════════════════════════════════════════════════════════════════
+
+let _seleccionLote = new Set();          // ids de filas-operación tildadas (historial_ops.id)
+let _histUnificadoCache = [];            // último array unificado renderizado (para el lote)
+
+// Une solicitudes[] + _historialData[] en un formato común, ordenado por fecha desc.
+function construirHistorialUnificado(){
+  const items = [];
+  // Solicitudes (todos los estados)
+  (solicitudes||[]).forEach(function(s){
+    const tipo = normalizar(s.TIPO_SOLICITUD||s.TIPO);
+    items.push({
+      fuente:'SOLICITUD',
+      _raw:s,
+      id: s.ID||s.SOLICITUD_ID||s.ID_SOLICITUD||'',
+      fecha: s.FECHA_CREACION||s.FECHA||s.created_at||null,
+      tipo: tipo,
+      usuario: s.USUARIO||s.USUARIO_JUGADOR||'',
+      nombre: s.NOMBRE_COMPLETO||'',
+      billetera_nombre: s.BILLETERA_NOMBRE||s.NOMBRE_BILLETERA||'',
+      monto: s.MONTO_REAL||s.MONTO_DECLARADO||s.MONTO||0,
+      estado: s.ESTADO||'',
+      chunior_movimiento_id: null,
+      billetera_id: s.ID_BILLETERA||null,
+      historial_id: null,
+      pendiente: esPendiente(s)
+    });
+  });
+  // Operaciones (historial_ops) — ya excluye LANDING desde cargarHistorial()
+  (_historialData||[]).forEach(function(h){
+    items.push({
+      fuente:'OPERACION',
+      _raw:h,
+      id: h.id,
+      fecha: h.created_at||null,
+      tipo: normalizar(h.tipo),
+      usuario: h.usuario||'',
+      nombre: '',
+      billetera_nombre: h.billetera_nombre||'',
+      monto: h.monto||0,
+      estado: h.estado||'',
+      chunior_movimiento_id: h.chunior_movimiento_id||null,
+      billetera_id: h.billetera_id||null,
+      historial_id: h.id,
+      pendiente: false
+    });
+  });
+  items.sort(function(a,b){
+    const ta = a.fecha ? new Date(a.fecha).getTime() : 0;
+    const tb = b.fecha ? new Date(b.fecha).getTime() : 0;
+    return tb - ta;
+  });
+  return items;
+}
+
+function _coincideEstadoFiltro(it, filtro){
+  if(!filtro) return true;
+  const e = normalizar(it.estado);
+  if(filtro==="PENDIENTE")  return it.pendiente;
+  if(filtro==="REALIZADAS") return esRealizada({ESTADO:it.estado}) || e==="OK";
+  if(filtro==="RECHAZADA")  return e==="RECHAZADA";
+  if(filtro==="ERROR")      return e==="ERROR";
+  return true;
+}
+
+function renderHistorialUnificado(){
+  const estado = val("filtroEstado"), tipo = val("filtroTipo"),
+        fuente = val("filtroFuente"), texto = normalizar(val("filtroTexto"));
+  let lista = construirHistorialUnificado();
+  if(fuente) lista = lista.filter(function(it){ return it.fuente===fuente; });
+  if(tipo)   lista = lista.filter(function(it){ return it.tipo===tipo; });
+  if(estado) lista = lista.filter(function(it){ return _coincideEstadoFiltro(it, estado); });
+  if(texto)  lista = lista.filter(function(it){
+    return normalizar(it.usuario+" "+it.nombre+" "+it.billetera_nombre+" "+(it.chunior_movimiento_id||"")+" "+(it.id||"")).includes(texto);
+  });
+  _histUnificadoCache = lista;
+  // Guardar en localStorage (caché por oficina)
+  _guardarHistorialLocal();
+  setBox("tablaSolicitudesCompleta", tablaHistorialUnificadoHTML(lista));
+  actualizarBarraLote();
+}
+
+function tablaHistorialUnificadoHTML(lista){
+  if(!lista.length) return `<div class="alert-box">No hay movimientos para mostrar.</div>`;
+  function fuentePill(f){
+    return f==='SOLICITUD'
+      ? '<span class="origen-pill op-panel">Solicitud</span>'
+      : '<span class="origen-pill op-manual">Operación</span>';
+  }
+  function tipoIco(t){
+    if(t==='CARGA') return '⬆️'; if(t==='RETIRO') return '⬇️';
+    if(t==='CAMBIO_CLAVE'||t==='RESET_CLAVE') return '🔑'; if(t==='CONSULTA') return '👁'; return '➡️';
+  }
+  // ¿Hay filas seleccionables (operaciones con N° de Chunior)?
+  const hayaSeleccionables = lista.some(function(it){ return it.fuente==='OPERACION' && it.chunior_movimiento_id; });
+  const chkHead = hayaSeleccionables
+    ? `<input type="checkbox" id="histCheckAll" onchange="toggleSeleccionTodos(this.checked)" title="Seleccionar / deseleccionar todos">`
+    : '';
+  let html = `<div class="small" style="color:var(--muted);margin-bottom:6px">💡 Tildá los movimientos (checkbox) para cambiar su billetera en lote. El de la cabecera selecciona todos.</div>`;
+  html += `<div class="table-wrap"><table><thead><tr>`+
+    `<th style="width:30px;text-align:center">${chkHead}</th><th>Fecha</th><th>Origen</th><th>Tipo</th><th>Usuario</th>`+
+    `<th>Billetera</th><th>Monto</th><th>N° Mov</th><th>Estado</th><th></th></tr></thead><tbody>`;
+  lista.forEach(function(it){
+    // Tildeable SOLO si es operación con N° de Chunior (re-asignable de billetera)
+    const seleccionable = it.fuente==='OPERACION' && it.chunior_movimiento_id;
+    const selId = String(it.historial_id);
+    const checked = seleccionable && _seleccionLote.has(selId);
+    const chk = seleccionable
+      ? `<input type="checkbox"${checked?' checked':''} onchange="toggleSeleccionLote('${escapeHtml(selId)}', this.checked)" title="Seleccionar para cambio de billetera en lote" style="width:16px;height:16px;cursor:pointer">`
+      : '';
+    const movTd = it.chunior_movimiento_id ? escapeHtml(String(it.chunior_movimiento_id)) : '<span class="small" style="color:var(--muted)">—</span>';
+    const rowAttrs = ` id="histRow-${escapeHtml(selId)}"`+ (checked ? ` style="background:#1c2740"` : ``);
+    // Botón excluir de blacklist: solo en RETIROS (operación)
+    const esRetiroOp = it.fuente==='OPERACION' && it.tipo==='RETIRO';
+    const yaExcluido = it._raw && /\[BL_EXCLUIDO\]/.test(String(it._raw.notas||''));
+    const blBtn = esRetiroOp
+      ? (yaExcluido
+          ? `<button class="mini-btn gray" onclick="reincluirRetiroBlacklist('${escapeHtml(selId)}')" style="font-size:10px" title="Volver a contar este retiro en la blacklist">↩ En blacklist</button>`
+          : `<button class="mini-btn yellow" onclick="excluirRetiroBlacklist('${escapeHtml(selId)}')" style="font-size:10px" title="No contar este retiro en la blacklist 24hs (cargado de más)">🚫 Quitar de blacklist</button>`)
+      : '';
+    html += `<tr${rowAttrs}>`+
+      `<td style="text-align:center">${chk}</td>`+
+      `<td style="font-size:12px;white-space:nowrap">${formatFecha(it.fecha)}</td>`+
+      `<td>${fuentePill(it.fuente)}</td>`+
+      `<td style="white-space:nowrap">${tipoIco(it.tipo)} ${escapeHtml(it.tipo||'—')}${yaExcluido?' <span class="small" style="color:#e6a028" title="Excluido de blacklist">🚫</span>':''}</td>`+
+      `<td><b>${escapeHtml(it.usuario||'—')}</b>${it.nombre?'<br><span class="small">'+escapeHtml(it.nombre)+'</span>':''}</td>`+
+      `<td style="font-size:12px">${escapeHtml(it.billetera_nombre||'—')}</td>`+
+      `<td style="font-weight:700">${it.monto?money(it.monto):'—'}</td>`+
+      `<td style="font-size:12px">${movTd}</td>`+
+      `<td>${estadoBadge(it.estado)}</td>`+
+      `<td style="white-space:nowrap">${blBtn}</td>`+
+      `</tr>`;
+  });
+  html += `</tbody></table></div>`;
+  return html;
+}
+
+// ── Selección múltiple: checkboxes independientes (SIN re-render → no salta) ──
+// Cada checkbox togglea SOLO su fila. Igual al patrón de checkboxes ya usado.
+function _pintarFilaSeleccion(selId){
+  const row = document.getElementById("histRow-"+selId);
+  if(!row) return;
+  const sel = _seleccionLote.has(String(selId));
+  row.style.background = sel ? '#1c2740' : '';
+  const cb = row.querySelector('input[type=checkbox]');
+  if(cb) cb.checked = sel;
+}
+function toggleSeleccionLote(historialId, checked){
+  const id = String(historialId);
+  if(checked===undefined) checked = !_seleccionLote.has(id);
+  if(checked) _seleccionLote.add(id); else _seleccionLote.delete(id);
+  _pintarFilaSeleccion(id);
+  actualizarBarraLote();
+}
+// Checkbox "todos" en la cabecera: tilda/destilda todas las filas seleccionables visibles.
+function toggleSeleccionTodos(checked){
+  (_histUnificadoCache||[]).forEach(function(it){
+    if(it.fuente!=='OPERACION' || !it.chunior_movimiento_id) return;
+    const id = String(it.historial_id);
+    if(checked) _seleccionLote.add(id); else _seleccionLote.delete(id);
+    _pintarFilaSeleccion(id);
+  });
+  actualizarBarraLote();
+}
+function limpiarSeleccionLote(){
+  const prev = Array.from(_seleccionLote);
+  _seleccionLote.clear();
+  prev.forEach(_pintarFilaSeleccion);
+  const all = document.getElementById("histCheckAll"); if(all) all.checked = false;
+  actualizarBarraLote();
+}
+function actualizarBarraLote(){
+  const barra = document.getElementById("barraLoteBilletera");
+  const info  = document.getElementById("loteSeleccionInfo");
+  const n = _seleccionLote.size;
+  if(barra) barra.classList.toggle("hidden", n===0);
+  if(info)  info.textContent = n+" seleccionado"+(n!==1?"s":"");
+  // Sincronizar el checkbox "todos" con el estado real
+  const all = document.getElementById("histCheckAll");
+  if(all){
+    const totalSel = (_histUnificadoCache||[]).filter(function(it){ return it.fuente==='OPERACION' && it.chunior_movimiento_id; }).length;
+    all.checked = totalSel>0 && n>=totalSel;
+  }
+}
+
+// ── Excluir / reincluir retiro en la blacklist (marcador en notas) ──────────
+async function excluirRetiroBlacklist(historialId){
+  const h = (_historialData||[]).find(function(x){ return String(x.id)===String(historialId); });
+  if(!h){ toast("No se encontró el retiro.", "red"); return; }
+  if(/\[BL_EXCLUIDO\]/.test(String(h.notas||''))){ toast("Ya estaba excluido.", "blue"); return; }
+  const nuevasNotas = (String(h.notas||'').trim() + ' [BL_EXCLUIDO]').trim();
+  try {
+    const { error } = await supabaseClient.from("historial_ops").update({ notas: nuevasNotas }).eq("id", h.id);
+    if(error) throw error;
+    h.notas = nuevasNotas;
+    toast("🚫 Retiro excluido de la blacklist.", "green");
+    renderHistorialUnificado();
+  } catch(e){ toast("Error al excluir: "+(e.message||''), "red"); }
+}
+async function reincluirRetiroBlacklist(historialId){
+  const h = (_historialData||[]).find(function(x){ return String(x.id)===String(historialId); });
+  if(!h){ toast("No se encontró el retiro.", "red"); return; }
+  const nuevasNotas = String(h.notas||'').replace(/\s*\[BL_EXCLUIDO\]/g,'').trim();
+  try {
+    const { error } = await supabaseClient.from("historial_ops").update({ notas: nuevasNotas }).eq("id", h.id);
+    if(error) throw error;
+    h.notas = nuevasNotas;
+    toast("↩ Retiro vuelve a contar en la blacklist.", "blue");
+    renderHistorialUnificado();
+  } catch(e){ toast("Error: "+(e.message||''), "red"); }
+}
+
+// ── Caché en localStorage (por oficina) ─────────────────────────────────────
+function _histLocalKey(){ return "nodo_historial_"+(pcOperativa||"sin_pc"); }
+function _guardarHistorialLocal(){
+  try {
+    // Guardamos el unificado completo SIN filtros (los items crudos), recortado para no inflar.
+    const full = construirHistorialUnificado().slice(0, 300);
+    localStorage.setItem(_histLocalKey(), JSON.stringify({ ts: Date.now(), items: full }));
+  } catch(_){}
+}
+function _cargarHistorialLocal(){
+  try {
+    const raw = localStorage.getItem(_histLocalKey());
+    if(!raw) return null;
+    const obj = JSON.parse(raw);
+    return (obj && Array.isArray(obj.items)) ? obj.items : null;
+  } catch(_){ return null; }
+}
+// Pinta al instante desde la caché local (antes de que Supabase responda).
+function pintarHistorialDesdeCache(){
+  const cache = _cargarHistorialLocal();
+  if(cache && cache.length){
+    setBox("tablaSolicitudesCompleta", tablaHistorialUnificadoHTML(cache));
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// COLA DE CAMBIO DE BILLETERA EN LOTE
+// Secuencial sobre la ventana de Chunior. Antes de CADA cambio espera a que no
+// haya una operación usando agentes/Chunior (lock del watchdog). Reusa el helper
+// _cambiarBilleteraChunior y actualiza historial_ops. No corre en paralelo.
+// ════════════════════════════════════════════════════════════════════════════
+let _loteEnCurso = false;
+
+function abrirCambioBilleteraLote(){
+  if(!window.chunior){ toast("Chunior no disponible", "red"); return; }
+  if(_loteEnCurso){ toast("Ya hay un lote en proceso.", "red"); return; }
+  const ids = Array.from(_seleccionLote);
+  if(!ids.length){ toast("No hay movimientos seleccionados.", "red"); return; }
+
+  // Resolver las filas seleccionadas desde _historialData (tienen el N° de Chunior)
+  const filas = ids.map(function(id){
+    return (_historialData||[]).find(function(h){ return String(h.id)===String(id); });
+  }).filter(function(h){ return h && h.chunior_movimiento_id; });
+
+  if(!filas.length){
+    abrirModal('💳 Cambio de billetera en lote',
+      '<div class="err-box">Ninguno de los seleccionados tiene N° de movimiento de Chunior.</div>',
+      function(){ cerrarModal(); }, 'Entendido');
+    return;
+  }
+
+  const bilsConUid = billeteras.filter(function(b){ return b.CHUNIOR_UID; });
+  if(!bilsConUid.length){
+    abrirModal('💳 Cambio de billetera en lote',
+      '<div class="err-box">No hay billeteras con UID de Chunior. Sincronizá billeteras primero.</div>',
+      function(){ cerrarModal(); }, 'Entendido');
+    return;
+  }
+  const opciones = bilsConUid.map(function(b){
+    return '<option value="'+escapeHtml(String(b.ID_BILLETERA))+'">'+
+           escapeHtml(b.NOMBRE_VISIBLE||'—')+' · '+money(b.SALDO||0)+'</option>';
+  }).join('');
+
+  abrirModal(
+    '💳 Cambiar billetera · '+filas.length+' movimiento'+(filas.length!==1?'s':''),
+    '<div style="color:#c0cad8;font-size:13px;margin-bottom:10px">Se va a re-asignar la billetera de <b>'+filas.length+'</b> movimiento(s) en Chunior, <b>uno por uno</b>. La cola espera a que no haya cargas en curso para no interferir.</div>'+
+    '<label style="color:#c0cad8;font-size:12px;font-weight:700">NUEVA BILLETERA (para todos)</label>'+
+    '<select id="loteBilSel">'+opciones+'</select>'+
+    '<div id="loteProgreso" style="margin-top:12px"></div>',
+    function(){
+      const sel = document.getElementById("loteBilSel");
+      const nuevoBilId = sel?.value;
+      const bilNueva = billeteras.find(function(b){ return String(b.ID_BILLETERA)===String(nuevoBilId); });
+      if(!bilNueva || !bilNueva.CHUNIOR_UID){
+        toast("Seleccioná una billetera con UID de Chunior.", "red"); return;
+      }
+      // Cerramos el modal: la cola corre EN SEGUNDO PLANO (panel flotante no bloqueante).
+      cerrarModal();
+      procesarColaCambioBilletera(filas, bilNueva);  // sin await → no bloquea
+    },
+    'Iniciar cola en 2° plano'
+  );
+}
+
+// ── Panel flotante de progreso (NO bloquea la pantalla) ─────────────────────
+function _panelLote(){
+  let p = document.getElementById("panelColaLote");
+  if(!p){
+    p = document.createElement("div");
+    p.id = "panelColaLote";
+    p.style.cssText = "position:fixed;right:16px;bottom:16px;z-index:9999;width:300px;background:#161b26;"+
+      "border:1px solid #2e3a52;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.5);padding:12px;font-size:13px";
+    document.body.appendChild(p);
+  }
+  return p;
+}
+function _cerrarPanelLote(){ const p=document.getElementById("panelColaLote"); if(p) p.remove(); }
+
+async function procesarColaCambioBilletera(filas, bilNueva){
+  if(_loteEnCurso) return;
+  _loteEnCurso = true;
+
+  let ok = 0, fail = 0;
+  const total = filas.length;
+  const fallidos = [];
+  const p = _panelLote();
+
+  function pintar(i, estadoTxt){
+    p.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+        '<b style="color:#c1b3ff">💳 Cambio de billetera</b>'+
+        '<span class="small" style="color:var(--muted)">2° plano</span>'+
+      '</div>'+
+      '<div class="small" style="margin-bottom:6px">Procesando '+i+'/'+total+' · ✅ '+ok+' · ❌ '+fail+'</div>'+
+      '<div style="height:8px;background:#0e1525;border-radius:6px;overflow:hidden">'+
+        '<div style="height:100%;width:'+Math.round((i/total)*100)+'%;background:#7c3aed;transition:width .3s"></div>'+
+      '</div>'+
+      (estadoTxt?'<div class="small" style="margin-top:6px;color:var(--muted)">'+escapeHtml(estadoTxt)+'</div>':'');
+  }
+  pintar(0, "Esperando turno...");
+  toast('💳 Cola de cambio de billetera iniciada en 2° plano ('+total+').', 'blue');
+
+  for(let i=0; i<filas.length; i++){
+    const h = filas[i];
+    // CEDER el paso a las cargas: esperar a que el watchdog no esté ocupado (máx ~30s)
+    const tEspera = Date.now() + 30000;
+    while(_watchdog && _watchdog.busy > 0 && Date.now() < tEspera){
+      pintar(i, "⏳ Carga en curso, esperando para no interferir...");
+      await new Promise(function(r){ setTimeout(r, 800); });
+    }
+    // Tomamos el lock para que el watchdog NO navegue Chunior mientras cambiamos
+    _wdLock();
+    pintar(i, "Mov. N° "+h.chunior_movimiento_id+" → "+bilNueva.NOMBRE_VISIBLE);
+    try {
+      const r = await _cambiarBilleteraChunior(h.chunior_movimiento_id, bilNueva.CHUNIOR_UID);
+      if(r && r.ok){
+        ok++;
+        try {
+          await supabaseClient.from("historial_ops")
+            .update({ billetera_id: bilNueva.ID_BILLETERA, billetera_nombre: bilNueva.NOMBRE_VISIBLE })
+            .eq("id", h.id);
+        } catch(eUpd){ console.warn("update historial_ops lote:", eUpd); }
+        h.billetera_id = bilNueva.ID_BILLETERA;
+        h.billetera_nombre = bilNueva.NOMBRE_VISIBLE;
+      } else {
+        fail++; fallidos.push({ mov:h.chunior_movimiento_id, err:(r&&r.error)||'sin detalle' });
+      }
+    } catch(e){
+      fail++; fallidos.push({ mov:h.chunior_movimiento_id, err:e.message||'excepción' });
+    } finally {
+      _wdUnlock();
+    }
+    pintar(i+1, null);
+    await new Promise(function(r){ setTimeout(r, 500); });  // respiro anti-403
+  }
+
+  _loteEnCurso = false;
+  _seleccionLote.clear();
+  // Resumen final en el panel (con botón cerrar)
+  let resumen = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+      '<b style="color:'+(fail===0?'#7ee07e':'#ffb86b')+'">'+(fail===0?'✅ Lote terminado':'⚠️ Lote terminado')+'</b>'+
+      '<button class="mini-btn gray" style="font-size:10px" onclick="_cerrarPanelLote()">✕</button>'+
+    '</div>'+
+    '<div class="small">'+ok+' cambiada(s)'+(fail?', '+fail+' con error':'')+'.</div>';
+  if(fallidos.length){
+    resumen += '<div class="small" style="margin-top:6px;color:var(--muted);max-height:80px;overflow:auto">Fallaron: '+
+      fallidos.map(function(f){ return 'N° '+escapeHtml(String(f.mov))+' ('+escapeHtml(String(f.err))+')'; }).join(', ')+'</div>';
+  }
+  p.innerHTML = resumen;
+  toast(fail===0 ? ('✅ '+ok+' billetera(s) cambiada(s)') : ('⚠️ '+ok+' ok · '+fail+' con error'), fail===0?'green':'red');
+  // Auto-cerrar el panel si fue todo OK (a los 6s)
+  if(fail===0) setTimeout(_cerrarPanelLote, 6000);
+  // Refrescar datos y re-render (solo si estamos en la vista)
+  try { await cargarHistorial(); } catch(_){}
+  if(!document.getElementById("viewSolicitudes")?.classList.contains("hidden")) renderHistorialUnificado();
 }
 
 function getBilleraLanding(){
