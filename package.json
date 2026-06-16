@@ -6,7 +6,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "build": "electron-builder",
+    "build": "node build.js",
     "build:win": "electron-builder --win",
     "release": "electron-builder --win --publish always"
   },
