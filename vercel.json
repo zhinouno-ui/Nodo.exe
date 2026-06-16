@@ -1,8 +1,8 @@
 {
   "framework": null,
-  "buildCommand": null,
-  "installCommand": null,
-  "outputDirectory": ".",
+  "installCommand": "echo skip-install",
+  "buildCommand": "mkdir -p public && cp index.html public/ && (cp landing.html public/ 2>/dev/null || true)",
+  "outputDirectory": "public",
   "rewrites": [
     { "source": "/landing", "destination": "/landing.html" }
   ]
