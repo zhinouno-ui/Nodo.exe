@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/", "destination": "/casino.html" },
+    { "source": "/index.html", "destination": "/casino.html" }
+  ]
+}
