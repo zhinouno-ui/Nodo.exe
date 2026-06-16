@@ -164,7 +164,6 @@ input::placeholder{color:#484f58}
     <div>
       <h2 id="panelTitle">💰 Tu cuenta</h2>
       <div class="sub" id="panelSub">Cargá o retirá sin salir del juego</div>
-      <div id="oficinaChip" style="display:none;margin-top:6px;font-size:11px;font-weight:700;color:#7c8dff;background:rgba(124,141,255,.14);border-radius:8px;padding:3px 9px;width:fit-content"></div>
     </div>
     <button class="head-close" onclick="cerrarPanel()">×</button>
   </div>
@@ -297,7 +296,7 @@ const CASINO_URL = "https://www.bet-300.pw/";
 // o el pc_codigo directo. NADA hardcodeado: si renombrás la oficina en Chunior,
 // la landing se sincroniza sola y las cargas + el chat usan el mismo pc_codigo real.
 const _pcParam = (new URLSearchParams(window.location.search).get('pc') || "").trim();
-let PC = null;        // pc_codigo real (ej "SANCHEZPLATA") — se resuelve al cargar
+let PC = null;        // pc_codigo real — se resuelve al cargar desde la tabla 'oficinas'
 let OFICINA = null;   // { pc_codigo, nombre, chunior_pt_id }
 
 async function resolverOficina(){
@@ -383,7 +382,9 @@ function irTab(t){
 // ════════════════════════════════════════════════════════════════════════════
 window.addEventListener('load', async ()=>{
   await resolverOficina();
-  pintarOficina();
+  // Log SOLO para el operador (consola del navegador, nunca visible para el jugador):
+  if(PC) console.log('[NODO] pc=' + _pcParam + ' ->', PC);
+  else console.warn('[NODO] link sin oficina valida: pc=' + _pcParam);
   const saved = localStorage.getItem('nodo_usuario_casino');
   if(PC && saved){
     try{
@@ -394,20 +395,6 @@ window.addEventListener('load', async ()=>{
     }catch(e){ localStorage.removeItem('nodo_usuario_casino'); }
   }
 });
-
-// Muestra la oficina detectada (o avisa si el link no trae una oficina válida)
-function pintarOficina(){
-  const chip = document.getElementById('oficinaChip');
-  if(!chip) return;
-  chip.style.display = 'block';
-  if(PC){
-    chip.style.color = '#7c8dff'; chip.style.background = 'rgba(124,141,255,.14)';
-    chip.textContent = '🏢 ' + (OFICINA?.nombre || PC);
-  } else {
-    chip.style.color = '#f0a500'; chip.style.background = 'rgba(240,165,0,.14)';
-    chip.textContent = _pcParam ? ('⚠ Oficina "'+_pcParam+'" no encontrada') : '⚠ Link sin oficina — pedí el correcto a tu operador';
-  }
-}
 
 async function identificar(){
   if(!PC){ msg('loginMsg','Este link no tiene una oficina válida. Pedí a tu operador el link correcto.','err'); return; }
