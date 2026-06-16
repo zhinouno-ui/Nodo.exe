@@ -2,8 +2,8 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
-<title>Panel de Usuario</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>Cargar / Retirar</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif}
@@ -12,478 +12,298 @@
   --line:#30363d;--muted:#8b949e;--blue:#3d5afe;--green:#238636;
   --red:#da3633;--yellow:#d29922;--text:#e6edf3;
 }
-body{background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
+html,body{height:100%;background:#000;color:var(--text);overflow:hidden}
 .hidden{display:none!important}
 
-/* ── Layout ── */
-.wrap{width:100%;max-width:500px;margin:0 auto;padding:20px 16px 40px}
-.logo-area{text-align:center;padding:28px 0 20px}
-.logo-area h1{font-size:26px;font-weight:900;letter-spacing:1px;color:#fff}
-.logo-area p{color:var(--muted);font-size:13px;margin-top:4px}
+/* ── El casino embebido ocupa TODO el fondo ── */
+#casinoFrame{position:fixed;inset:0;width:100%;height:100%;border:0;z-index:1;background:#0d1117}
 
-/* ── Cards ── */
-.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;margin-bottom:16px}
-.card-title{font-size:18px;font-weight:800;margin-bottom:18px}
-.section-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin:18px 0 10px}
+/* ── Botón flotante grande (abrir overlay) ── */
+#fab{
+  position:fixed;right:16px;bottom:16px;z-index:10000;
+  background:linear-gradient(135deg,#238636,#12b76a);color:#fff;
+  border:none;border-radius:999px;padding:15px 22px;
+  font-size:16px;font-weight:900;letter-spacing:.3px;cursor:pointer;
+  box-shadow:0 6px 26px rgba(18,183,106,.5);
+  display:flex;align-items:center;gap:9px;
+  animation:fabPulse 2.4s infinite;
+}
+#fab:active{transform:scale(.96)}
+@keyframes fabPulse{0%,100%{box-shadow:0 6px 26px rgba(18,183,106,.5)}50%{box-shadow:0 6px 38px rgba(18,183,106,.85)}}
+#fab .fab-ico{font-size:20px}
 
-/* ── Forms ── */
+/* ── Backdrop ── */
+#backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10001;backdrop-filter:blur(2px)}
+
+/* ── Panel overlay (expande grande, NO pantalla completa en compu) ── */
+#panel{
+  position:fixed;z-index:10002;background:var(--bg);
+  display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 12px 50px rgba(0,0,0,.6);
+  /* Desktop: flota abajo a la derecha, grande pero no full */
+  right:16px;bottom:16px;width:430px;height:min(86vh,760px);
+  border:1px solid var(--line);border-radius:22px;
+  animation:panelIn .22s ease;
+}
+@keyframes panelIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+/* Móvil: hoja que sube y ocupa casi toda la pantalla (cómodo para dedos) */
+@media(max-width:640px){
+  #panel{right:0;left:0;bottom:0;top:6vh;width:auto;height:auto;
+    border-radius:22px 22px 0 0;border-left:none;border-right:none;border-bottom:none}
+}
+
+/* ── Header del panel ── */
+.panel-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 18px;border-bottom:1px solid var(--line);flex-shrink:0;
+  background:var(--panel);
+}
+.panel-head h2{font-size:17px;font-weight:900;letter-spacing:.3px}
+.panel-head .sub{font-size:12px;color:var(--muted);margin-top:2px}
+.head-close{background:none;border:none;color:var(--muted);font-size:26px;line-height:1;cursor:pointer;padding:0 4px}
+.head-close:hover{color:var(--text)}
+
+/* ── Cuerpo scrolleable ── */
+.panel-body{flex:1;overflow-y:auto;padding:18px}
+
+/* ── Tabs (grandes, ícono + texto, para mayores) ── */
+.tabs{display:flex;border-top:1px solid var(--line);flex-shrink:0;background:var(--panel)}
+.tabs button{flex:1;background:none;border:none;color:var(--muted);padding:11px 6px 9px;
+  font-size:12px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px}
+.tabs button .ti{font-size:21px}
+.tabs button.active{color:#12b76a}
+.tabs button .badge-dot{position:absolute;transform:translate(14px,-6px);background:var(--red);
+  color:#fff;border-radius:999px;min-width:17px;height:17px;font-size:10px;display:flex;
+  align-items:center;justify-content:center;font-weight:800;padding:0 4px}
+
+/* ── Cards / forms (reutilizado de la landing actual) ── */
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}
+.card-title{font-size:16px;font-weight:800;margin-bottom:14px}
 label{display:block;font-size:13px;color:var(--muted);margin-bottom:5px}
-input,select,textarea{width:100%;background:#0d1117;border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:var(--text);font-size:15px;outline:none;transition:.2s}
-input:focus,select:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(61,90,254,.15)}
+input,select,textarea{width:100%;background:#0d1117;border:1px solid var(--line);border-radius:10px;padding:13px 14px;color:var(--text);font-size:16px;outline:none;transition:.2s}
+input:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(61,90,254,.15)}
 input::placeholder{color:#484f58}
 .field{margin-bottom:14px}
-.field-hint{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.5}
-.field-warn{font-size:11px;color:var(--yellow);margin-top:5px;line-height:1.5}
-.optional-tag{font-size:10px;background:#21262d;color:var(--muted);border-radius:6px;padding:2px 7px;margin-left:6px;vertical-align:middle}
-
-/* ── Buttons ── */
-.btn{display:block;width:100%;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;transition:.15s;margin-top:6px}
-.btn-primary{background:var(--blue);color:#fff}.btn-primary:hover{background:#536dfe}
-.btn-green{background:var(--green);color:#fff}.btn-green:hover{filter:brightness(1.1)}
-.btn-ghost{background:transparent;border:1px solid var(--line);color:var(--muted);font-size:13px;padding:10px;margin-top:8px}
-.btn-ghost:hover{border-color:#8b949e;color:var(--text)}
-
-/* ── Badges ── */
+.field-hint{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.5}
+.btn{display:block;width:100%;border:none;border-radius:12px;padding:15px;font-size:16px;font-weight:800;cursor:pointer;transition:.15s;margin-top:6px}
+.btn:active{transform:scale(.98)}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-green{background:linear-gradient(135deg,#238636,#12b76a);color:#fff}
+.btn-ghost{background:transparent;border:1px solid var(--line);color:var(--muted);font-size:14px;padding:11px}
+.alert{padding:12px 14px;border-radius:12px;font-size:13px;margin-bottom:14px;line-height:1.5}
+.alert-info{background:#1a2f6d;color:#79b8ff}
+.alert-ok{background:#0d3321;color:#3fb950}
+.alert-err{background:#3d1d1c;color:#f85149}
+.alert-warn{background:#3d2d00;color:#d29922}
 .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700}
 .badge-green{background:#0d3321;color:#3fb950}
-.badge-red{background:#3d1d1c;color:#f85149}
-.badge-blue{background:#1a2f6d;color:#79b8ff}
-.badge-yellow{background:#3d2d00;color:#d29922}
-
-/* ── Alerts ── */
-.alert{padding:12px 14px;border-radius:12px;font-size:13px;margin-bottom:14px;line-height:1.5}
-.alert-info{background:#1a2f6d;color:#79b8ff;border:1px solid #1d3d8f}
-.alert-ok{background:#0d3321;color:#3fb950;border:1px solid #196c2e}
-.alert-err{background:#3d1d1c;color:#f85149;border:1px solid #6e3531}
-.alert-warn{background:#3d2d00;color:#d29922;border:1px solid #6e4e00}
-@keyframes pulse{0%,100%{box-shadow:0 4px 20px rgba(18,183,106,.4)}50%{box-shadow:0 4px 30px rgba(18,183,106,.8)}}
-.alert-warn{background:#3d2d00;color:#d29922;border:1px solid #6e4e00}
-
-/* ── Billeteras ── */
-.billetera-card{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
-.billetera-nombre{font-weight:700;font-size:15px;margin-bottom:2px}
-.billetera-tipo{font-size:12px;color:var(--muted)}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.divider{border:none;border-top:1px solid var(--line);margin:16px 0}
 
 /* ── Chat ── */
-.chat-body{background:#0d1117;border:1px solid var(--line);border-radius:14px;min-height:240px;max-height:380px;overflow-y:auto;padding:14px;margin-bottom:10px}
-.msg{max-width:80%;margin-bottom:10px;display:flex;flex-direction:column}
+.chat-body{background:#0d1117;border:1px solid var(--line);border-radius:14px;flex:1;min-height:200px;overflow-y:auto;padding:14px;margin-bottom:10px}
+.msg{max-width:82%;margin-bottom:10px;display:flex;flex-direction:column}
 .msg.user{align-items:flex-end;margin-left:auto}
 .msg.op{align-items:flex-start;margin-right:auto}
 .bubble{padding:10px 13px;border-radius:16px;font-size:14px;line-height:1.4;word-break:break-word}
 .msg.user .bubble{background:var(--blue);color:#fff;border-bottom-right-radius:4px}
 .msg.op .bubble{background:var(--card2);color:var(--text);border-bottom-left-radius:4px}
-.bubble img{max-width:220px;border-radius:10px;margin-top:6px;display:block}
+.bubble img{max-width:200px;border-radius:10px;margin-top:6px;display:block}
 .msg-meta{font-size:11px;color:var(--muted);margin-top:3px;padding:0 3px}
-.chat-compose{display:grid;grid-template-columns:1fr 44px;gap:8px;align-items:end}
-.chat-compose textarea{margin:0;min-height:42px;max-height:100px;resize:none;border-radius:12px;font-size:14px}
-.send-btn{width:44px;height:44px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.chat-compose{display:grid;grid-template-columns:1fr 46px;gap:8px;align-items:end}
+.chat-compose textarea{margin:0;min-height:46px;max-height:100px;resize:none}
+.send-btn{width:46px;height:46px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:19px;cursor:pointer}
 
-/* ── Nav bottom (mobile) ── */
-.bottom-nav{position:fixed;bottom:0;left:0;right:0;background:var(--panel);border-top:1px solid var(--line);display:flex;z-index:100}
-.bottom-nav button{flex:1;background:none;border:none;color:var(--muted);padding:12px 6px 10px;font-size:11px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;transition:.15s}
-.bottom-nav button span.icon{font-size:20px}
-.bottom-nav button.active{color:var(--blue)}
+/* CBU card (mensajes de billetera del operador) */
+.bil-card{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:4px}
+.bil-nombre{font-weight:800;margin-bottom:8px}
+.bil-field{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
+.bil-label{font-size:11px;color:var(--muted)}
+.bil-val{font-weight:700;word-break:break-all}
+.bil-copy{background:var(--green);color:#fff;border:none;border-radius:8px;padding:8px;font-size:13px;font-weight:700;cursor:pointer}
+.bil-footer{font-size:12px;color:var(--muted);margin-top:6px}
 
-/* ── Divider ── */
-.divider{border:none;border-top:1px solid var(--line);margin:18px 0}
+/* Burbuja flotante de mensaje del operador (sobre el FAB) */
+#opBubble{
+  display:none;position:fixed;right:16px;bottom:86px;z-index:10000;
+  max-width:320px;width:calc(100% - 32px);
+  background:#1a2035;border:1px solid rgba(61,90,254,.6);border-radius:16px;
+  padding:13px 15px;box-shadow:0 6px 32px rgba(0,0,0,.55);
+  flex-direction:column;gap:6px;animation:panelIn .25s ease;
+}
+@media(min-width:641px){#opBubble{max-width:340px}}
 
-/* ── Spinner ── */
-.spinner{display:inline-block;width:18px;height:18px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px}
-@keyframes spin{to{transform:rotate(360deg)}}
-
-/* ── Perfil ── */
-.profile-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
-.profile-row:last-child{border-bottom:none}
-.profile-row .label{color:var(--muted);font-size:12px}
-
-@media(max-width:500px){.wrap{padding:16px 12px 90px}}
-
-/* ── Pantalla de verificación ── */
-.verify-screen{
-  position:fixed;inset:0;background:var(--bg);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  z-index:200;padding:24px;text-align:center;
-}
-.verify-orb-wrap{position:relative;width:130px;height:130px;margin:0 auto 32px}
-.verify-ring{
-  position:absolute;inset:0;border-radius:50%;
-  border:2px solid rgba(61,90,254,.5);
-  animation:vRing 2.4s ease-out infinite;
-}
-.verify-ring.r2{animation-delay:.8s;border-color:rgba(61,90,254,.3)}
-.verify-ring.r3{animation-delay:1.6s;border-color:rgba(61,90,254,.15)}
-.verify-icon-inner{
-  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  font-size:44px;animation:vFloat 3.2s ease-in-out infinite;
-}
-.verify-title{font-size:22px;font-weight:900;margin-bottom:10px;color:#fff}
-.verify-sub{font-size:14px;color:var(--muted);max-width:280px;line-height:1.6;margin:0 auto 24px}
-.verify-dots{display:flex;gap:10px;justify-content:center;margin-bottom:28px}
-.verify-dots span{
-  width:9px;height:9px;border-radius:50%;background:var(--blue);
-  animation:vBounce 1.4s ease-in-out infinite;
-}
-.verify-dots span:nth-child(2){animation-delay:.22s}
-.verify-dots span:nth-child(3){animation-delay:.44s}
-.verify-progress{
-  width:200px;height:3px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden;margin:0 auto;
-}
-.verify-progress-bar{
-  height:100%;background:linear-gradient(90deg,var(--blue),#7c8dff);
-  border-radius:4px;width:0%;animation:vProgress 45s linear forwards;
-}
-@keyframes vRing{0%{transform:scale(1);opacity:.7}100%{transform:scale(2.6);opacity:0}}
-@keyframes vFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
-@keyframes vBounce{0%,80%,100%{transform:scale(.75);opacity:.5}40%{transform:scale(1.2);opacity:1}}
-@keyframes vProgress{0%{width:0%}80%{width:90%}100%{width:90%}}
-/* ── Billetera card (mensaje del operador) ─────────────────────────── */
-.bil-card{background:#1a2035;border:1px solid #d4a017;border-radius:14px;padding:14px;margin:2px 0;min-width:220px;max-width:300px}
-.bil-nombre{font-weight:900;font-size:15px;color:#d4a017;margin-bottom:10px}
-.bil-field{background:#0e1525;border-radius:10px;padding:10px 12px;margin-bottom:8px}
-.bil-label{font-size:10px;font-weight:700;color:#888;display:block;margin-bottom:4px;letter-spacing:.5px;text-transform:uppercase}
-.bil-val{font-size:14px;font-weight:700;display:block;margin-bottom:6px;word-break:break-all;color:#e2e8f0}
-.bil-copy{width:100%;background:#2a2a2a;border:1px solid #3a3a3a;color:#fff;border-radius:8px;padding:7px;font-size:12px;cursor:pointer;transition:background .15s}
-.bil-copy:active,.bil-copy:focus{background:#3d5afe;outline:none}
-.bil-footer{margin-top:10px;font-size:12px;color:#d4a017;font-style:italic}
+/* Estado de carga/retiro (en proceso / aprobada) */
+.status-box{border-radius:16px;padding:20px;margin-bottom:14px;text-align:center}
 </style>
 </head>
-
 <body>
 
-<!-- ═══ VIEW: IDENTIFICACIÓN ═══ -->
-<div id="viewLogin">
-  <div class="wrap">
-    <div class="logo-area">
-      <h1>PANEL</h1>
-      <p>Ingresá con tu usuario para continuar</p>
-    </div>
+<!-- ══ Casino embebido (fondo) ══ -->
+<iframe id="casinoFrame" src="https://www.bet-300.pw/" allow="fullscreen"></iframe>
 
-    <div class="card">
-      <div class="card-title">Identificate</div>
-      <div class="field">
-        <label>Usuario</label>
-        <input id="inUsuario" type="text" placeholder="Tu usuario" autocomplete="username" autocapitalize="none" spellcheck="false">
-      </div>
-      <div id="loginMsg"></div>
-      <button class="btn btn-primary" onclick="identificar()">Continuar</button>
-    </div>
+<!-- ══ Botón flotante ══ -->
+<button id="fab" onclick="abrirPanel()"><span class="fab-ico">💰</span> Cargar / Retirar</button>
+
+<!-- ══ Burbuja flotante de mensaje del operador ══ -->
+<div id="opBubble">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <span style="font-size:11px;font-weight:700;color:#7c8dff;letter-spacing:.4px">💬 MENSAJE DEL OPERADOR</span>
+    <button onclick="document.getElementById('opBubble').style.display='none'" style="background:none;border:none;color:#666;font-size:18px;cursor:pointer">×</button>
   </div>
+  <div id="opBubbleText" style="font-size:14px;line-height:1.45;color:#e6edf3"></div>
+  <button onclick="abrirPanel();irTab('chat')" style="background:rgba(61,90,254,.18);border:none;color:#7c8dff;border-radius:10px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;align-self:flex-start">Ver chat →</button>
 </div>
 
-<!-- ═══ VIEW: VERIFICANDO ═══ -->
-<div id="viewVerificando" class="hidden verify-screen">
-  <div class="verify-orb-wrap">
-    <div class="verify-ring"></div>
-    <div class="verify-ring r2"></div>
-    <div class="verify-ring r3"></div>
-    <div class="verify-icon-inner">🎮</div>
-  </div>
-  <div id="verifyTitle" class="verify-title">Verificando tu cuenta</div>
-  <div id="verifySub" class="verify-sub">Estamos confirmando tu usuario en el sistema de juego.</div>
-  <div class="verify-dots"><span></span><span></span><span></span></div>
-  <div class="verify-progress"><div class="verify-progress-bar"></div></div>
-  <div id="verifyTimeoutMsg" class="hidden" style="margin-top:28px">
-    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Está tardando más de lo esperado...</p>
-    <button onclick="cancelarVerificacion()" class="btn btn-ghost" style="max-width:200px">Cancelar</button>
-  </div>
-</div>
+<!-- ══ Backdrop + Panel overlay ══ -->
+<div id="backdrop" class="hidden" onclick="cerrarPanel()"></div>
+<div id="panel" class="hidden">
 
-<!-- ═══ VIEW: REGISTRO (nuevo usuario) ═══ -->
-<div id="viewRegistro" class="hidden">
-  <div class="wrap">
-    <div class="logo-area">
-      <h1>PANEL</h1>
-      <p>Completá tu perfil para continuar</p>
+  <div class="panel-head">
+    <div>
+      <h2 id="panelTitle">💰 Tu cuenta</h2>
+      <div class="sub" id="panelSub">Cargá o retirá sin salir del juego</div>
     </div>
-
-    <div class="card">
-      <div class="card-title">Nuevo usuario</div>
-
-      <div class="field">
-        <label>Usuario</label>
-        <input id="regUsuario" type="text" readonly style="opacity:.6">
-      </div>
-
-      <div class="field">
-        <label>¿Cómo te conocen?</label>
-        <input id="regNombre" type="text" placeholder="Tu nombre o apodo" autocapitalize="words">
-      </div>
-
-      <div class="field">
-        <label>WhatsApp</label>
-        <input id="regTelefono" type="tel" placeholder="549 + código de área + número" maxlength="13" oninput="this.value=this.value.replace(/\D/g,'')">
-        <div class="field-hint">Ej: <b>5491123456789</b> · sin el 0 ni el 15</div>
-      </div>
-
-      <hr class="divider">
-      <div class="section-label">Datos de retiro <span class="optional-tag">opcional</span></div>
-
-      <div class="field">
-        <label>DNI <span class="optional-tag">opcional</span></label>
-        <input id="regDni" type="number" placeholder="Sin puntos, ej: 38456789">
-      </div>
-
-      <div class="field">
-        <label>Nombre en tu billetera virtual <span class="optional-tag">opcional</span></label>
-        <input id="regNombreTransferencia" type="text" placeholder="Ingresá tu nombre tal cual figura en tu billetera virtual" autocapitalize="words">
-      </div>
-
-      <div id="regMsg"></div>
-      <button id="btnCrearCuenta" class="btn btn-green" onclick="registrar()">Crear cuenta</button>
-      <button class="btn btn-ghost" onclick="volverLogin()">← Volver</button>
-    </div>
-  </div>
-</div>
-
-<!-- ═══ VIEW: APP (usuario logueado) ═══ -->
-<div id="viewApp" class="hidden">
-
-  <!-- Secciones -->
-  <div id="secInicio" class="wrap">
-    <div style="padding-top:20px;margin-bottom:16px">
-      <h1 style="font-size:24px;font-weight:900">Cargar transferencia</h1>
-      <p style="font-size:13px;color:var(--muted)">Ingresá el monto. Te avisamos cuando la carga esté confirmada.</p>
-    </div>
-
-    <!-- ── Card dinámica: solicitud pendiente / aprobada / ir al juego ── -->
-    <div id="cargaStatusCard" class="hidden"></div>
-
-    <!-- Banner paso 1 -->
-    <div id="cargaPaso1" style="background:linear-gradient(135deg,#0a6e57,#12b76a);border-radius:16px;padding:16px;margin-bottom:14px">
-      <div style="font-weight:800;font-size:14px;margin-bottom:4px">📋 Paso 1: Copiá el CBU/CVU y hacé la transferencia.</div>
-      <div style="font-size:12px;opacity:.9">💬 ¿No sabés cómo hacerla? <span style="text-decoration:underline;cursor:pointer" onclick="mostrarSeccion('chat')">Preguntanos en el chat →</span></div>
-    </div>
-
-    <!-- Billetera info -->
-    <div class="card" id="cargaBilletera">
-      <div style="color:var(--muted);font-size:13px">Cargando datos de transferencia...</div>
-    </div>
-
-    <!-- Banner paso 2 -->
-    <div id="cargaPaso2" style="background:linear-gradient(135deg,#1a2f6d,#3d5afe);border-radius:16px;padding:16px;margin-bottom:14px">
-      <div style="font-weight:800;font-size:14px;margin-bottom:4px">👤 Paso 2: Completá tu solicitud.</div>
-      <div style="font-size:12px;opacity:.9">¿No sabés cuál es tu usuario? <span style="text-decoration:underline;cursor:pointer" onclick="mostrarSeccion('chat')">Preguntanos en el chat 💬</span></div>
-    </div>
-
-    <!-- Formulario pre-llenado -->
-    <div id="cargaFormCard" class="card">
-      <div class="field">
-        <label>Usuario</label>
-        <input id="cargaUsuario" type="text" readonly style="opacity:.7;cursor:default">
-      </div>
-      <div class="field">
-        <label>Nombre completo</label>
-        <input id="cargaNombre" type="text" readonly style="opacity:.7;cursor:default">
-      </div>
-      <div class="field">
-        <label>Monto a cargar *</label>
-        <input id="cargaMonto" type="number" min="1" placeholder="ej: 5000" inputmode="numeric">
-        <div id="cargaMontoHint" class="field-hint"></div>
-      </div>
-      <div id="cargaMsg"></div>
-      <button class="btn btn-green" onclick="enviarSolicitudCarga()">Enviar solicitud de carga</button>
-      <p style="font-size:11px;color:var(--muted);margin-top:10px;text-align:center">Importante: realizá primero la transferencia con los datos de arriba, luego completá este formulario.</p>
-    </div>
+    <button class="head-close" onclick="cerrarPanel()">×</button>
   </div>
 
-  <!-- Historial de transacciones -->
-  <div id="secHistorial" class="wrap hidden">
-    <div style="padding-top:20px;margin-bottom:14px">
-      <h2 style="font-size:20px;font-weight:800">📋 Mis transacciones</h2>
-      <p style="font-size:13px;color:var(--muted)">Historial de cargas, retiros y solicitudes.</p>
-    </div>
-    <div id="historialLista"><div style="color:var(--muted);font-size:13px;text-align:center;padding:30px 0">Cargando...</div></div>
-  </div>
+  <!-- ── Cuerpo: login / registro / app ── -->
+  <div class="panel-body" id="panelBody">
 
-  <!-- ═══ RETIRO ═══ -->
-  <div id="secRetiro" class="wrap hidden">
-    <div style="padding-top:20px;margin-bottom:16px">
-      <h1 style="font-size:24px;font-weight:900">Solicitar retiro</h1>
-      <p style="font-size:13px;color:var(--muted)">El operador transfiere al CBU/alias que tengas guardado.</p>
-    </div>
-
-    <!-- Estado: retiro pendiente -->
-    <div id="retiroStatusCard" class="hidden"></div>
-
-    <!-- Setup: faltan datos bancarios -->
-    <div id="retiroDatosSetup" class="hidden">
-      <div class="alert alert-warn" style="margin-bottom:14px">
-        ⚠️ Para solicitar un retiro necesitás completar tus datos bancarios primero.
-      </div>
+    <!-- LOGIN: ingresar usuario (manual) -->
+    <div id="viewLogin">
       <div class="card">
-        <div class="card-title">Datos bancarios para el retiro</div>
+        <div class="card-title">👤 Ingresá tu usuario</div>
         <div class="field">
-          <label>DNI *</label>
-          <input id="setupDni" type="number" placeholder="Sin puntos · ej: 38456789">
+          <label>Usuario del casino</label>
+          <input id="inUsuario" placeholder="tu_usuario" autocomplete="off" onkeydown="if(event.key==='Enter')identificar()">
+          <div class="field-hint">Es el mismo usuario con el que entrás a jugar.</div>
         </div>
-        <div class="field">
-          <label>Nombre exacto en transferencia *</label>
-          <input id="setupNombreTransf" type="text" autocapitalize="words" placeholder="Tal cual figura en tu CBU/CVU">
-          <div class="field-warn">⚠️ Si el nombre no coincide, puede demorar o rechazar la transferencia.</div>
-        </div>
-        <div class="field">
-          <label>CBU / CVU / Alias *</label>
-          <input id="setupCbuAlias" type="text" placeholder="0000003100... o tu.alias.mp" autocapitalize="none">
-          <div class="field-hint">Podés ingresar CBU, CVU o alias de Mercado Pago / Uala / banco.</div>
-        </div>
-        <div id="setupRetiroMsg"></div>
-        <button class="btn btn-primary" onclick="guardarDatosRetiro()">Guardar y continuar</button>
+        <button class="btn btn-green" onclick="identificar()">Entrar</button>
+        <div id="loginMsg"></div>
       </div>
     </div>
 
-    <!-- Formulario de retiro: datos completos -->
-    <div id="retiroFormCard" class="hidden">
-      <!-- Datos bancarios readonly -->
-      <div class="card" style="padding:16px;margin-bottom:14px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <div style="font-size:13px;font-weight:700;color:var(--muted)">🏦 Tu cuenta de cobro</div>
-          <button onclick="mostrarSeccion('perfil')" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline">Editar en perfil</button>
-        </div>
-        <div id="retiroDatosResumen"></div>
-      </div>
-
+    <!-- REGISTRO: usuario nuevo (pide nombre + teléfono) -->
+    <div id="viewRegistro" class="hidden">
       <div class="card">
-        <div class="field">
-          <label>Monto a retirar *</label>
-          <input id="retiroMonto" type="number" min="1" placeholder="ej: 5000" inputmode="numeric">
+        <div class="card-title">📝 Completá tus datos</div>
+        <div class="alert alert-info">No te encontramos. Completá estos datos una sola vez para poder atenderte.</div>
+        <div class="field"><label>Usuario</label><input id="regUsuario" readonly style="opacity:.7"></div>
+        <div class="field"><label>Tu nombre</label><input id="regNombre" placeholder="Nombre y apellido"></div>
+        <div class="field"><label>Teléfono (WhatsApp)</label><input id="regTelefono" placeholder="Ej: 1123456789" inputmode="numeric"></div>
+        <button class="btn btn-green" onclick="registrar()" id="btnReg">Crear y entrar</button>
+        <button class="btn btn-ghost" onclick="volverLogin()">← Volver</button>
+        <div id="regMsg"></div>
+      </div>
+    </div>
+
+    <!-- APP: cargar / retirar / chat -->
+    <div id="viewApp" class="hidden">
+
+      <!-- TAB CARGAR -->
+      <div id="tabCargar">
+        <div id="cargaStatusCard" class="hidden"></div>
+        <div id="cargaFormCard">
+          <div class="card">
+            <div class="card-title">💸 Cargar fichas</div>
+            <div id="cargaBilletera" style="margin-bottom:14px"></div>
+            <div class="field">
+              <label>¿Cuánto querés cargar?</label>
+              <input id="cargaMonto" type="number" inputmode="numeric" placeholder="Ej: 5000" onkeydown="if(event.key==='Enter')enviarSolicitudCarga()">
+              <div class="field-hint" id="cargaMontoHint">Transferí a los datos de arriba y luego enviá la solicitud.</div>
+            </div>
+            <button class="btn btn-green" onclick="enviarSolicitudCarga()">Enviar solicitud de carga</button>
+            <div id="cargaMsg"></div>
+            <div class="field-hint" style="text-align:center;margin-top:10px">¿Ya transferiste? Mandá el comprobante por el 💬 chat.</div>
+          </div>
         </div>
-        <div id="retiroFormMsg"></div>
-        <button class="btn btn-red" onclick="enviarSolicitudRetiro()">Solicitar retiro</button>
-        <p style="font-size:11px;color:var(--muted);margin-top:10px;text-align:center">El operador procesará el retiro y transferirá al CBU/alias registrado.</p>
-      </div>
-    </div>
-  </div>
-
-  <div id="secChat" class="wrap hidden">
-    <div style="padding-top:20px;margin-bottom:14px">
-      <h2 style="font-size:20px;font-weight:800">💬 Chat con soporte</h2>
-      <p style="font-size:13px;color:var(--muted)">Envianos tu comprobante o consulta.</p>
-    </div>
-
-    <div class="card" style="padding:14px">
-      <div id="chatBody" class="chat-body">
-        <div style="text-align:center;color:var(--muted);font-size:13px;padding:30px 0">Sin mensajes todavía.</div>
       </div>
 
-      <div id="chatPreviewWrap" class="hidden" style="display:flex;align-items:center;gap:10px;padding:8px;background:rgba(255,255,255,.05);border-radius:12px;margin-bottom:8px">
-        <img id="chatPreviewImg" src="" style="width:52px;height:52px;object-fit:cover;border-radius:8px">
-        <span style="font-size:13px;flex:1">Imagen lista para enviar</span>
-        <button onclick="quitarImagen()" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer">×</button>
+      <!-- TAB RETIRAR -->
+      <div id="tabRetirar" class="hidden">
+        <!-- Setup de datos bancarios (si faltan) -->
+        <div id="retiroDatosSetup" class="hidden">
+          <div class="card">
+            <div class="card-title">🏧 Datos para retirar</div>
+            <div class="alert alert-info">Necesitamos estos datos una sola vez para poder transferirte.</div>
+            <div class="field"><label>DNI</label><input id="setupDni" inputmode="numeric" placeholder="Sin puntos"></div>
+            <div class="field"><label>Nombre en la transferencia</label><input id="setupNombreTransf" placeholder="Titular de la cuenta"></div>
+            <div class="field"><label>CBU / CVU / Alias</label><input id="setupCbuAlias" placeholder="Donde querés cobrar"></div>
+            <button class="btn btn-primary" onclick="guardarDatosRetiro()">Guardar datos</button>
+            <div id="setupRetiroMsg"></div>
+          </div>
+        </div>
+        <!-- Estado pendiente -->
+        <div id="retiroStatusCard" class="hidden"></div>
+        <!-- Form de retiro -->
+        <div id="retiroFormCard" class="hidden">
+          <div class="card">
+            <div class="card-title">🏧 Retirar</div>
+            <div id="retiroDatosResumen" style="margin-bottom:14px"></div>
+            <div class="field">
+              <label>¿Cuánto querés retirar?</label>
+              <input id="retiroMonto" type="number" inputmode="numeric" placeholder="Ej: 10000" onkeydown="if(event.key==='Enter')enviarSolicitudRetiro()">
+            </div>
+            <button class="btn btn-primary" onclick="enviarSolicitudRetiro()">Solicitar retiro</button>
+            <button class="btn btn-ghost" onclick="editarDatosRetiro()">Cambiar mis datos bancarios</button>
+            <div id="retiroFormMsg"></div>
+          </div>
+        </div>
       </div>
 
-      <div class="chat-compose">
-        <textarea id="chatInput" placeholder="Escribí tu mensaje..." rows="1"></textarea>
-        <button class="send-btn" onclick="enviarMensaje()">➤</button>
-      </div>
-
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <button class="btn btn-ghost" style="margin:0;font-size:12px;padding:8px" onclick="document.getElementById('chatFile').click()">📎 Adjuntar imagen</button>
+      <!-- TAB CHAT -->
+      <div id="tabChat" class="hidden" style="display:flex;flex-direction:column;height:100%">
+        <div id="chatBody" class="chat-body"></div>
+        <div id="chatPreviewWrap" class="hidden" style="align-items:center;gap:10px;padding:8px;background:rgba(255,255,255,.05);border-radius:12px;margin-bottom:8px">
+          <img id="chatPreviewImg" src="" style="width:48px;height:48px;object-fit:cover;border-radius:8px">
+          <button onclick="quitarImagen()" style="background:none;border:none;color:#f85149;cursor:pointer;font-size:13px">Quitar imagen</button>
+        </div>
+        <div class="chat-compose">
+          <textarea id="chatInput" placeholder="Escribí tu mensaje..." rows="1"></textarea>
+          <button class="send-btn" onclick="enviarMensaje()">➤</button>
+        </div>
+        <button class="btn btn-ghost" style="margin-top:8px;font-size:13px" onclick="document.getElementById('chatFile').click()">📎 Adjuntar comprobante</button>
         <input id="chatFile" type="file" accept="image/*" class="hidden" onchange="tomarImagen()">
       </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center">Ctrl+V o pegá una imagen directamente</div>
-    </div>
+
+    </div><!-- /viewApp -->
+  </div><!-- /panel-body -->
+
+  <!-- ── Tabs (solo visibles dentro de la app) ── -->
+  <div class="tabs hidden" id="appTabs">
+    <button id="navCargar"  class="active" onclick="irTab('cargar')"><span class="ti">💸</span>Cargar</button>
+    <button id="navRetirar" onclick="irTab('retirar')"><span class="ti">🏧</span>Retirar</button>
+    <button id="navChat"    onclick="irTab('chat')"><span class="ti" style="position:relative">💬<span id="chatBadge" class="badge-dot hidden">0</span></span>Chat</button>
+    <button id="navSalir"   onclick="cerrarSesion()"><span class="ti">🚪</span>Salir</button>
   </div>
 
-  <div id="secPerfil" class="wrap hidden">
-    <div style="padding-top:20px;margin-bottom:14px">
-      <h2 style="font-size:20px;font-weight:800">👤 Mi perfil</h2>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Datos personales</div>
-
-      <div class="field">
-        <label>Usuario</label>
-        <input id="editUsuario" type="text" readonly style="opacity:.6">
-      </div>
-      <div class="field">
-        <label>Nombre</label>
-        <input id="editNombre" type="text" autocapitalize="words">
-      </div>
-      <div class="field">
-        <label>Teléfono / WhatsApp</label>
-        <input id="editTelefono" type="tel">
-        <div class="field-hint">Formato: 549 + código de área + número. Ej AMBA: <b>5491112345678</b></div>
-      </div>
-
-      <hr class="divider">
-      <div class="section-label">Datos de retiro <span class="optional-tag">opcional</span></div>
-
-      <div class="field">
-        <label>DNI <span class="optional-tag">opcional</span></label>
-        <input id="editDni" type="number" placeholder="Sin puntos">
-      </div>
-      <div class="field">
-        <label>Nombre en transferencia <span class="optional-tag">opcional</span></label>
-        <input id="editNombreTransferencia" type="text" autocapitalize="words">
-        <div class="field-warn">⚠️ Exactamente como figura en tu CBU/CVU. Diferencias pueden demorar operaciones.</div>
-      </div>
-      <div class="field">
-        <label>CBU / CVU / Alias <span class="optional-tag">opcional</span></label>
-        <input id="editCbuAlias" type="text" autocapitalize="none" placeholder="0000003100... o tu.alias.mp">
-      </div>
-
-      <div id="editMsg"></div>
-      <button class="btn btn-primary" onclick="guardarPerfil()">Guardar cambios</button>
-    </div>
-
-    <!-- Card de cambio de clave -->
-    <div class="card">
-      <div class="card-title">🔑 Reiniciar clave de juego</div>
-      <p style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.5">
-        Si olvidaste tu clave o querés cambiarla, podés solicitar un reseteo. Tu clave del casino será reemplazada por la que ingreses (o por la default <b>12345a</b> si la dejás vacía).
-      </p>
-      <div class="field">
-        <label>Nueva clave <span class="optional-tag">opcional</span></label>
-        <input id="resetClaveNueva" type="text" placeholder="Mínimo 6 caracteres · letras y números" minlength="6">
-        <div class="field-hint">Si la dejás vacía, se resetea a <b>12345a</b>.</div>
-      </div>
-      <div id="resetClaveMsg"></div>
-      <button class="btn btn-primary" onclick="solicitarResetClave()">Solicitar reseteo de clave</button>
-    </div>
-
-    <!-- Cerrar sesión -->
-    <div class="card">
-      <button class="btn btn-ghost" onclick="cerrarSesion()" style="margin:0;color:var(--red);border-color:rgba(218,54,51,.4)">Cerrar sesión</button>
-    </div>
-  </div>
-
-  <!-- Nav bottom -->
-  <nav class="bottom-nav">
-    <button id="navInicio" class="active" onclick="mostrarSeccion('inicio')">
-      <span class="icon">💸</span>Cargar
-    </button>
-    <button id="navRetiro" onclick="mostrarSeccion('retiro')">
-      <span class="icon">🏧</span>Retirar
-    </button>
-    <button id="navHistorial" onclick="mostrarSeccion('historial')">
-      <span class="icon">📋</span>Historial
-    </button>
-    <button id="navChat" onclick="mostrarSeccion('chat')">
-      <span class="icon">💬</span>Chat
-      <span id="navChatBadge" class="hidden" style="background:#f85149;color:#fff;border-radius:999px;min-width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;margin-top:1px">0</span>
-    </button>
-    <button id="navPerfil" onclick="mostrarSeccion('perfil')">
-      <span class="icon">👤</span>Perfil
-    </button>
-  </nav>
-</div>
+</div><!-- /panel -->
 
 <script>
+// ════════════════════════════════════════════════════════════════════════════
+// CONFIG
+// ════════════════════════════════════════════════════════════════════════════
 const SUPABASE_URL = "https://gxedxuctwlkjllmayxaa.supabase.co";
 const SUPABASE_KEY = "sb_publishable_UlAN1ifdqpTj9pDIwFU0vg_S7AIU5Sg";
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Mapa numérico → nombre interno de PC (nunca visible para el usuario)
+const CASINO_URL = "https://www.bet-300.pw/";
+
+// Enlace variable por oficina: ?pc=1 → CHINO, ?pc=2 → ALVAREZ, etc.
+// (mismo mapa que la landing actual — nunca visible para el usuario)
 const PC_MAP = { "1":"CHINO", "2":"ALVAREZ", "3":"X", "4":"SANCHEZ", "5":"E" };
 const _pcParam = new URLSearchParams(window.location.search).get('pc') || "";
 const PC = PC_MAP[_pcParam] || "SANCHEZ";
 
-let usuario = null;   // objeto del usuario logueado
-let chatId   = null;  // uuid de la sesión de chat
+let usuario = null;
+let chatId = null;
 let chatMsgs = [];
 let imgBase64 = '', imgNombre = '';
 let chatPolling = null;
+let billeteraActiva = null;
+let tabActual = 'cargar';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function show(id){ document.getElementById(id)?.classList.remove('hidden') }
@@ -491,525 +311,306 @@ function hide(id){ document.getElementById(id)?.classList.add('hidden') }
 function val(id){ return document.getElementById(id)?.value?.trim() || '' }
 function setVal(id,v){ const el=document.getElementById(id); if(el) el.value=v??'' }
 function setHtml(id,h){ const el=document.getElementById(id); if(el) el.innerHTML=h }
-function msg(id, html, type='info'){ setHtml(id, html ? `<div class="alert alert-${type}">${html}</div>` : '') }
+function msg(id, html, type='info'){ setHtml(id, html ? `<div class="alert alert-${type}" style="margin-top:12px;margin-bottom:0">${html}</div>` : '') }
 function escHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
-function formatTs(ts){
-  if(!ts) return '';
-  return new Date(ts).toLocaleString('es-AR',{timeZone:'America/Argentina/Buenos_Aires',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).replace(',',' ·');
-}
+function nmonto(n){ return '$'+Number(n||0).toLocaleString('es-AR') }
+function formatTs(ts){ if(!ts) return ''; return new Date(ts).toLocaleString('es-AR',{timeZone:'America/Argentina/Buenos_Aires',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).replace(',',' ·'); }
 function comprimirImagen(file, cb){
   const img=new Image(), reader=new FileReader();
-  reader.onload=()=>{
-    img.onload=()=>{
-      const max=560; let w=img.width,h=img.height;
-      if(w>h&&w>max){h=Math.round(h*max/w);w=max}
-      else if(h>=w&&h>max){w=Math.round(w*max/h);h=max}
-      const c=document.createElement('canvas'); c.width=w; c.height=h;
-      c.getContext('2d').drawImage(img,0,0,w,h);
-      cb(c.toDataURL('image/jpeg',.55));
-    };
-    img.src=reader.result;
-  };
+  reader.onload=()=>{ img.onload=()=>{
+    const max=560; let w=img.width,h=img.height;
+    if(w>h&&w>max){h=Math.round(h*max/w);w=max} else if(h>=w&&h>max){w=Math.round(w*max/h);h=max}
+    const c=document.createElement('canvas'); c.width=w; c.height=h;
+    c.getContext('2d').drawImage(img,0,0,w,h);
+    cb(c.toDataURL('image/jpeg',.55));
+  }; img.src=reader.result; };
   reader.readAsDataURL(file);
 }
+function toast(m){
+  const t=document.createElement('div'); t.textContent=m;
+  Object.assign(t.style,{position:'fixed',bottom:'90px',left:'50%',transform:'translateX(-50%)',
+    background:'#238636',color:'#fff',padding:'10px 20px',borderRadius:'12px',fontWeight:'700',
+    fontSize:'14px',zIndex:'10005',boxShadow:'0 4px 20px rgba(0,0,0,.4)'});
+  document.body.appendChild(t); setTimeout(()=>t.remove(),2200);
+}
+function copiar(texto,btn,label){
+  navigator.clipboard?.writeText(texto).then(()=>{ toast((label||'Copiado')+' ✓'); if(btn){const o=btn.textContent;btn.textContent='✓ Copiado';setTimeout(()=>btn.textContent=o,2000);} }).catch(()=>{});
+}
 
-// ── Session ───────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+// PANEL (abrir / cerrar / tabs)
+// ════════════════════════════════════════════════════════════════════════════
+function abrirPanel(){
+  document.getElementById('opBubble').style.display='none';
+  show('backdrop'); show('panel');
+  document.getElementById('fab').style.display='none';
+  if(usuario){ irTab(tabActual); }
+}
+function cerrarPanel(){
+  hide('backdrop'); hide('panel');
+  document.getElementById('fab').style.display='flex';
+}
+function irTab(t){
+  tabActual = t;
+  ['cargar','retirar','chat'].forEach(x=>{
+    document.getElementById('tab'+x.charAt(0).toUpperCase()+x.slice(1))?.classList.add('hidden');
+    document.getElementById('nav'+x.charAt(0).toUpperCase()+x.slice(1))?.classList.remove('active');
+  });
+  document.getElementById('tab'+t.charAt(0).toUpperCase()+t.slice(1))?.classList.remove('hidden');
+  document.getElementById('nav'+t.charAt(0).toUpperCase()+t.slice(1))?.classList.add('active');
+  // Título del header según tab
+  const titulos = { cargar:['💸 Cargar fichas','Transferí y enviá tu solicitud'], retirar:['🏧 Retirar','Cobrá tus ganancias'], chat:['💬 Chat con soporte','Te respondemos al instante'] };
+  if(titulos[t]){ setHtml('panelTitle',titulos[t][0]); setHtml('panelSub',titulos[t][1]); }
+  if(t==='chat'){ document.getElementById('chatBadge')?.classList.add('hidden'); scrollChat(); }
+  if(t==='retirar') cargarSeccionRetiro();
+  if(t==='cargar') cargarMisSolicitudes();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SESIÓN (login manual — sin verificación automática)
+// ════════════════════════════════════════════════════════════════════════════
 window.addEventListener('load', async ()=>{
-  const saved = localStorage.getItem('nodo_usuario_landing');
+  const saved = localStorage.getItem('nodo_usuario_casino');
   if(saved){
     try{
       usuario = JSON.parse(saved);
-      // Refresca datos del usuario desde Supabase para tener info actualizada
       const { data } = await sb.from('usuarios').select('*').eq('usuario', usuario.usuario).single();
-      if(data){ usuario = data; localStorage.setItem('nodo_usuario_landing', JSON.stringify(data)); }
-      await entrarApp();
-      return;
-    }catch(e){ localStorage.removeItem('nodo_usuario_landing'); }
-  }
-  show('viewLogin');
-});
-
-// Refresca la sesión cuando el usuario vuelve a la pestaña (evita cierres por datos viejos)
-document.addEventListener('visibilitychange', async ()=>{
-  if(document.visibilityState === 'visible' && usuario?.usuario){
-    const { data } = await sb.from('usuarios').select('*').eq('usuario', usuario.usuario).single();
-    if(data){ usuario = data; localStorage.setItem('nodo_usuario_landing', JSON.stringify(data)); }
+      if(data){ usuario = data; localStorage.setItem('nodo_usuario_casino', JSON.stringify(data)); }
+      entrarApp();
+    }catch(e){ localStorage.removeItem('nodo_usuario_casino'); }
   }
 });
 
-// ── Verificación de login ─────────────────────────────────────────────────────
-let _verifyPolling = null;
-let _verifyTimeout = null;
-let _verifyMsgTimer = null;
-
-const VERIFY_MSGS = [
-  ['Verificando tu cuenta',    'Estamos confirmando tu usuario en el sistema de juego.'],
-  ['Casi listo',               'Validando datos con el casino...'],
-  ['Un momento más',           'El sistema está procesando tu solicitud.'],
-  ['Conectando al servidor',   'Gracias por tu paciencia, ya casi terminamos.'],
-];
-let _verifyMsgIdx = 0;
-
-function _cycleVerifyMsg(){
-  _verifyMsgIdx = (_verifyMsgIdx + 1) % VERIFY_MSGS.length;
-  const el = document.getElementById('verifyTitle');
-  const sub = document.getElementById('verifySub');
-  if(el) el.textContent = VERIFY_MSGS[_verifyMsgIdx][0];
-  if(sub) sub.textContent = VERIFY_MSGS[_verifyMsgIdx][1];
-}
-
-function _mostrarVerificando(){
-  _verifyMsgIdx = 0;
-  document.getElementById('verifyTitle').textContent = VERIFY_MSGS[0][0];
-  document.getElementById('verifySub').textContent   = VERIFY_MSGS[0][1];
-  document.getElementById('verifyTimeoutMsg')?.classList.add('hidden');
-  // Reinicia la barra de progreso
-  const bar = document.querySelector('.verify-progress-bar');
-  if(bar){ bar.style.animation='none'; bar.offsetHeight; bar.style.animation=''; }
-  hide('viewLogin'); hide('viewRegistro');
-  show('viewVerificando');
-  clearInterval(_verifyMsgTimer);
-  _verifyMsgTimer = setInterval(_cycleVerifyMsg, 7000);
-  clearTimeout(_verifyTimeout);
-  _verifyTimeout = setTimeout(()=>{
-    document.getElementById('verifyTimeoutMsg')?.classList.remove('hidden');
-  }, 50000);
-}
-
-async function _pollearVerificacion(verifId, usuarioStr, datosRegistro){
-  const { data } = await sb.from('verificaciones').select('estado,nombre_casino').eq('id', verifId).single();
-  if(!data) return;
-
-  if(data.estado === 'VERIFICADO'){
-    clearInterval(_verifyPolling); clearTimeout(_verifyTimeout); clearInterval(_verifyMsgTimer);
-    // Recién ahora guardamos en Supabase (solo si se verificó)
-    const upsertData = { usuario: usuarioStr, verificado: true, pc_codigo: PC };
-    if(datosRegistro) Object.assign(upsertData, datosRegistro);
-    const { data: u } = await sb.from('usuarios').upsert(upsertData, { onConflict:'usuario' }).select().single();
-    usuario = u || { usuario: usuarioStr, verificado: true, pc_codigo: PC };
-    localStorage.setItem('nodo_usuario_landing', JSON.stringify(usuario));
-    hide('viewVerificando');
-    await entrarApp();
-
-  } else if(data.estado === 'NO_EXISTE'){
-    clearInterval(_verifyPolling); clearTimeout(_verifyTimeout); clearInterval(_verifyMsgTimer);
-    // No guardamos nada — el usuario nunca se persistió
-    hide('viewVerificando'); show('viewLogin');
-    msg('loginMsg','❌ No encontramos tu usuario en el sistema de juego. Verificá que esté bien escrito.','err');
-
-  } else if(data.estado === 'ERROR'){
-    clearInterval(_verifyPolling); clearTimeout(_verifyTimeout); clearInterval(_verifyMsgTimer);
-    hide('viewVerificando'); show('viewLogin');
-    msg('loginMsg','⚠️ Error al verificar tu cuenta. Intentá de nuevo.','err');
-  }
-}
-
-async function _enviarAVerificacion(usuarioStr, datosRegistro){
-  // Limpia verificaciones previas sin completar
-  await sb.from('verificaciones').delete()
-    .eq('usuario', usuarioStr).eq('pc_codigo', PC)
-    .in('estado', ['PENDIENTE','ERROR','NO_EXISTE']);
-
-  const { data: verif } = await sb.from('verificaciones')
-    .insert({ usuario: usuarioStr, pc_codigo: PC, estado: 'PENDIENTE' })
-    .select().single();
-
-  if(!verif){ msg('loginMsg','Error al iniciar verificación.','err'); show('viewLogin'); return; }
-
-  _mostrarVerificando();
-  clearInterval(_verifyPolling);
-  _verifyPolling = setInterval(() => _pollearVerificacion(verif.id, usuarioStr, datosRegistro), 2500);
-}
-
-function cancelarVerificacion(){
-  clearInterval(_verifyPolling); clearTimeout(_verifyTimeout); clearInterval(_verifyMsgTimer);
-  hide('viewVerificando'); show('viewLogin');
-}
-
-// ── Identificación ────────────────────────────────────────────────────────────
 async function identificar(){
   const u = val('inUsuario').toLowerCase().replace(/\s+/g,'');
   if(!u || u.length < 3){ msg('loginMsg','El usuario debe tener al menos 3 caracteres.','err'); return; }
-  msg('loginMsg','<span class="spinner"></span>Conectando...','info');
+  msg('loginMsg','<span class="spinner"></span>Buscando...','info');
 
   const { data, error } = await sb.from('usuarios').select('*').eq('usuario', u).single();
+  if(error && error.code !== 'PGRST116'){ msg('loginMsg','Error al conectar. Probá de nuevo.','err'); return; }
 
-  if(error && error.code !== 'PGRST116'){
-    msg('loginMsg','Error al conectar. Intentá de nuevo.','err');
-    return;
-  }
-
-  if(data && data.verificado){
-    // Usuario ya verificado → acceso directo
+  if(data){
+    // Existe → entra directo (login manual, sin verificación)
     usuario = data;
-    localStorage.setItem('nodo_usuario_landing', JSON.stringify(usuario));
+    localStorage.setItem('nodo_usuario_casino', JSON.stringify(usuario));
     msg('loginMsg','');
-    await entrarApp();
-  } else if(data && !data.verificado){
-    // Existe pero no verificado (caso edge) → reenviar a cola
-    msg('loginMsg','');
-    await _enviarAVerificacion(u, null);
+    entrarApp();
   } else {
-    // Usuario nuevo → mostrar registro
-    hide('viewLogin');
-    setVal('regUsuario', u);
-    show('viewRegistro');
+    // Nuevo → pedir nombre + teléfono
+    hide('viewLogin'); setVal('regUsuario', u); show('viewRegistro');
     msg('loginMsg','');
   }
 }
 
-// ── Registro ──────────────────────────────────────────────────────────────────
 async function registrar(){
   const nombre = val('regNombre');
   const telefono = val('regTelefono').replace(/\D/g,'');
-  const dni = val('regDni');
-  const nombreTransferencia = val('regNombreTransferencia');
   const usuarioReg = val('regUsuario').toLowerCase();
-
   if(!nombre){ msg('regMsg','Ingresá tu nombre.','err'); return; }
-  if(!telefono || !/^549d{10}$/.test(telefono)){
-    msg('regMsg','El número debe tener 13 dígitos y empezar con 549 (ej: 5491123456789).','err'); return;
-  }
+  if(!telefono || telefono.length < 8){ msg('regMsg','Ingresá un teléfono válido.','err'); return; }
 
-  const btn = document.getElementById('btnCrearCuenta');
-  btn.disabled = true; btn.textContent = 'Verificando...';
+  const btn = document.getElementById('btnReg');
+  btn.disabled = true; btn.textContent = 'Creando...';
   msg('regMsg','');
 
-  // No guardamos nada todavía — solo mandamos a la cola de verificación
-  const datosRegistro = { nombre, telefono, dni: dni||null, nombre_transferencia: nombreTransferencia||null, pc_codigo: PC };
-  await _enviarAVerificacion(usuarioReg, datosRegistro);
-  btn.disabled = false; btn.textContent = 'Crear cuenta';
+  // Login manual: creamos el usuario directo (sin verificación contra el casino).
+  // El operador en NODO valida si el alias existe al momento de procesar la carga.
+  const { data, error } = await sb.from('usuarios')
+    .upsert({ usuario: usuarioReg, nombre, telefono, pc_codigo: PC, verificado: true }, { onConflict:'usuario' })
+    .select().single();
+
+  btn.disabled = false; btn.textContent = 'Crear y entrar';
+  if(error){ msg('regMsg','Error al crear la cuenta. Probá de nuevo.','err'); return; }
+
+  usuario = data;
+  localStorage.setItem('nodo_usuario_casino', JSON.stringify(usuario));
+  hide('viewRegistro');
+  entrarApp();
 }
 
-function volverLogin(){
-  hide('viewRegistro');
-  show('viewLogin');
-}
+function volverLogin(){ hide('viewRegistro'); show('viewLogin'); }
 
-// ── App ───────────────────────────────────────────────────────────────────────
-async function entrarApp(){
-  hide('viewLogin');
-  hide('viewRegistro');
-  show('viewApp');
-
-  // Pre-llena los campos de la solicitud con datos guardados
-  setVal('cargaUsuario', usuario.usuario);
-  setVal('cargaNombre',  usuario.nombre);
-
+function entrarApp(){
+  abrirPanel();
+  hide('viewLogin'); hide('viewRegistro'); show('viewApp');
+  show('appTabs');
   cargarBilletera();
-  await obtenerOCrearChat();
-  cargarMensajes(false);
+  obtenerOCrearChat().then(()=>{ cargarMensajes(false); });
   cargarMisSolicitudes();
-  mostrarSeccion('inicio');
-
+  irTab('cargar');
   clearInterval(chatPolling);
   chatPolling = setInterval(()=>{ cargarMensajes(true); cargarMisSolicitudes(); }, 4000);
 }
 
-// ── Helpers de estado ─────────────────────────────────────────────────────────
+function cerrarSesion(){
+  clearInterval(chatPolling);
+  localStorage.removeItem('nodo_usuario_casino');
+  usuario = null; chatId = null; chatMsgs = [];
+  hide('viewApp'); hide('appTabs');
+  setVal('inUsuario','');
+  show('viewLogin');
+  setHtml('panelTitle','💰 Tu cuenta'); setHtml('panelSub','Cargá o retirá sin salir del juego');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ESTADO DE LA CARGA (en proceso / aprobada / form normal)
+// ════════════════════════════════════════════════════════════════════════════
+let _nuevaCargaForzada = false, _nuevaCargaTimer = null;
+
 function estadoSolicitud(estado){
   const e = String(estado||'').toUpperCase();
-  if(['PENDIENTE','NUEVA','EN_REVISION','APROBADA_MANUAL','APROBADA_MANUAL_OK'].includes(e))
-    return {label:'⏳ En proceso',bg:'#3d2d00',fg:'#d29922',esPendiente:true};
-  if(['APROBADA','ACREDITADA','PAGADA'].includes(e))
-    return {label:'✅ Aprobada',bg:'#0d3321',fg:'#3fb950',esPendiente:false};
-  if(e==='RECHAZADA')
-    return {label:'❌ Rechazada',bg:'#3a1515',fg:'#f85149',esPendiente:false};
-  return {label:e||'-',bg:'#2a2f3b',fg:'#98a2b3',esPendiente:false};
-}
-function tipoIcon(t){
-  const x=String(t||'').toUpperCase();
-  if(x==='CARGA') return '💸';
-  if(x==='RETIRO') return '🏧';
-  if(x==='CAMBIO_CLAVE') return '🔑';
-  return '📄';
-}
-function formatFechaCorta(ts){
-  if(!ts) return '';
-  return new Date(ts).toLocaleString('es-AR',{
-    timeZone:'America/Argentina/Buenos_Aires',
-    day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false
-  });
+  if(['PENDIENTE','NUEVA','EN_REVISION','APROBADA_MANUAL','APROBADA_MANUAL_OK'].includes(e)) return {esPendiente:true};
+  if(['APROBADA','ACREDITADA','PAGADA'].includes(e)) return {esAprobada:true};
+  return {};
 }
 
-// ── Estado del inicio: bloqueo, "Ir al juego", o formulario normal ────────────
 async function cargarMisSolicitudes(){
   if(!usuario?.usuario) return;
-
   const { data } = await sb.from('solicitudes').select('*')
-    .eq('usuario', usuario.usuario).eq('pc_codigo', PC)
-    .eq('tipo','CARGA')
-    .order('created_at',{ascending:false}).limit(5);
+    .eq('usuario', usuario.usuario).eq('pc_codigo', PC).eq('tipo','CARGA')
+    .order('created_at',{ascending:false}).limit(3);
 
-  const statusCard   = document.getElementById('cargaStatusCard');
-  const formCard     = document.getElementById('cargaFormCard');
-  const paso1        = document.getElementById('cargaPaso1');
-  const paso2        = document.getElementById('cargaPaso2');
-  const billetera    = document.getElementById('cargaBilletera');
+  const statusCard = document.getElementById('cargaStatusCard');
+  const formCard   = document.getElementById('cargaFormCard');
+  if(!statusCard || !formCard) return;
 
-  if(!data || !data.length){
-    statusCard.classList.add('hidden');
-    formCard.classList.remove('hidden');
-    paso1.style.display=''; paso2.style.display=''; billetera.style.display='';
-    return;
-  }
+  if(!data || !data.length){ statusCard.classList.add('hidden'); formCard.classList.remove('hidden'); return; }
 
   const ultima = data[0];
-  const est    = estadoSolicitud(ultima.estado);
+  const est = estadoSolicitud(ultima.estado);
 
   if(est.esPendiente){
-    // ── Hay una carga en proceso → ocultar formulario, mostrar estado ──
-    statusCard.innerHTML = `
-      <div style="background:linear-gradient(135deg,#3d2d00,#6e4e00);border-radius:18px;padding:22px;margin-bottom:14px;text-align:center">
-        <div style="font-size:32px;margin-bottom:8px">⏳</div>
-        <div style="font-weight:900;font-size:18px;margin-bottom:6px">Tu solicitud está en proceso</div>
-        <div style="font-size:13px;opacity:.85;margin-bottom:16px">Estamos procesando tu carga de <b>$${Number(ultima.monto||0).toLocaleString('es-AR')}</b>.<br>Te avisamos por acá cuando esté lista.</div>
-        <div style="font-size:11px;color:rgba(255,255,255,.6)">${formatFechaCorta(ultima.created_at)}</div>
-      </div>
-      <div class="alert alert-warn" style="font-size:13px;text-align:center">No podés enviar otra solicitud mientras esta está pendiente.</div>
-    `;
-    statusCard.classList.remove('hidden');
-    formCard.classList.add('hidden');
-    paso1.style.display='none'; paso2.style.display='none'; billetera.style.display='none';
-
-  } else if(['APROBADA','ACREDITADA','PAGADA'].includes(ultima.estado?.toUpperCase())){
-    // Si el usuario presionó "nueva carga" en los últimos 35s, no revertir
-    if(_nuevaCargaForzada){
-      statusCard.classList.add('hidden');
-      formCard.classList.remove('hidden');
-      paso1.style.display=''; paso2.style.display=''; billetera.style.display='';
-      return;
-    }
-    // ── Carga aprobada → mostrar "Ir al juego" ──
-    statusCard.innerHTML = `
-      <div style="background:linear-gradient(135deg,#0a3d1a,#238636);border-radius:18px;padding:22px;margin-bottom:14px;text-align:center">
-        <div style="font-size:36px;margin-bottom:8px">🎉</div>
-        <div style="font-weight:900;font-size:18px;margin-bottom:6px">¡Tu carga fue acreditada!</div>
-        <div style="font-size:13px;opacity:.9;margin-bottom:18px"><b>$${Number(ultima.monto||0).toLocaleString('es-AR')}</b> ya están disponibles en tu cuenta.</div>
-        <a href="https://www.bet-300.pw/" target="_blank" style="
-          display:block;background:#12b76a;color:#fff;border-radius:14px;padding:16px;
-          font-size:17px;font-weight:900;text-decoration:none;letter-spacing:.5px;
-          box-shadow:0 4px 20px rgba(18,183,106,.4);animation:pulse 1.8s infinite;">
-          🎮 Ir al juego →
-        </a>
-      </div>
-      <div style="text-align:center;margin-bottom:14px">
-        <button onclick="nuevaCarga()" style="background:none;border:1px solid var(--line);color:var(--muted);border-radius:12px;padding:10px 20px;font-size:13px;cursor:pointer">
-          + Hacer una nueva carga
-        </button>
-      </div>
-    `;
-    statusCard.classList.remove('hidden');
-    formCard.classList.add('hidden');
-    paso1.style.display='none'; paso2.style.display='none'; billetera.style.display='none';
-
+    statusCard.innerHTML = `<div class="status-box" style="background:linear-gradient(135deg,#3d2d00,#6e4e00)">
+      <div style="font-size:30px;margin-bottom:8px">⏳</div>
+      <div style="font-weight:900;font-size:17px;margin-bottom:6px">Tu carga está en proceso</div>
+      <div style="font-size:13px;opacity:.85">Procesando <b>${nmonto(ultima.monto)}</b>.<br>Te avisamos por el chat cuando esté lista.</div>
+    </div>
+    <div class="alert alert-warn" style="text-align:center">No envíes otra carga mientras esta está pendiente.</div>`;
+    statusCard.classList.remove('hidden'); formCard.classList.add('hidden');
+  } else if(est.esAprobada && !_nuevaCargaForzada){
+    statusCard.innerHTML = `<div class="status-box" style="background:linear-gradient(135deg,#0a3d1a,#238636)">
+      <div style="font-size:34px;margin-bottom:8px">🎉</div>
+      <div style="font-weight:900;font-size:17px;margin-bottom:6px">¡Carga acreditada!</div>
+      <div style="font-size:13px;opacity:.9;margin-bottom:16px"><b>${nmonto(ultima.monto)}</b> ya están en tu cuenta.</div>
+      <button class="btn btn-green" style="margin-top:0" onclick="cerrarPanel()">🎮 Volver a jugar</button>
+    </div>
+    <button class="btn btn-ghost" onclick="nuevaCarga()">+ Hacer otra carga</button>`;
+    statusCard.classList.remove('hidden'); formCard.classList.add('hidden');
   } else {
-    // ── Rechazada u otro → mostrar formulario normalmente ──
-    statusCard.classList.add('hidden');
-    formCard.classList.remove('hidden');
-    paso1.style.display=''; paso2.style.display=''; billetera.style.display='';
+    statusCard.classList.add('hidden'); formCard.classList.remove('hidden');
   }
 }
-
-let _nuevaCargaForzada = false;
-let _nuevaCargaTimer   = null;
 
 function nuevaCarga(){
   _nuevaCargaForzada = true;
   clearTimeout(_nuevaCargaTimer);
-  _nuevaCargaTimer = setTimeout(()=>{ _nuevaCargaForzada = false; }, 35000);
-
-  const statusCard = document.getElementById('cargaStatusCard');
-  const formCard   = document.getElementById('cargaFormCard');
-  const paso1      = document.getElementById('cargaPaso1');
-  const paso2      = document.getElementById('cargaPaso2');
-  const billetera  = document.getElementById('cargaBilletera');
-  statusCard.classList.add('hidden');
-  formCard.classList.remove('hidden');
-  paso1.style.display=''; paso2.style.display=''; billetera.style.display='';
-  document.getElementById('cargaMonto').value='';
-  msg('cargaMsg','');
+  _nuevaCargaTimer = setTimeout(()=>{ _nuevaCargaForzada=false; }, 35000);
+  document.getElementById('cargaStatusCard').classList.add('hidden');
+  document.getElementById('cargaFormCard').classList.remove('hidden');
+  setVal('cargaMonto',''); msg('cargaMsg','');
 }
 
-// ── Historial completo ────────────────────────────────────────────────────────
-async function cargarHistorial(){
-  if(!usuario?.usuario) return;
-  document.getElementById('historialLista').innerHTML =
-    '<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px 0">Cargando...</div>';
+// ════════════════════════════════════════════════════════════════════════════
+// BILLETERA (muestra el CBU para transferir)
+// ════════════════════════════════════════════════════════════════════════════
+async function cargarBilletera(){
+  const { data } = await sb.from('billeteras').select('*')
+    .eq('pc_codigo', PC).eq('activa', true).order('seleccionada_manual',{ascending:false}).limit(1);
+  billeteraActiva = (data && data.length) ? data[0] : null;
 
-  const { data } = await sb.from('solicitudes').select('*')
-    .eq('usuario', usuario.usuario).eq('pc_codigo', PC)
-    .order('created_at',{ascending:false}).limit(50);
+  if(!billeteraActiva){ setHtml('cargaBilletera','<div class="alert alert-warn">Sin billetera activa. Escribinos por el chat.</div>'); return; }
 
-  if(!data || !data.length){
-    document.getElementById('historialLista').innerHTML =
-      '<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px 0">Sin transacciones todavía.</div>';
-    return;
-  }
-
-  const html = data.map(s=>{
-    const e = estadoSolicitud(s.estado);
-    const monto = s.monto ? `$${Number(s.monto).toLocaleString('es-AR')}` : '';
-    const tipoLabel = s.tipo==='CAMBIO_CLAVE'?'Cambio de clave':(s.tipo||'');
-    return `<div class="card" style="padding:14px;margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
-        <div>
-          <div style="font-weight:700;font-size:15px">${tipoIcon(s.tipo)} ${tipoLabel} ${monto?`<span style="color:var(--muted)">· ${monto}</span>`:''}</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:4px">${formatFechaCorta(s.created_at)}</div>
-          ${s.billetera_nombre?`<div style="font-size:12px;color:var(--muted);margin-top:2px">💳 ${escHtml(s.billetera_nombre)}</div>`:''}
-        </div>
-        <span style="padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700;background:${e.bg};color:${e.fg};white-space:nowrap;flex-shrink:0">${e.label}</span>
-      </div>
-      ${s.tipo==='CARGA'&&['APROBADA','ACREDITADA'].includes(s.estado?.toUpperCase())?`
-        <div style="margin-top:12px">
-          <a href="https://www.bet-300.pw/" target="_blank" style="display:inline-block;background:#12b76a;color:#fff;border-radius:10px;padding:9px 18px;font-size:13px;font-weight:700;text-decoration:none">🎮 Ir al juego</a>
-        </div>`:''
-      }
-    </div>`;
-  }).join('');
-
-  document.getElementById('historialLista').innerHTML = html;
+  const b = billeteraActiva;
+  const minimo = b.monto_minimo ? `<div style="color:#d29922;font-size:13px;margin-top:8px;font-weight:700">⚠ Mínimo: ${nmonto(b.monto_minimo)}</div>` : '';
+  setHtml('cargaBilletera', `
+    <div style="background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:14px">
+      <div style="font-size:12px;color:var(--muted);font-weight:700;margin-bottom:8px">💳 Transferí a estos datos</div>
+      ${b.cbu_cvu ? `<div style="margin-bottom:10px">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:3px">${escHtml(b.tipo||'CBU/CVU/Alias')}</div>
+        <div style="display:flex;align-items:center;gap:8px;justify-content:space-between">
+          <span style="font-size:15px;font-weight:800;word-break:break-all">${escHtml(b.cbu_cvu)}</span>
+          <button onclick="copiar('${escHtml(b.cbu_cvu)}',this,'Copiar')" style="background:var(--green);border:none;color:#fff;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">Copiar</button>
+        </div></div>`:''}
+      ${b.titular ? `<div style="font-size:13px;margin-bottom:4px"><span style="color:var(--muted)">Titular: </span><b>${escHtml(b.titular)}</b></div>`:''}
+      ${b.banco ? `<div style="font-size:13px"><span style="color:var(--muted)">Banco: </span>${escHtml(b.banco)}</div>`:''}
+      ${minimo}
+    </div>`);
+  if(b.monto_minimo){ setHtml('cargaMontoHint','Monto mínimo: '+nmonto(b.monto_minimo)); }
 }
 
-function mostrarSeccion(sec){
-  ['inicio','retiro','historial','chat','perfil'].forEach(s=>{
-    document.getElementById('sec'+s.charAt(0).toUpperCase()+s.slice(1))?.classList.add('hidden');
-    document.getElementById('nav'+s.charAt(0).toUpperCase()+s.slice(1))?.classList.remove('active');
+// ════════════════════════════════════════════════════════════════════════════
+// CARGA
+// ════════════════════════════════════════════════════════════════════════════
+async function enviarSolicitudCarga(){
+  const monto = Number(document.getElementById('cargaMonto')?.value || 0);
+  const minimo = billeteraActiva?.monto_minimo || 0;
+  if(!monto || monto <= 0){ msg('cargaMsg','Ingresá el monto a cargar.','err'); return; }
+  if(minimo && monto < minimo){ msg('cargaMsg','El monto mínimo es '+nmonto(minimo)+'.','err'); return; }
+
+  const { data: enCola } = await sb.from('solicitudes').select('id')
+    .eq('usuario', usuario.usuario).eq('pc_codigo', PC).eq('tipo','CARGA')
+    .in('estado',['PENDIENTE','NUEVA','EN_REVISION','APROBADA_MANUAL','APROBADA_MANUAL_OK']).limit(1);
+  if(enCola && enCola.length){ msg('cargaMsg','⏳ Ya tenés una carga en proceso.','warn'); return; }
+
+  msg('cargaMsg','<span class="spinner"></span>Enviando...','info');
+  const { error } = await sb.from('solicitudes').insert({
+    tipo:'CARGA', usuario:usuario.usuario, nombre_completo:usuario.nombre, telefono:usuario.telefono,
+    pc_codigo:PC, monto, estado:'PENDIENTE',
+    billetera_nombre: billeteraActiva?.nombre_visible || '', billetera_id: billeteraActiva?.id || null
   });
-  show('sec'+sec.charAt(0).toUpperCase()+sec.slice(1));
-  document.getElementById('nav'+sec.charAt(0).toUpperCase()+sec.slice(1))?.classList.add('active');
-  if(sec==='chat'){ document.getElementById('navChatBadge')?.classList.add('hidden'); scrollChat(); }
-  if(sec==='perfil') rellenarFormPerfil();
-  if(sec==='historial') cargarHistorial();
-  if(sec==='retiro') cargarSeccionRetiro();
+  if(error){ msg('cargaMsg','Error al enviar. Probá de nuevo.','err'); return; }
+
+  setVal('cargaMonto','');
+  cargarMisSolicitudes();
 }
 
-// ── Perfil ────────────────────────────────────────────────────────────────────
-function renderResumenPerfil(){
-  const rows = [
-    ['Usuario', usuario.usuario],
-    ['Nombre',  usuario.nombre],
-    ['Teléfono',usuario.telefono],
-    ['DNI',     usuario.dni || '—'],
-    ['Nombre en transferencia', usuario.nombre_transferencia || '—'],
-  ];
-  setHtml('resumenPerfil', rows.map(([l,v])=>`
-    <div class="profile-row">
-      <span class="label">${l}</span>
-      <span>${typeof v==='string'?escHtml(v):v}</span>
-    </div>`).join(''));
-}
-
-function rellenarFormPerfil(){
-  setVal('editUsuario', usuario.usuario);
-  setVal('editNombre', usuario.nombre);
-  setVal('editTelefono', usuario.telefono);
-  setVal('editDni', usuario.dni || '');
-  setVal('editNombreTransferencia', usuario.nombre_transferencia || '');
-  setVal('editCbuAlias', usuario.cbu_alias || '');
-}
-
-async function guardarPerfil(){
-  const nombre = val('editNombre');
-  const telefono = val('editTelefono').replace(/\D/g,'');
-  if(!nombre){ msg('editMsg','Ingresá tu nombre.','err'); return; }
-  if(!telefono || telefono.length < 10){ msg('editMsg','Número de teléfono inválido.','err'); return; }
-
-  msg('editMsg','<span class="spinner"></span>Guardando...','info');
-
-  const cambios = {
-    nombre,
-    telefono,
-    dni: val('editDni') || null,
-    nombre_transferencia: val('editNombreTransferencia') || null,
-    cbu_alias: val('editCbuAlias') || null,
-    updated_at: new Date().toISOString()
-  };
-
-  const { data, error } = await sb.from('usuarios').update(cambios).eq('id', usuario.id).select().single();
-  if(error){ msg('editMsg','Error al guardar. Intentá de nuevo.','err'); return; }
-
-  usuario = data;
-  localStorage.setItem('nodo_usuario_landing', JSON.stringify(usuario));
-  renderResumenPerfil();
-  msg('editMsg','Perfil actualizado correctamente.','ok');
-  setTimeout(()=>msg('editMsg',''), 3000);
-}
-
-// ── Sección Retiro ────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+// RETIRO
+// ════════════════════════════════════════════════════════════════════════════
 async function cargarSeccionRetiro(){
-  const datosCompletos = usuario.dni && usuario.nombre_transferencia && usuario.cbu_alias;
-
   hide('retiroDatosSetup'); hide('retiroFormCard'); hide('retiroStatusCard');
+  const datosCompletos = usuario.dni && usuario.nombre_transferencia && usuario.cbu_alias;
+  if(!datosCompletos){ show('retiroDatosSetup'); return; }
 
-  if(!datosCompletos){
-    show('retiroDatosSetup');
-    return;
-  }
-
-  // Verifica si hay un retiro pendiente
   const { data: pendiente } = await sb.from('solicitudes').select('id,estado,monto,created_at')
     .eq('usuario', usuario.usuario).eq('pc_codigo', PC).eq('tipo','RETIRO')
-    .in('estado',['PENDIENTE','NUEVA','EN_REVISION'])
-    .limit(1);
+    .in('estado',['PENDIENTE','NUEVA','EN_REVISION']).limit(1);
 
   if(pendiente && pendiente.length){
     const p = pendiente[0];
-    document.getElementById('retiroStatusCard').innerHTML = `
-      <div style="background:linear-gradient(135deg,#3d2d00,#6e4e00);border-radius:18px;padding:22px;margin-bottom:14px;text-align:center">
-        <div style="font-size:32px;margin-bottom:8px">⏳</div>
-        <div style="font-weight:900;font-size:18px;margin-bottom:6px">Retiro en proceso</div>
-        <div style="font-size:13px;opacity:.85">Solicitud de <b>$${Number(p.monto||0).toLocaleString('es-AR')}</b> siendo procesada.<br>Te avisamos cuando se transfiera.</div>
-        <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:10px">${formatFechaCorta(p.created_at)}</div>
-      </div>
-      <div class="alert alert-warn" style="text-align:center;font-size:13px">No podés enviar otro retiro mientras este está pendiente.</div>
-    `;
-    show('retiroStatusCard');
-    return;
+    setHtml('retiroStatusCard', `<div class="status-box" style="background:linear-gradient(135deg,#3d2d00,#6e4e00)">
+      <div style="font-size:30px;margin-bottom:8px">⏳</div>
+      <div style="font-weight:900;font-size:17px;margin-bottom:6px">Retiro en proceso</div>
+      <div style="font-size:13px;opacity:.85">Procesando <b>${nmonto(p.monto)}</b>.<br>Te avisamos cuando se transfiera.</div>
+    </div><div class="alert alert-warn" style="text-align:center">No envíes otro retiro mientras este está pendiente.</div>`);
+    show('retiroStatusCard'); return;
   }
 
-  // Muestra el formulario con los datos readonly
-  const resumen = document.getElementById('retiroDatosResumen');
-  resumen.innerHTML = `
-    <div style="display:flex;flex-direction:column;gap:8px">
-      <div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:8px">
-        <span style="color:var(--muted);font-size:12px">DNI</span>
-        <b>${escHtml(usuario.dni)}</b>
-      </div>
-      <div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:8px">
-        <span style="color:var(--muted);font-size:12px">Nombre en transferencia</span>
-        <b style="text-align:right;max-width:60%">${escHtml(usuario.nombre_transferencia)}</b>
-      </div>
-      <div style="display:flex;justify-content:space-between">
-        <span style="color:var(--muted);font-size:12px">CBU / CVU / Alias</span>
-        <b style="text-align:right;max-width:60%;word-break:break-all">${escHtml(usuario.cbu_alias)}</b>
-      </div>
-    </div>
-  `;
-  show('retiroFormCard');
-  msg('retiroFormMsg','');
+  setHtml('retiroDatosResumen', `<div style="background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:13px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="color:var(--muted)">DNI</span><b>${escHtml(usuario.dni)}</b></div>
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="color:var(--muted)">Titular</span><b style="text-align:right;max-width:60%">${escHtml(usuario.nombre_transferencia)}</b></div>
+    <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">CBU/Alias</span><b style="text-align:right;max-width:60%;word-break:break-all">${escHtml(usuario.cbu_alias)}</b></div>
+  </div>`);
+  show('retiroFormCard'); msg('retiroFormMsg','');
+}
+
+function editarDatosRetiro(){
+  setVal('setupDni', usuario.dni||''); setVal('setupNombreTransf', usuario.nombre_transferencia||''); setVal('setupCbuAlias', usuario.cbu_alias||'');
+  hide('retiroFormCard'); hide('retiroStatusCard'); show('retiroDatosSetup');
 }
 
 async function guardarDatosRetiro(){
-  const dni              = (document.getElementById('setupDni')?.value||'').trim();
-  const nombreTransf     = (document.getElementById('setupNombreTransf')?.value||'').trim();
-  const cbuAlias         = (document.getElementById('setupCbuAlias')?.value||'').trim();
-
-  if(!dni)           { msg('setupRetiroMsg','Ingresá tu DNI.','err'); return; }
-  if(!nombreTransf)  { msg('setupRetiroMsg','Ingresá el nombre en transferencia.','err'); return; }
-  if(!cbuAlias)      { msg('setupRetiroMsg','Ingresá tu CBU, CVU o alias.','err'); return; }
-
+  const dni = val('setupDni'), nombreTransf = val('setupNombreTransf'), cbuAlias = val('setupCbuAlias');
+  if(!dni){ msg('setupRetiroMsg','Ingresá tu DNI.','err'); return; }
+  if(!nombreTransf){ msg('setupRetiroMsg','Ingresá el nombre en transferencia.','err'); return; }
+  if(!cbuAlias){ msg('setupRetiroMsg','Ingresá tu CBU/CVU/alias.','err'); return; }
   msg('setupRetiroMsg','<span class="spinner"></span>Guardando...','info');
 
   const { data, error } = await sb.from('usuarios').update({
-    dni, nombre_transferencia: nombreTransf, cbu_alias: cbuAlias,
-    updated_at: new Date().toISOString()
+    dni, nombre_transferencia:nombreTransf, cbu_alias:cbuAlias, updated_at:new Date().toISOString()
   }).eq('id', usuario.id).select().single();
-
-  if(error){ msg('setupRetiroMsg','Error al guardar. Intentá de nuevo.','err'); return; }
-
-  usuario = data;
-  localStorage.setItem('nodo_usuario_landing', JSON.stringify(usuario));
+  if(error){ msg('setupRetiroMsg','Error al guardar.','err'); return; }
+  usuario = data; localStorage.setItem('nodo_usuario_casino', JSON.stringify(usuario));
   cargarSeccionRetiro();
 }
 
@@ -1017,223 +618,43 @@ async function enviarSolicitudRetiro(){
   const monto = Number(document.getElementById('retiroMonto')?.value || 0);
   if(!monto || monto <= 0){ msg('retiroFormMsg','Ingresá el monto a retirar.','err'); return; }
 
-  // Validar política de 24hs
-  msg('retiroFormMsg','<span class="spinner"></span>Verificando si podés retirar...','info');
-  
-  const hace24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const { data: ultimoRetiro } = await sb.from('solicitudes').select('id, created_at, monto, estado')
+  msg('retiroFormMsg','<span class="spinner"></span>Verificando...','info');
+  const hace24h = new Date(Date.now() - 24*60*60*1000).toISOString();
+  const { data: ultimoRetiro } = await sb.from('solicitudes').select('id,created_at')
     .eq('usuario', usuario.usuario).eq('tipo','RETIRO')
-    .in('estado',['PAGADA','APROBADA','ACREDITADA'])
-    .gte('created_at', hace24h)
-    .order('created_at', { ascending: false })
-    .limit(1);
-
+    .in('estado',['PAGADA','APROBADA','ACREDITADA']).gte('created_at', hace24h)
+    .order('created_at',{ascending:false}).limit(1);
   if(ultimoRetiro && ultimoRetiro.length){
     const hace = Date.now() - new Date(ultimoRetiro[0].created_at).getTime();
-    const horasRestantes = Math.ceil((24 * 60 * 60 * 1000 - hace) / (60 * 60 * 1000));
-    msg('retiroFormMsg',`⛔ Ya realizaste un retiro hace ${Math.floor(hace / (60 * 60 * 1000))}hs. Podés volver a retirar en ${horasRestantes}hs.`,'err');
-    return;
+    const horas = Math.ceil((24*60*60*1000 - hace)/(60*60*1000));
+    msg('retiroFormMsg','⛔ Ya retiraste en las últimas 24hs. Podés volver en '+horas+'hs.','err'); return;
   }
-
-  // Bloqueo doble: no se puede enviar si ya hay uno pendiente
   const { data: enCola } = await sb.from('solicitudes').select('id')
     .eq('usuario', usuario.usuario).eq('pc_codigo', PC).eq('tipo','RETIRO')
-    .in('estado',['PENDIENTE','NUEVA','EN_REVISION'])
-    .limit(1);
-  if(enCola && enCola.length){
-    msg('retiroFormMsg','⏳ Ya tenés un retiro en proceso.','warn');
-    return;
-  }
+    .in('estado',['PENDIENTE','NUEVA','EN_REVISION']).limit(1);
+  if(enCola && enCola.length){ msg('retiroFormMsg','⏳ Ya tenés un retiro en proceso.','warn'); return; }
 
-  msg('retiroFormMsg','<span class="spinner"></span>Enviando solicitud...','info');
-
+  msg('retiroFormMsg','<span class="spinner"></span>Enviando...','info');
   const { error } = await sb.from('solicitudes').insert({
-    tipo:            'RETIRO',
-    usuario:         usuario.usuario,
-    nombre_completo: usuario.nombre,
-    telefono:        usuario.telefono,
-    pc_codigo:       PC,
-    monto,
-    estado:          'PENDIENTE',
-    // Guardamos los datos bancarios en el nombre de billetera para que el operador los vea
-    billetera_nombre: `DNI: ${usuario.dni} · ${usuario.nombre_transferencia} · ${usuario.cbu_alias}`
+    tipo:'RETIRO', usuario:usuario.usuario, nombre_completo:usuario.nombre, telefono:usuario.telefono,
+    pc_codigo:PC, monto, estado:'PENDIENTE',
+    billetera_nombre:`DNI: ${usuario.dni} · ${usuario.nombre_transferencia} · ${usuario.cbu_alias}`
   });
-
-  if(error){ msg('retiroFormMsg','Error al enviar. Intentá de nuevo.','err'); return; }
-
-  document.getElementById('retiroMonto').value = '';
-  msg('retiroFormMsg','','');
-  cargarSeccionRetiro(); // Recarga para mostrar estado pendiente
+  if(error){ msg('retiroFormMsg','Error al enviar.','err'); return; }
+  setVal('retiroMonto','');
+  cargarSeccionRetiro();
 }
 
-async function solicitarResetClave(){
-  const claveInput = (document.getElementById('resetClaveNueva')?.value || '').trim();
-  const claveNueva = claveInput || '12345a';
-
-  if(claveNueva.length < 6){ msg('resetClaveMsg','La clave debe tener al menos 6 caracteres.','err'); return; }
-  if(!/^[a-zA-Z0-9]+$/.test(claveNueva)){ msg('resetClaveMsg','Solo letras y números, sin espacios ni símbolos.','err'); return; }
-
-  msg('resetClaveMsg','<span class="spinner"></span>Enviando solicitud...','info');
-
-  const { error } = await sb.from('solicitudes').insert({
-    tipo:            'CAMBIO_CLAVE',
-    usuario:         usuario.usuario,
-    nombre_completo: usuario.nombre,
-    telefono:        usuario.telefono,
-    pc_codigo:       PC,
-    estado:          'PENDIENTE',
-    password_nuevo:  claveNueva
-  });
-
-  if(error){ msg('resetClaveMsg','Error al enviar. Intentá de nuevo.','err'); return; }
-
-  msg('resetClaveMsg','✅ Solicitud enviada. Un operador procesará tu cambio en breve.','ok');
-  document.getElementById('resetClaveNueva').value = '';
-  setTimeout(()=>msg('resetClaveMsg',''), 8000);
-}
-
-function cerrarSesion(){
-  clearInterval(chatPolling);
-  localStorage.removeItem('nodo_usuario_landing');
-  usuario = null; chatId = null; chatMsgs = [];
-  hide('viewApp');
-  setVal('inUsuario','');
-  msg('loginMsg','');
-  show('viewLogin');
-}
-
-// ── Billetera principal (la seleccionada_manual=true de esta PC) ──────────────
-let billeteraActiva = null;
-
-async function cargarBilletera(){
-  // Busca la seleccionada_manual primero, si no hay toma la primera activa
-  const { data } = await sb.from('billeteras').select('*')
-    .eq('pc_codigo', PC).eq('activa', true).order('seleccionada_manual', {ascending:false}).limit(1);
-
-  billeteraActiva = (data && data.length) ? data[0] : null;
-
-  if(!billeteraActiva){
-    setHtml('cargaBilletera','<div style="color:var(--muted);font-size:13px">Sin billetera activa configurada. Contactá al soporte.</div>');
-    return;
-  }
-
-  const b = billeteraActiva;
-  const minimo = b.monto_minimo ? `<div style="color:#d29922;font-size:13px;margin-top:10px;font-weight:700">⚠ Monto mínimo: $${Number(b.monto_minimo).toLocaleString('es-AR')}</div>` : '';
-
-  setHtml('cargaBilletera', `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-      <div style="font-size:13px;color:var(--muted);font-weight:700">💳 Datos para transferir</div>
-      ${b.seleccionada_manual?'<span class="badge badge-green">Principal</span>':''}
-    </div>
-
-    ${b.cbu_cvu ? `
-    <div style="margin-bottom:14px">
-      <div style="font-size:12px;color:var(--muted);margin-bottom:4px">${escHtml(b.tipo||'CBU/CVU')}</div>
-      <div style="display:flex;align-items:center;gap:10px;justify-content:space-between">
-        <span style="font-size:15px;font-weight:700;letter-spacing:.5px;word-break:break-all">${escHtml(b.cbu_cvu)}</span>
-        <button onclick="copiar('${escHtml(b.cbu_cvu)}')" style="background:#21262d;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer;white-space:nowrap;flex-shrink:0">Copiar</button>
-      </div>
-    </div>` : ''}
-
-    ${b.titular ? `<div style="margin-bottom:6px"><span style="color:var(--muted);font-size:12px">Titular: </span><b>${escHtml(b.titular)}</b></div>` : ''}
-    ${b.banco   ? `<div style="margin-bottom:6px"><span style="color:var(--muted);font-size:12px">Banco: </span>${escHtml(b.banco)}</div>` : ''}
-    ${minimo}
-
-    <div style="font-size:12px;color:var(--muted);margin-top:12px">↓ Continúa abajo para enviar tu solicitud</div>
-  `);
-
-  // Hint de monto mínimo en el campo
-  if(b.monto_minimo){
-    setHtml('cargaMontoHint', `Monto mínimo: $${Number(b.monto_minimo).toLocaleString('es-AR')}`);
-    document.getElementById('cargaMonto').min = b.monto_minimo;
-    document.getElementById('cargaMonto').placeholder = `Mínimo $${Number(b.monto_minimo).toLocaleString('es-AR')}`;
-  }
-}
-
-function copiar(texto){
-  navigator.clipboard?.writeText(texto).then(()=>mostrarToast('CBU copiado ✓')).catch(()=>{});
-}
-
-function copiarBil(texto, btn, label){
-  navigator.clipboard?.writeText(texto)
-    .then(()=>{ if(btn){ btn.textContent='✓ Copiado'; setTimeout(()=>{ btn.textContent=label; },2200); } mostrarToast(label+' copiado ✓'); })
-    .catch(()=>{ if(btn){ btn.select?.(); } });
-}
-
-function mostrarToast(msj){
-  const t = document.createElement('div');
-  t.textContent = msj;
-  Object.assign(t.style, {position:'fixed',bottom:'80px',left:'50%',transform:'translateX(-50%)',
-    background:'#238636',color:'#fff',padding:'10px 20px',borderRadius:'12px',
-    fontWeight:'700',fontSize:'14px',zIndex:'9999',boxShadow:'0 4px 20px rgba(0,0,0,.4)'});
-  document.body.appendChild(t);
-  setTimeout(()=>t.remove(), 2200);
-}
-
-// ── Enviar solicitud de carga ─────────────────────────────────────────────────
-async function enviarSolicitudCarga(){
-  const monto = Number(document.getElementById('cargaMonto')?.value || 0);
-  const minimo = billeteraActiva?.monto_minimo || 0;
-
-  if(!monto || monto <= 0){ msg('cargaMsg','Ingresá el monto a cargar.','err'); return; }
-  if(minimo && monto < minimo){
-    msg('cargaMsg', `El monto mínimo es $${Number(minimo).toLocaleString('es-AR')}.`, 'err');
-    return;
-  }
-
-  // Bloqueo: no se puede enviar si ya hay una carga en proceso
-  const { data: enCola } = await sb.from('solicitudes').select('id,estado')
-    .eq('usuario', usuario.usuario).eq('pc_codigo', PC).eq('tipo','CARGA')
-    .in('estado',['PENDIENTE','NUEVA','EN_REVISION','APROBADA_MANUAL','APROBADA_MANUAL_OK'])
-    .limit(1);
-  if(enCola && enCola.length){
-    msg('cargaMsg','⏳ Ya tenés una solicitud en proceso. Esperá a que se resuelva antes de enviar otra.','warn');
-    return;
-  }
-
-  msg('cargaMsg','<span class="spinner"></span>Enviando solicitud...','info');
-
-  const { error } = await sb.from('solicitudes').insert({
-    tipo:            'CARGA',
-    usuario:         usuario.usuario,
-    nombre_completo: usuario.nombre,
-    telefono:        usuario.telefono,
-    pc_codigo:       PC,
-    monto,
-    estado:          'PENDIENTE',
-    billetera_nombre: billeteraActiva?.nombre_visible || '',
-    billetera_id:    billeteraActiva?.id || null
-  });
-
-  if(error){
-    msg('cargaMsg','Error al enviar la solicitud. Intentá de nuevo.','err');
-    return;
-  }
-
-  msg('cargaMsg','✅ Solicitud enviada. Un operador la procesará en breve. Si tenés el comprobante, mandalo por el chat.','ok');
-  // Limpiar los inputs para la siguiente carga
-  document.getElementById('cargaMonto').value = '';
-  document.getElementById('cargaUsuario').value = '';
-  document.getElementById('cargaNombre').value = '';
-  setTimeout(()=>msg('cargaMsg',''), 8000);
-}
-
-// ── Chat ──────────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+// CHAT (con mensajes del operador / NODO)
+// ════════════════════════════════════════════════════════════════════════════
 async function obtenerOCrearChat(){
-  // Busca un chat existente de este usuario en esta PC
   const { data } = await sb.from('chats').select('*')
     .eq('usuario', usuario.usuario).eq('pc_codigo', PC).order('created_at',{ascending:false}).limit(1);
-
-  if(data && data.length){
-    chatId = data[0].id;
-  } else {
-    // Crea un chat nuevo
+  if(data && data.length){ chatId = data[0].id; }
+  else {
     const { data: nuevo } = await sb.from('chats').insert({
-      usuario: usuario.usuario,
-      nombre_completo: usuario.nombre,
-      telefono: usuario.telefono,
-      pc_codigo: PC,
-      sin_leer: 0
+      usuario:usuario.usuario, nombre_completo:usuario.nombre, telefono:usuario.telefono, pc_codigo:PC, sin_leer:0
     }).select().single();
     chatId = nuevo?.id || null;
   }
@@ -1241,11 +662,8 @@ async function obtenerOCrearChat(){
 
 async function cargarMensajes(silencioso=false){
   if(!chatId) return;
-  const { data } = await sb.from('mensajes_chat').select('*')
-    .eq('chat_id', chatId).order('created_at',{ascending:true});
-
+  const { data } = await sb.from('mensajes_chat').select('*').eq('chat_id', chatId).order('created_at',{ascending:true});
   if(!data) return;
-
   const prevLen = chatMsgs.length;
   chatMsgs = data;
 
@@ -1253,19 +671,20 @@ async function cargarMensajes(silencioso=false){
     renderMensajes();
     if(silencioso && data.length > prevLen){
       const nuevos = data.slice(prevLen).filter(m => m.tipo_emisor === 'OPERADOR');
-      const badge  = document.getElementById('navChatBadge');
-      const secChat = document.getElementById('secChat');
-      if(!secChat.classList.contains('hidden')) scrollChat();
-      else { badge.classList.remove('hidden'); badge.textContent = data.length - prevLen; }
-      if(nuevos.length) mostrarChatBubble(nuevos[nuevos.length - 1].mensaje || '');
+      const enChat = tabActual==='chat' && !document.getElementById('panel').classList.contains('hidden');
+      if(enChat) scrollChat();
+      else {
+        const badge = document.getElementById('chatBadge');
+        if(badge){ badge.classList.remove('hidden'); badge.textContent = data.length - prevLen; }
+      }
+      // Burbuja flotante con el último mensaje del operador (notificación de NODO)
+      if(nuevos.length) mostrarOpBubble(nuevos[nuevos.length-1].mensaje || '');
     }
   }
-
-  // Marca como leído si el chat está abierto
-  const secChat = document.getElementById('secChat');
-  if(!secChat.classList.contains('hidden') && chatId){
-    await sb.from('mensajes_chat').update({leido:true})
-      .eq('chat_id', chatId).eq('tipo_emisor','OPERADOR').eq('leido',false);
+  // Marcar leído si el chat está abierto
+  const enChat = tabActual==='chat' && !document.getElementById('panel').classList.contains('hidden');
+  if(enChat && chatId){
+    await sb.from('mensajes_chat').update({leido:true}).eq('chat_id',chatId).eq('tipo_emisor','OPERADOR').eq('leido',false);
     await sb.from('chats').update({sin_leer:0}).eq('id',chatId);
   }
 }
@@ -1276,164 +695,85 @@ function renderBilleteraCard(texto){
   let html = '<div class="bil-card"><div class="bil-nombre">💳 '+escHtml(nombre)+'</div>';
   let footer = '';
   lines.slice(1).forEach(function(line){
-    line = line.trim();
-    if(!line) return;
-    if(/^Alias:/i.test(line)){
-      const v = line.replace(/^Alias:\s*/i,'').trim();
-      html += '<div class="bil-field"><span class="bil-label">Alias</span><span class="bil-val">'+escHtml(v)+'</span>'
-        +'<button class="bil-copy" data-val="'+escHtml(v)+'" onclick="copiarBil(this.dataset.val,this,\'Copiar alias\')">Copiar alias</button></div>';
-    } else if(/^CBU\/CVU:/i.test(line)){
-      const v = line.replace(/^CBU\/CVU:\s*/i,'').trim();
-      html += '<div class="bil-field"><span class="bil-label">CBU / CVU</span><span class="bil-val" style="font-size:12px">'+escHtml(v)+'</span>'
-        +'<button class="bil-copy" data-val="'+escHtml(v)+'" onclick="copiarBil(this.dataset.val,this,\'Copiar CBU/CVU\')">Copiar CBU/CVU</button></div>';
-    } else if(/^Titular:/i.test(line)){
-      const v = line.replace(/^Titular:\s*/i,'').trim();
+    line = line.trim(); if(!line) return;
+    if(/^Alias:/i.test(line)){ const v=line.replace(/^Alias:\s*/i,'').trim();
+      html += '<div class="bil-field"><span class="bil-label">Alias</span><span class="bil-val">'+escHtml(v)+'</span><button class="bil-copy" onclick="copiar(\''+escHtml(v)+'\',this,\'Alias\')">Copiar alias</button></div>';
+    } else if(/^CBU\/CVU:/i.test(line)){ const v=line.replace(/^CBU\/CVU:\s*/i,'').trim();
+      html += '<div class="bil-field"><span class="bil-label">CBU / CVU</span><span class="bil-val" style="font-size:13px">'+escHtml(v)+'</span><button class="bil-copy" onclick="copiar(\''+escHtml(v)+'\',this,\'CBU/CVU\')">Copiar CBU/CVU</button></div>';
+    } else if(/^Titular:/i.test(line)){ const v=line.replace(/^Titular:\s*/i,'').trim();
       html += '<div class="bil-field"><span class="bil-label">Titular</span><span class="bil-val">'+escHtml(v)+'</span></div>';
-    } else if(/^Banco:/i.test(line)){
-      const v = line.replace(/^Banco:\s*/i,'').trim();
+    } else if(/^Banco:/i.test(line)){ const v=line.replace(/^Banco:\s*/i,'').trim();
       html += '<div style="margin:4px 0 6px;font-size:12px;color:#bbb">Banco: '+escHtml(v)+'</div>';
-    } else if(line.length > 4){
-      footer = line;
-    }
+    } else if(line.length > 4){ footer = line; }
   });
   if(footer) html += '<div class="bil-footer">'+escHtml(footer)+'</div>';
-  html += '</div>';
-  return html;
+  return html + '</div>';
 }
-
 function renderBubbleContent(m){
-  if(m.tipo_emisor==='OPERADOR' && /^💳/.test(m.mensaje||'') && /CBU\/CVU:|Alias:/i.test(m.mensaje||'')){
-    return renderBilleteraCard(m.mensaje);
-  }
+  if(m.tipo_emisor==='OPERADOR' && /^💳/.test(m.mensaje||'') && /CBU\/CVU:|Alias:/i.test(m.mensaje||'')) return renderBilleteraCard(m.mensaje);
   return escHtml(m.mensaje||'').replace(/\n/g,'<br>');
 }
-
 function renderMensajes(){
-  if(!chatMsgs.length){
-    setHtml('chatBody','<div style="text-align:center;color:var(--muted);font-size:13px;padding:30px 0">Sin mensajes todavía. Escribinos tu consulta.</div>');
-    return;
-  }
+  if(!chatMsgs.length){ setHtml('chatBody','<div style="text-align:center;color:var(--muted);font-size:13px;padding:30px 0">Escribinos tu consulta. Te respondemos al instante.</div>'); return; }
   setHtml('chatBody', chatMsgs.map(m=>{
     const esUser = m.tipo_emisor === 'USUARIO';
-    return `<div class="msg ${esUser?'user':'op'}">
-      <div class="bubble">
-        ${renderBubbleContent(m)}
-        ${m.imagen_url?`<img src="${m.imagen_url}" alt="imagen">`:''}
-      </div>
-      <div class="msg-meta">${esUser?'Vos':'Soporte'} · ${formatTs(m.created_at)}</div>
-    </div>`;
+    return `<div class="msg ${esUser?'user':'op'}"><div class="bubble">${renderBubbleContent(m)}${m.imagen_url?`<img src="${m.imagen_url}">`:''}</div><div class="msg-meta">${esUser?'Vos':'Soporte'} · ${formatTs(m.created_at)}</div></div>`;
   }).join(''));
   scrollChat();
 }
-
-function scrollChat(){
-  const box = document.getElementById('chatBody');
-  if(box) box.scrollTop = box.scrollHeight;
-}
+function scrollChat(){ const b=document.getElementById('chatBody'); if(b) b.scrollTop=b.scrollHeight; }
 
 async function enviarMensaje(){
   if(!chatId) return;
   const texto = val('chatInput').trim();
   if(!texto && !imgBase64) return;
-
-  document.getElementById('chatInput').value = '';
-
+  setVal('chatInput','');
   const { error } = await sb.from('mensajes_chat').insert({
-    chat_id: chatId,
-    mensaje: texto || '',
-    imagen_url: imgBase64 || null,
-    tipo_emisor: 'USUARIO',
-    emisor: usuario.nombre,
-    pc_codigo: PC,
-    leido: false
+    chat_id:chatId, mensaje:texto||'', imagen_url:imgBase64||null, tipo_emisor:'USUARIO',
+    emisor:usuario.nombre, pc_codigo:PC, leido:false
   });
-
   if(!error){
     await sb.from('chats').update({
-      ultimo_mensaje: texto || '[imagen]',
-      fecha_ultimo: new Date().toISOString(),
-      sin_leer: (chatMsgs.filter(m=>m.tipo_emisor==='USUARIO').length % 99) + 1,
-      nombre_completo: usuario.nombre,
-      telefono: usuario.telefono
+      ultimo_mensaje:texto||'[imagen]', fecha_ultimo:new Date().toISOString(),
+      sin_leer:(chatMsgs.filter(m=>m.tipo_emisor==='USUARIO').length % 99)+1,
+      nombre_completo:usuario.nombre, telefono:usuario.telefono
     }).eq('id', chatId);
   }
-
   quitarImagen();
   await cargarMensajes(false);
 }
 
-// ── Imágenes en chat ──────────────────────────────────────────────────────────
-function tomarImagen(){
-  const file = document.getElementById('chatFile').files[0];
-  if(file) procesarImagen(file);
-}
+function tomarImagen(){ const f=document.getElementById('chatFile').files[0]; if(f) procesarImagen(f); }
 function procesarImagen(file){
   if(!file.type.startsWith('image/')){ alert('Adjuntá una imagen válida.'); return; }
-  comprimirImagen(file, b64=>{
-    imgBase64 = b64;
-    imgNombre = file.name;
-    document.getElementById('chatPreviewImg').src = b64;
-    show('chatPreviewWrap');
-    document.getElementById('chatPreviewWrap').style.display='flex';
-  });
+  comprimirImagen(file, b64=>{ imgBase64=b64; imgNombre=file.name;
+    document.getElementById('chatPreviewImg').src=b64; show('chatPreviewWrap');
+    document.getElementById('chatPreviewWrap').style.display='flex'; });
 }
-function quitarImagen(){
-  imgBase64=''; imgNombre='';
-  document.getElementById('chatFile').value='';
-  document.getElementById('chatPreviewImg').src='';
-  hide('chatPreviewWrap');
-}
+function quitarImagen(){ imgBase64=''; imgNombre=''; setVal('chatFile',''); document.getElementById('chatPreviewImg').src=''; hide('chatPreviewWrap'); }
 
-// Pegar imagen con Ctrl+V
 document.addEventListener('paste', e=>{
-  const secChat = document.getElementById('secChat');
-  if(secChat.classList.contains('hidden')) return;
-  const items = e.clipboardData?.items || [];
-  for(const item of items){
-    if(item.type?.startsWith('image/')){
-      const file = item.getAsFile();
-      if(file){ procesarImagen(file); e.preventDefault(); return; }
-    }
+  if(tabActual!=='chat') return;
+  for(const item of (e.clipboardData?.items||[])){
+    if(item.type?.startsWith('image/')){ const f=item.getAsFile(); if(f){ procesarImagen(f); e.preventDefault(); return; } }
   }
 });
-
 document.getElementById('chatInput')?.addEventListener('keydown', e=>{
   if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); enviarMensaje(); }
 });
 
-// ── Chat bubble flotante ───────────────────────────────────────────────────────
-let _chatBubbleTimer = null;
-
-function mostrarChatBubble(texto){
-  const b = document.getElementById('chatFloatBubble');
-  const t = document.getElementById('chatFloatText');
-  if(!b || !t) return;
-  t.textContent = texto.length > 130 ? texto.slice(0, 127) + '…' : texto;
+// Burbuja flotante (notificación del operador cuando el panel está cerrado)
+let _opBubbleTimer = null;
+function mostrarOpBubble(texto){
+  // Si el panel está abierto, no hace falta la burbuja
+  if(!document.getElementById('panel').classList.contains('hidden')) return;
+  const b = document.getElementById('opBubble'), t = document.getElementById('opBubbleText');
+  if(!b||!t) return;
+  t.textContent = texto.length > 130 ? texto.slice(0,127)+'…' : texto;
   b.style.display = 'flex';
-  clearTimeout(_chatBubbleTimer);
-  _chatBubbleTimer = setTimeout(()=>{ b.style.display='none'; }, 9000);
+  clearTimeout(_opBubbleTimer);
+  _opBubbleTimer = setTimeout(()=>{ b.style.display='none'; }, 9000);
 }
 </script>
-
-<!-- Bubble flotante de chat (visible desde cualquier sección) -->
-<div id="chatFloatBubble" style="
-  display:none;position:fixed;bottom:82px;left:50%;transform:translateX(-50%);
-  max-width:340px;width:calc(100% - 32px);
-  background:#1a2035;border:1px solid rgba(61,90,254,.6);border-radius:18px;
-  padding:14px 16px;box-shadow:0 6px 32px rgba(0,0,0,.55);z-index:9999;
-  flex-direction:column;gap:6px;
-  animation:slideUp .25s ease">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
-    <span style="font-size:11px;font-weight:700;color:#7c8dff;letter-spacing:.4px">💬 MENSAJE DEL OPERADOR</span>
-    <button onclick="document.getElementById('chatFloatBubble').style.display='none'"
-      style="background:none;border:none;color:#666;font-size:18px;line-height:1;cursor:pointer;padding:0 0 0 8px">×</button>
-  </div>
-  <div id="chatFloatText" style="font-size:14px;line-height:1.45;color:#e6edf3"></div>
-  <button onclick="mostrarSeccion('chat');document.getElementById('chatFloatBubble').style.display='none'"
-    style="margin-top:4px;background:rgba(61,90,254,.18);border:none;color:#7c8dff;border-radius:10px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;align-self:flex-start">
-    Ver chat completo →
-  </button>
-</div>
-
 </body>
 </html>
