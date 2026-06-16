@@ -164,6 +164,7 @@ input::placeholder{color:#484f58}
     <div>
       <h2 id="panelTitle">💰 Tu cuenta</h2>
       <div class="sub" id="panelSub">Cargá o retirá sin salir del juego</div>
+      <div id="oficinaChip" style="display:none;margin-top:6px;font-size:11px;font-weight:700;color:#7c8dff;background:rgba(124,141,255,.14);border-radius:8px;padding:3px 9px;width:fit-content"></div>
     </div>
     <button class="head-close" onclick="cerrarPanel()">×</button>
   </div>
@@ -291,11 +292,22 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const CASINO_URL = "https://www.bet-300.pw/";
 
-// Enlace variable por oficina: ?pc=1 → CHINO, ?pc=2 → ALVAREZ, etc.
-// (mismo mapa que la landing actual — nunca visible para el usuario)
-const PC_MAP = { "1":"CHINO", "2":"ALVAREZ", "3":"X", "4":"SANCHEZ", "5":"E" };
-const _pcParam = new URLSearchParams(window.location.search).get('pc') || "";
-const PC = PC_MAP[_pcParam] || "SANCHEZ";
+// Enlace variable por oficina: ?pc=<n> resuelve la oficina REAL desde la tabla
+// 'oficinas' (sincronizada con Chunior). Acepta el número de Chunior (chunior_pt_id)
+// o el pc_codigo directo. NADA hardcodeado: si renombrás la oficina en Chunior,
+// la landing se sincroniza sola y las cargas + el chat usan el mismo pc_codigo real.
+const _pcParam = (new URLSearchParams(window.location.search).get('pc') || "").trim();
+let PC = null;        // pc_codigo real (ej "SANCHEZPLATA") — se resuelve al cargar
+let OFICINA = null;   // { pc_codigo, nombre, chunior_pt_id }
+
+async function resolverOficina(){
+  if(!_pcParam) return null;
+  let q = sb.from('oficinas').select('pc_codigo,nombre,chunior_pt_id,activa');
+  q = /^\d+$/.test(_pcParam) ? q.eq('chunior_pt_id', _pcParam) : q.eq('pc_codigo', _pcParam.toUpperCase());
+  const { data } = await q.limit(1);
+  if(data && data.length){ OFICINA = data[0]; PC = data[0].pc_codigo; }
+  return OFICINA;
+}
 
 let usuario = null;
 let chatId = null;
@@ -370,8 +382,10 @@ function irTab(t){
 // SESIÓN (login manual — sin verificación automática)
 // ════════════════════════════════════════════════════════════════════════════
 window.addEventListener('load', async ()=>{
+  await resolverOficina();
+  pintarOficina();
   const saved = localStorage.getItem('nodo_usuario_casino');
-  if(saved){
+  if(PC && saved){
     try{
       usuario = JSON.parse(saved);
       const { data } = await sb.from('usuarios').select('*').eq('usuario', usuario.usuario).single();
@@ -381,7 +395,22 @@ window.addEventListener('load', async ()=>{
   }
 });
 
+// Muestra la oficina detectada (o avisa si el link no trae una oficina válida)
+function pintarOficina(){
+  const chip = document.getElementById('oficinaChip');
+  if(!chip) return;
+  chip.style.display = 'block';
+  if(PC){
+    chip.style.color = '#7c8dff'; chip.style.background = 'rgba(124,141,255,.14)';
+    chip.textContent = '🏢 ' + (OFICINA?.nombre || PC);
+  } else {
+    chip.style.color = '#f0a500'; chip.style.background = 'rgba(240,165,0,.14)';
+    chip.textContent = _pcParam ? ('⚠ Oficina "'+_pcParam+'" no encontrada') : '⚠ Link sin oficina — pedí el correcto a tu operador';
+  }
+}
+
 async function identificar(){
+  if(!PC){ msg('loginMsg','Este link no tiene una oficina válida. Pedí a tu operador el link correcto.','err'); return; }
   const u = val('inUsuario').toLowerCase().replace(/\s+/g,'');
   if(!u || u.length < 3){ msg('loginMsg','El usuario debe tener al menos 3 caracteres.','err'); return; }
   msg('loginMsg','<span class="spinner"></span>Buscando...','info');
