@@ -63,8 +63,13 @@ html,body{height:100%;background:#000;color:var(--text);overflow:hidden}
 .head-close{background:none;border:none;color:var(--muted);font-size:26px;line-height:1;cursor:pointer;padding:0 4px}
 .head-close:hover{color:var(--text)}
 
-/* ── Cuerpo scrolleable ── */
-.panel-body{flex:1;overflow-y:auto;padding:18px}
+/* ── Cuerpo: el panel-body NO scrollea; cada vista maneja su propio scroll ── */
+.panel-body{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0}
+#viewLogin,#viewRegistro{padding:18px;overflow-y:auto;flex:1;min-height:0}
+#viewApp{flex:1;display:flex;flex-direction:column;min-height:0}
+#tabCargar,#tabRetirar{flex:1;overflow-y:auto;padding:18px;min-height:0}
+/* El chat: chatBody scrollea adentro y el compose queda fijo (la barra de tabs siempre visible abajo) */
+#tabChat{flex:1;display:flex;flex-direction:column;padding:18px;min-height:0}
 
 /* ── Tabs (grandes, ícono + texto, para mayores) ── */
 .tabs{display:flex;border-top:1px solid var(--line);flex-shrink:0;background:var(--panel)}
@@ -102,7 +107,8 @@ input::placeholder{color:#484f58}
 .divider{border:none;border-top:1px solid var(--line);margin:16px 0}
 
 /* ── Chat ── */
-.chat-body{background:#0d1117;border:1px solid var(--line);border-radius:14px;flex:1;min-height:200px;overflow-y:auto;padding:14px;margin-bottom:10px}
+.chat-body{background:#0d1117;border:1px solid var(--line);border-radius:14px;flex:1;min-height:0;overflow-y:auto;padding:14px;margin-bottom:10px}
+.chat-compose,#tabChat .btn-ghost,#chatPreviewWrap{flex-shrink:0}
 .msg{max-width:82%;margin-bottom:10px;display:flex;flex-direction:column}
 .msg.user{align-items:flex-end;margin-left:auto}
 .msg.op{align-items:flex-start;margin-right:auto}
@@ -254,7 +260,7 @@ input::placeholder{color:#484f58}
       </div>
 
       <!-- TAB CHAT -->
-      <div id="tabChat" class="hidden" style="display:flex;flex-direction:column;height:100%">
+      <div id="tabChat" class="hidden">
         <div id="chatBody" class="chat-body"></div>
         <div id="chatPreviewWrap" class="hidden" style="align-items:center;gap:10px;padding:8px;background:rgba(255,255,255,.05);border-radius:12px;margin-bottom:8px">
           <img id="chatPreviewImg" src="" style="width:48px;height:48px;object-fit:cover;border-radius:8px">
@@ -477,6 +483,7 @@ function estadoSolicitud(estado){
   const e = String(estado||'').toUpperCase();
   if(['PENDIENTE','NUEVA','EN_REVISION','APROBADA_MANUAL','APROBADA_MANUAL_OK'].includes(e)) return {esPendiente:true};
   if(['APROBADA','ACREDITADA','PAGADA'].includes(e)) return {esAprobada:true};
+  if(['RECHAZADA','CANCELADA','ERROR'].includes(e)) return {esRechazada:true};
   return {};
 }
 
@@ -511,6 +518,16 @@ async function cargarMisSolicitudes(){
       <button class="btn btn-green" style="margin-top:0" onclick="cerrarPanel()">🎮 Volver a jugar</button>
     </div>
     <button class="btn btn-ghost" onclick="nuevaCarga()">+ Hacer otra carga</button>`;
+    statusCard.classList.remove('hidden'); formCard.classList.add('hidden');
+  } else if(est.esRechazada && !_nuevaCargaForzada){
+    statusCard.innerHTML = `<div class="status-box" style="background:linear-gradient(135deg,#3d1d1c,#6e3531)">
+      <div style="font-size:32px;margin-bottom:8px">❌</div>
+      <div style="font-weight:900;font-size:17px;margin-bottom:6px">Carga rechazada</div>
+      <div style="font-size:13px;opacity:.9;margin-bottom:6px">Tu carga de <b>${nmonto(ultima.monto)}</b> no se pudo acreditar.</div>
+      ${ultima.notas?`<div style="font-size:12px;opacity:.85;margin-bottom:6px">Motivo: ${escHtml(ultima.notas)}</div>`:''}
+      <div style="font-size:12px;opacity:.85">Revisá el 💬 chat para más detalles.</div>
+    </div>
+    <button class="btn btn-green" onclick="nuevaCarga()">Intentar otra carga</button>`;
     statusCard.classList.remove('hidden'); formCard.classList.add('hidden');
   } else {
     statusCard.classList.add('hidden'); formCard.classList.remove('hidden');
@@ -553,13 +570,10 @@ async function cargarBilletera(){
       ${cv ? `
       <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${etiqueta}</div>
       <div onclick="copiar('${cvSafe}',this,'${etiqueta}')" title="Tocá para copiar"
-        style="display:flex;align-items:center;gap:8px;justify-content:space-between;cursor:pointer;
-        background:#0d1117;border:1px solid var(--line);border-radius:10px;padding:12px 13px;margin-bottom:6px">
-        <span style="font-size:16px;font-weight:800;word-break:break-all;letter-spacing:.3px">${escHtml(cv)}</span>
-        <button onclick="event.stopPropagation();copiar('${cvSafe}',this,'${etiqueta}')"
-          style="background:var(--green);border:none;color:#fff;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap;flex-shrink:0">📋 Copiar</button>
+        style="cursor:pointer;background:#0d1117;border:1px solid var(--line);border-radius:10px;padding:13px;margin-bottom:6px">
+        <span style="font-size:17px;font-weight:800;word-break:break-all;letter-spacing:.3px">${escHtml(cv)}</span>
       </div>
-      <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:8px">👆 Tocá el ${etiqueta.toLowerCase()} para copiarlo</div>
+      <div style="font-size:12px;color:#3fb950;text-align:center;margin-bottom:8px;font-weight:700">👆 Tocá el ${etiqueta.toLowerCase()} para copiarlo</div>
       `:'<div class="alert alert-warn" style="margin:0 0 8px">Esta billetera todavía no tiene datos cargados. Pedí el CBU por el chat.</div>'}
       ${b.titular ? `<div style="font-size:13px;margin-top:4px"><span style="color:var(--muted)">Titular: </span><b>${escHtml(b.titular)}</b></div>`:''}
       ${b.banco ? `<div style="font-size:13px;margin-top:4px"><span style="color:var(--muted)">Banco: </span>${escHtml(b.banco)}</div>`:''}
