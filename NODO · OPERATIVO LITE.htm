@@ -3906,15 +3906,15 @@ function abrirEditarBilletera(id){
   const aliasActual=(b.CBU_CVU||"").trim() ? datoViejo : (esNum?"":datoViejo);
   abrirModal("Editar billetera",`
     <label>Nombre interno (solo vos lo ves, NO va a la landing)</label>
-    <input id="ebNombre" value="${escapeHtml(b.NOMBRE_VISIBLE||"")}" placeholder="Ej: GIORDANO NJX">
+    <input id="ebNombre" value="${escapeHtml(b.NOMBRE_VISIBLE||"")}" placeholder="Identificador interno">
     <label>Titular completo (lo ve el usuario)</label>
-    <input id="ebTitular" value="${escapeHtml(b.TITULAR||"")}" placeholder="Ej: Juan Carlos Giordano">
+    <input id="ebTitular" value="${escapeHtml(b.TITULAR||"")}" placeholder="Nombre y apellido del titular">
     <label>CBU / CVU</label>
     <input id="ebCbu" value="${escapeHtml(cbuActual)}" placeholder="22 dígitos" autocapitalize="none">
     <label>Alias</label>
-    <input id="ebAlias" value="${escapeHtml(aliasActual)}" placeholder="Ej: juan.mp" autocapitalize="none">
+    <input id="ebAlias" value="${escapeHtml(aliasActual)}" placeholder="Alias de la cuenta" autocapitalize="none">
     <label>Banco / Billetera</label>
-    <input id="ebBanco" value="${escapeHtml(b.BANCO||"")}" placeholder="Ej: Mercado Pago">
+    <input id="ebBanco" value="${escapeHtml(b.BANCO||"")}" placeholder="Banco o billetera">
     <label>Saldo actual (ajuste manual)</label>
     <input id="ebSaldo" type="number" value="${b.SALDO||0}">
   `,async()=>{
@@ -3936,15 +3936,15 @@ function abrirEditarBilletera(id){
 function abrirNuevaBilletera(){
   abrirModal("Nueva billetera",`
     <label>Nombre interno (solo vos lo ves, NO va a la landing)</label>
-    <input id="nbNombre" placeholder="Ej: GIORDANO NJX">
+    <input id="nbNombre" placeholder="Identificador interno">
     <label>Titular completo (lo ve el usuario)</label>
-    <input id="nbTitular" placeholder="Ej: Juan Carlos Giordano">
+    <input id="nbTitular" placeholder="Nombre y apellido del titular">
     <label>CBU / CVU</label>
     <input id="nbCbu" placeholder="22 dígitos" autocapitalize="none">
     <label>Alias</label>
-    <input id="nbAlias" placeholder="Ej: juan.mp" autocapitalize="none">
+    <input id="nbAlias" placeholder="Alias de la cuenta" autocapitalize="none">
     <label>Banco / Billetera</label>
-    <input id="nbBanco" placeholder="Ej: Mercado Pago">
+    <input id="nbBanco" placeholder="Banco o billetera">
     <label>Saldo inicial</label>
     <input id="nbSaldo" type="number" value="0">
   `,async()=>{

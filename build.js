@@ -9,7 +9,7 @@ if (process.env.VERCEL || process.env.NOW_BUILDER) {
   const out = path.join(__dirname, 'public');
   fs.mkdirSync(out, { recursive: true });
   // Solo los HTML de la landing van a la web. El panel operador (.htm) y los preload NO.
-  ['index.html', 'landing.html'].forEach(function (f) {
+  ['index.html', 'app.js', 'landing.html'].forEach(function (f) {
     const src = path.join(__dirname, f);
     if (fs.existsSync(src)) {
       fs.copyFileSync(src, path.join(out, f));
