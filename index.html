@@ -455,7 +455,7 @@ function entrarApp(){
   cargarMisSolicitudes();
   irTab('cargar');
   clearInterval(chatPolling);
-  chatPolling = setInterval(()=>{ cargarMensajes(true); cargarMisSolicitudes(); }, 4000);
+  chatPolling = setInterval(()=>{ cargarMensajes(true); cargarMisSolicitudes(); cargarBilletera(); }, 4000);
 }
 
 function cerrarSesion(){
@@ -532,23 +532,37 @@ function nuevaCarga(){
 async function cargarBilletera(){
   const { data } = await sb.from('billeteras').select('*')
     .eq('pc_codigo', PC).eq('activa', true).order('seleccionada_manual',{ascending:false}).limit(1);
-  billeteraActiva = (data && data.length) ? data[0] : null;
+  const nueva = (data && data.length) ? data[0] : null;
 
-  if(!billeteraActiva){ setHtml('cargaBilletera','<div class="alert alert-warn">Sin billetera activa. Escribinos por el chat.</div>'); return; }
+  // No re-renderizar (evita parpadeo) en el polling si la billetera activa no cambió
+  if(nueva && billeteraActiva && nueva.id===billeteraActiva.id && (nueva.cbu_alias||'')===(billeteraActiva.cbu_alias||'')){ return; }
+  billeteraActiva = nueva;
+
+  if(!billeteraActiva){ setHtml('cargaBilletera','<div class="alert alert-warn">Sin billetera activa en este momento. Escribinos por el chat.</div>'); return; }
 
   const b = billeteraActiva;
-  const minimo = b.monto_minimo ? `<div style="color:#d29922;font-size:13px;margin-top:8px;font-weight:700">⚠ Mínimo: ${nmonto(b.monto_minimo)}</div>` : '';
+  const cv = (b.cbu_alias||'').trim();                 // el dato real está en cbu_alias (no cbu_cvu)
+  const esCBU = /^\d{15,}$/.test(cv);
+  const etiqueta = esCBU ? 'CBU / CVU' : 'Alias';
+  const cvSafe = cv.replace(/'/g,"\\'");
+  const minimo = b.monto_minimo ? `<div style="color:#d29922;font-size:13px;margin-top:10px;font-weight:700;text-align:center">⚠ Monto mínimo: ${nmonto(b.monto_minimo)}</div>` : '';
+
   setHtml('cargaBilletera', `
     <div style="background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:14px">
-      <div style="font-size:12px;color:var(--muted);font-weight:700;margin-bottom:8px">💳 Transferí a estos datos</div>
-      ${b.cbu_cvu ? `<div style="margin-bottom:10px">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:3px">${escHtml(b.tipo||'CBU/CVU/Alias')}</div>
-        <div style="display:flex;align-items:center;gap:8px;justify-content:space-between">
-          <span style="font-size:15px;font-weight:800;word-break:break-all">${escHtml(b.cbu_cvu)}</span>
-          <button onclick="copiar('${escHtml(b.cbu_cvu)}',this,'Copiar')" style="background:var(--green);border:none;color:#fff;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">Copiar</button>
-        </div></div>`:''}
-      ${b.titular ? `<div style="font-size:13px;margin-bottom:4px"><span style="color:var(--muted)">Titular: </span><b>${escHtml(b.titular)}</b></div>`:''}
-      ${b.banco ? `<div style="font-size:13px"><span style="color:var(--muted)">Banco: </span>${escHtml(b.banco)}</div>`:''}
+      <div style="font-size:12px;color:var(--muted);font-weight:700;margin-bottom:10px">💳 Transferí a estos datos</div>
+      ${cv ? `
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${etiqueta}</div>
+      <div onclick="copiar('${cvSafe}',this,'${etiqueta}')" title="Tocá para copiar"
+        style="display:flex;align-items:center;gap:8px;justify-content:space-between;cursor:pointer;
+        background:#0d1117;border:1px solid var(--line);border-radius:10px;padding:12px 13px;margin-bottom:6px">
+        <span style="font-size:16px;font-weight:800;word-break:break-all;letter-spacing:.3px">${escHtml(cv)}</span>
+        <button onclick="event.stopPropagation();copiar('${cvSafe}',this,'${etiqueta}')"
+          style="background:var(--green);border:none;color:#fff;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap;flex-shrink:0">📋 Copiar</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:8px">👆 Tocá el ${etiqueta.toLowerCase()} para copiarlo</div>
+      `:'<div class="alert alert-warn" style="margin:0 0 8px">Esta billetera todavía no tiene datos cargados. Pedí el CBU por el chat.</div>'}
+      ${b.titular ? `<div style="font-size:13px;margin-top:4px"><span style="color:var(--muted)">Titular: </span><b>${escHtml(b.titular)}</b></div>`:''}
+      ${b.banco ? `<div style="font-size:13px;margin-top:4px"><span style="color:var(--muted)">Banco: </span>${escHtml(b.banco)}</div>`:''}
       ${minimo}
     </div>`);
   if(b.monto_minimo){ setHtml('cargaMontoHint','Monto mínimo: '+nmonto(b.monto_minimo)); }
