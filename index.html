@@ -558,25 +558,35 @@ async function cargarBilletera(){
   if(!billeteraActiva){ setHtml('cargaBilletera','<div class="alert alert-warn">Sin billetera activa en este momento. Escribinos por el chat.</div>'); return; }
 
   const b = billeteraActiva;
-  const cv = (b.cbu_alias||'').trim();                 // el dato real está en cbu_alias (no cbu_cvu)
-  const esCBU = /^\d{15,}$/.test(cv);
-  const etiqueta = esCBU ? 'CBU / CVU' : 'Alias';
-  const cvSafe = cv.replace(/'/g,"\\'");
+  const aliasRaw = (b.cbu_alias||'').trim();
+  const aliasEsCBU = /^\d{15,}$/.test(aliasRaw);
+  // CBU: del campo cbu_cvu; si está vacío y cbu_alias es numérico, ese es el CBU (retrocompatible)
+  const cbu = (b.cbu_cvu||'').trim() || (aliasEsCBU ? aliasRaw : '');
+  // Alias: cbu_alias cuando NO es un CBU numérico ni repite el CBU
+  const alias = (aliasRaw && !aliasEsCBU && aliasRaw!==cbu) ? aliasRaw : '';
+  const hayDatos = cbu || alias;
+
+  const recuadro = (valor,label)=>{
+    const s = valor.replace(/'/g,"\\'");
+    return `<div style="font-size:11px;color:var(--muted);margin:8px 0 4px">${label}</div>
+      <div onclick="copiar('${s}',this,'${label}')" title="Tocá para copiar"
+        style="cursor:pointer;background:#0d1117;border:1px solid var(--line);border-radius:10px;padding:13px">
+        <span style="font-size:17px;font-weight:800;word-break:break-all;letter-spacing:.3px">${escHtml(valor)}</span>
+      </div>
+      <div style="font-size:12px;color:#3fb950;text-align:center;margin:5px 0 2px;font-weight:700">👆 Tocá para copiar el ${label.toLowerCase()}</div>`;
+  };
+
   const minimo = b.monto_minimo ? `<div style="color:#d29922;font-size:13px;margin-top:10px;font-weight:700;text-align:center">⚠ Monto mínimo: ${nmonto(b.monto_minimo)}</div>` : '';
 
   setHtml('cargaBilletera', `
     <div style="background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:14px">
-      <div style="font-size:12px;color:var(--muted);font-weight:700;margin-bottom:10px">💳 Transferí a estos datos</div>
-      ${cv ? `
-      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${etiqueta}</div>
-      <div onclick="copiar('${cvSafe}',this,'${etiqueta}')" title="Tocá para copiar"
-        style="cursor:pointer;background:#0d1117;border:1px solid var(--line);border-radius:10px;padding:13px;margin-bottom:6px">
-        <span style="font-size:17px;font-weight:800;word-break:break-all;letter-spacing:.3px">${escHtml(cv)}</span>
-      </div>
-      <div style="font-size:12px;color:#3fb950;text-align:center;margin-bottom:8px;font-weight:700">👆 Tocá el ${etiqueta.toLowerCase()} para copiarlo</div>
-      `:'<div class="alert alert-warn" style="margin:0 0 8px">Esta billetera todavía no tiene datos cargados. Pedí el CBU por el chat.</div>'}
-      ${b.titular ? `<div style="font-size:13px;margin-top:4px"><span style="color:var(--muted)">Titular: </span><b>${escHtml(b.titular)}</b></div>`:''}
-      ${b.banco ? `<div style="font-size:13px;margin-top:4px"><span style="color:var(--muted)">Banco: </span>${escHtml(b.banco)}</div>`:''}
+      <div style="font-size:12px;color:var(--muted);font-weight:700;margin-bottom:6px">💳 Transferí a estos datos</div>
+      ${b.titular ? `<div style="font-size:16px;font-weight:800">${escHtml(b.titular)}</div>`:''}
+      ${b.banco ? `<div style="font-size:13px;color:var(--muted)">${escHtml(b.banco)}</div>`:''}
+      ${cbu ? recuadro(cbu,'CBU / CVU') : ''}
+      ${alias ? recuadro(alias,'Alias') : ''}
+      ${(cbu&&alias) ? `<div style="font-size:11px;color:var(--muted);text-align:center;margin-top:4px">Transferí con el que prefieras</div>`:''}
+      ${!hayDatos ? '<div class="alert alert-warn" style="margin:8px 0 0">Esta billetera todavía no tiene datos cargados. Pedí el CBU por el chat.</div>':''}
       ${minimo}
     </div>`);
   if(b.monto_minimo){ setHtml('cargaMontoHint','Monto mínimo: '+nmonto(b.monto_minimo)); }

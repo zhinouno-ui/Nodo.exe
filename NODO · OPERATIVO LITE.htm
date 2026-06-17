@@ -1990,6 +1990,8 @@ async function cargarBilleteras(render=true){
     SELECCIONADA_MANUAL:b.seleccionada_manual?"SI":"NO",
     SALDO:Number(b.saldo||0),
     CBU_ALIAS:b.cbu_alias||"",
+    CBU_CVU:b.cbu_cvu||"",
+    BANCO:b.banco||"",
     TITULAR:b.titular||"",
     CHUNIOR_UID:b.chunior_uid||""
   }));
@@ -3897,18 +3899,31 @@ function renderBilleteras(){
 function abrirEditarBilletera(id){
   const b=billeteras.find(x=>x.ID_BILLETERA===id);
   if(!b) return;
+  // Migración suave: si el único dato está en CBU_ALIAS y es numérico (es un CBU), mostrarlo en el campo CBU
+  const datoViejo=(b.CBU_ALIAS||"").trim();
+  const esNum=/^\d{15,}$/.test(datoViejo);
+  const cbuActual=(b.CBU_CVU||"").trim() || (esNum?datoViejo:"");
+  const aliasActual=(b.CBU_CVU||"").trim() ? datoViejo : (esNum?"":datoViejo);
   abrirModal("Editar billetera",`
-    <label>Nombre / Titular</label>
-    <input id="ebNombre" value="${escapeHtml(b.NOMBRE_VISIBLE||"")}" placeholder="Ej: Juan García">
-    <label>CBU / CVU / Alias</label>
-    <input id="ebCbu" value="${escapeHtml(b.CBU_ALIAS||"")}" placeholder="Ej: 0000003100...">
+    <label>Nombre interno (solo vos lo ves, NO va a la landing)</label>
+    <input id="ebNombre" value="${escapeHtml(b.NOMBRE_VISIBLE||"")}" placeholder="Ej: GIORDANO NJX">
+    <label>Titular completo (lo ve el usuario)</label>
+    <input id="ebTitular" value="${escapeHtml(b.TITULAR||"")}" placeholder="Ej: Juan Carlos Giordano">
+    <label>CBU / CVU</label>
+    <input id="ebCbu" value="${escapeHtml(cbuActual)}" placeholder="22 dígitos" autocapitalize="none">
+    <label>Alias</label>
+    <input id="ebAlias" value="${escapeHtml(aliasActual)}" placeholder="Ej: juan.mp" autocapitalize="none">
+    <label>Banco / Billetera</label>
+    <input id="ebBanco" value="${escapeHtml(b.BANCO||"")}" placeholder="Ej: Mercado Pago">
     <label>Saldo actual (ajuste manual)</label>
     <input id="ebSaldo" type="number" value="${b.SALDO||0}">
   `,async()=>{
     const {error}=await supabaseClient.from("billeteras").update({
       nombre_visible:val("ebNombre"),
-      cbu_alias:val("ebCbu"),
-      titular:val("ebNombre"),
+      titular:val("ebTitular")||val("ebNombre"),
+      cbu_cvu:val("ebCbu")||null,
+      cbu_alias:val("ebAlias")||null,
+      banco:val("ebBanco")||null,
       saldo:Number(val("ebSaldo")||0)
     }).eq("id",id);
     if(error){alert(error.message);return}
@@ -3920,10 +3935,16 @@ function abrirEditarBilletera(id){
 
 function abrirNuevaBilletera(){
   abrirModal("Nueva billetera",`
-    <label>Nombre / Titular</label>
-    <input id="nbNombre" placeholder="Ej: Juan García">
-    <label>CBU / CVU / Alias</label>
-    <input id="nbCbu" placeholder="Ej: 0000003100...">
+    <label>Nombre interno (solo vos lo ves, NO va a la landing)</label>
+    <input id="nbNombre" placeholder="Ej: GIORDANO NJX">
+    <label>Titular completo (lo ve el usuario)</label>
+    <input id="nbTitular" placeholder="Ej: Juan Carlos Giordano">
+    <label>CBU / CVU</label>
+    <input id="nbCbu" placeholder="22 dígitos" autocapitalize="none">
+    <label>Alias</label>
+    <input id="nbAlias" placeholder="Ej: juan.mp" autocapitalize="none">
+    <label>Banco / Billetera</label>
+    <input id="nbBanco" placeholder="Ej: Mercado Pago">
     <label>Saldo inicial</label>
     <input id="nbSaldo" type="number" value="0">
   `,async()=>{
@@ -3931,8 +3952,10 @@ function abrirNuevaBilletera(){
     if(!nombre){alert("El nombre es obligatorio.");return}
     const {error}=await supabaseClient.from("billeteras").insert({
       nombre_visible:nombre,
-      cbu_alias:val("nbCbu"),
-      titular:nombre,
+      titular:val("nbTitular")||nombre,
+      cbu_cvu:val("nbCbu")||null,
+      cbu_alias:val("nbAlias")||null,
+      banco:val("nbBanco")||null,
       saldo:Number(val("nbSaldo")||0),
       pc_codigo:pcOperativa,
       activa:true,
