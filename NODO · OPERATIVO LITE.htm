@@ -2674,8 +2674,13 @@ async function mostrarBlacklist24h(){
       .order('created_at', { ascending: false })
       .limit(1000);
     if(error) throw error;
-    // Excluir los retiros marcados como cargados de más (fuera de blacklist)
-    data = (data || []).filter(function(r){ return !/\[BL_EXCLUIDO\]/.test(String(r.notas||'')); });
+    // Excluir los que no deben contar: marcados a mano [BL_EXCLUIDO] y los REVERTIDA
+    // (un retiro anulado/revertido devolvió las fichas → ya no cuenta en la blacklist)
+    data = (data || []).filter(function(r){
+      if(/\[BL_EXCLUIDO\]/.test(String(r.notas||''))) return false;
+      if(String(r.estado||'').toUpperCase() === 'REVERTIDA') return false;
+      return true;
+    });
 
     const body = document.getElementById('modalBody') || document.querySelector('#modal .modal-body');
 
