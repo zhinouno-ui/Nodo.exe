@@ -3340,14 +3340,31 @@ async function deshacerOperacion(id, usuario, tipoOriginal, monto, bilId){
     else r = await callDrex("retirarSaldo", montoNum);
 
     const ok = r && r.ok !== false;
+
+    // La reversión TAMBIÉN debe generar su movimiento en Chunior (antes solo se hacía en agentes).
+    // Revertir una CARGA → RETIRO (movimiento negativo); revertir un RETIRO → CARGA (positivo).
+    let movChu = null;
+    const usaChunior = !!(bil && bil.CHUNIOR_UID);
+    if(ok && usaChunior){
+      toast("Anotando reversión en Chunior...","blue");
+      try {
+        const rChu = (tipoReversion==='CARGA')
+          ? await registrarCargaEnChunior(bil.CHUNIOR_UID, montoNum, usuario)
+          : await registrarRetiroEnChunior(bil.CHUNIOR_UID, montoNum, usuario);
+        if(rChu && rChu.ok && rChu.movimientoId){ movChu = rChu.movimientoId; toast("✓ Chunior N° "+rChu.movimientoId,"green"); }
+        else toast("✗ Chunior: "+(rChu?.error||"no se generó el movimiento"),"red");
+      } catch(e){ toast("Error Chunior: "+(e.message||""),"red"); }
+    }
+
+    const chuOk = !!movChu || !usaChunior;
     await supabaseClient.from("historial_ops").update({estado:"REVERTIDA"}).eq("id", id);
     await registrarEnHistorial({usuario, tipo:tipoReversion, monto:montoNum,
       billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null,
-      origen:'MANUAL', estado:ok?'OK':'ERROR',
-      notas:"Reversión de "+tipoOriginal, reversion_de:id});
+      origen:'MANUAL', estado:(ok&&chuOk)?'OK':'ERROR',
+      notas:"Reversión de "+tipoOriginal, reversion_de:id, chunior_movimiento_id:movChu});
 
     if(ok && bil && bil.ID_BILLETERA) await ajustarSaldoBilletera(bil.ID_BILLETERA, tipoReversion==='CARGA'?montoNum:-montoNum);
-    toast(ok?'Reversión completada OK':'Error en reversión', ok?'green':'red');
+    toast((ok&&chuOk)?'Reversión completada OK':'Reversión con errores — revisar',(ok&&chuOk)?'green':'red');
     await window.ctrlElectron.navigateAgent();
     await cargarHistorial();
     renderBillerasInicio();
