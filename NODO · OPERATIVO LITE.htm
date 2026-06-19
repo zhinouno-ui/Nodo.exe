@@ -3195,7 +3195,7 @@ async function reintentarOperacionFallida(historialId){
   let b, chuVerif = { existe:false, movimientoId:null };
   try {
     const verifChuniorPromise = (necesitaChunior && !chuniorYaHecho)
-      ? verificarMovimientoEnChunior(usuario, monto, fechaRefMs)   // corre en la ventana de Chunior (paralelo)
+      ? verificarMovimientoEnChunior(usuario, monto, fechaRefMs, tipo)   // corre en la ventana de Chunior (paralelo)
       : Promise.resolve({ existe:false, movimientoId:null });
     // Agentes y Chunior usan ventanas distintas → realmente en paralelo
     const [bRes, chuRes] = await Promise.all([
@@ -6139,7 +6139,7 @@ async function sincronizarBilleterasChunior(silencioso){
 // fechaRefMs: timestamp (ms) de referencia de la operación que buscamos confirmar.
 // Sirve para NO emparejar un movimiento viejo (misma billetera+monto, otra hora)
 // con la operación actual. Si no se pasa, se usa "ahora".
-async function verificarMovimientoEnChunior(usuario, monto, fechaRefMs){
+async function verificarMovimientoEnChunior(usuario, monto, fechaRefMs, tipo){
   if(!window.chunior || !usuario) return { existe:false, movimientoId:null };
   const montoAbs = Math.abs(Number(monto));
   try {
@@ -6191,14 +6191,21 @@ async function verificarMovimientoEnChunior(usuario, monto, fechaRefMs){
     const refMs = (typeof fechaRefMs === 'number' && !isNaN(fechaRefMs)) ? fechaRefMs : Date.now();
     const VENTANA_MS = 30 * 60 * 1000; // ±30 min: la op recién hecha cae acá; un mov de las 04am NO
 
-    // Juntamos todos los que matchean usuario+monto
+    // El SIGNO del movimiento debe concordar con el tipo de operación:
+    //   CARGA  → suma fichas al jugador → movimiento POSITIVO (+)
+    //   RETIRO → resta fichas           → movimiento NEGATIVO (-)
+    // Por eso un mov de -10.000 NO vale para una carga de +10.000 aunque coincida el monto.
+    const esCarga = String(tipo||'').toUpperCase() === 'CARGA';
+    // Juntamos los que matchean usuario + monto + SIGNO correcto
     const matches = [];
     for(const r of res){
       const notasNorm = String(r.notas||'').trim().toLowerCase();
-      // El monto en la lista viene como "$ 1.500,00" (AR). Parseamos a número.
+      // El monto viene como "$ 1.500,00" o "-$ 10.000,00" (AR). Parseamos CONSERVANDO el signo.
       const mTxt = String(r.montoTxt||'').replace(/[^\d,.-]/g,'').replace(/\./g,'').replace(',','.');
-      const mNum = Math.abs(parseFloat(mTxt));
-      if(notasNorm === normU && !isNaN(mNum) && Math.abs(mNum - montoAbs) < 1){
+      const mNum = parseFloat(mTxt);
+      if(isNaN(mNum)) continue;
+      const signoOk = esCarga ? (mNum > 0) : (mNum < 0);
+      if(notasNorm === normU && signoOk && Math.abs(Math.abs(mNum) - montoAbs) < 1){
         matches.push(r);
       }
     }
@@ -6220,8 +6227,8 @@ async function verificarMovimientoEnChunior(usuario, monto, fechaRefMs){
       // hay coincidencias usuario+monto pero la más cercana está fuera de ventana (otro horario) → NO afirmamos
       return { existe:false, movimientoId:null };
     }
-    // Ninguna fecha parseable → no podemos filtrar por tiempo; usamos el primero (comportamiento previo)
-    return { existe:true, movimientoId: matches[0].id || null };
+    // Ninguna fecha parseable → no podemos garantizar el horario → NO afirmamos (que se revise a mano).
+    return { existe:false, movimientoId:null };
   } catch(e){
     return { existe:false, movimientoId:null };
   }
