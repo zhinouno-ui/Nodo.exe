@@ -145,6 +145,36 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
 .op-landing{background:#2a2205;color:#fde68a}
 .op-revert{background:#331515;color:#fca5a5}
 
+/* ── Chat v4 · base estructural Gentelella v4 (MIT, ColorlibHQ) re-tematizada al NODO ── */
+.c4-rail{background:var(--card);border:1px solid var(--line);border-radius:16px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.c4-search{display:flex;align-items:center;gap:8px;padding:12px;border-bottom:1px solid var(--line);background:#202635}
+.c4-search input{margin:0;padding:8px 10px;border-radius:10px;background:#0e1525;color:#fff;border:1px solid #2c3140;font-size:13px}
+.c4-tabs{display:flex;gap:6px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.c4-tab{flex:1;background:#1d2230;color:var(--muted);border:none;border-radius:9px;padding:7px;font-size:12px;font-weight:700;cursor:pointer}
+.c4-tab.active{background:var(--blue);color:#fff}
+.c4-conversations{flex:1;overflow-y:auto;min-height:0}
+.c4-conversation{display:grid;grid-template-columns:42px 1fr auto;gap:10px;align-items:center;width:100%;text-align:left;background:none;border:none;border-bottom:1px solid #2d3342;padding:12px;cursor:pointer;color:#fff;font-family:inherit}
+.c4-conversation:hover,.c4-conversation.active{background:#1c2230}
+.c4-av{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:15px;flex-shrink:0}
+.c4-conv-name{font-weight:800;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c4-conv-last{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.c4-conv-right{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.c4-conv-time{font-size:10px;color:var(--muted);white-space:nowrap}
+.c4-unread{background:#ff3b30;color:#fff;border-radius:999px;min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;padding:0 5px}
+.c4-thread{background:var(--card);border:1px solid var(--line);border-radius:16px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.c4-thread-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;border-bottom:1px solid var(--line);background:#202635}
+.c4-peer{display:flex;align-items:center;gap:10px;min-width:0}
+.c4-peer .name{font-weight:800}
+.c4-peer .presence{font-size:11px;color:var(--muted)}
+.c4-thread-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.c4-messages{flex:1;min-height:0;overflow-y:auto;padding:16px;background:#10131a;display:flex;flex-direction:column;gap:10px}
+.c4-bubble{max-width:74%;padding:10px 13px;border-radius:16px;font-size:14px;line-height:1.4;word-break:break-word}
+.c4-bubble.theirs{align-self:flex-start;background:#1d2939;color:#f4f7fb;border-bottom-left-radius:4px}
+.c4-bubble.mine{align-self:flex-end;background:linear-gradient(135deg,#3d5afe,#6d7dff);color:#fff;border-bottom-right-radius:4px}
+.c4-bubble img{width:100%;max-width:240px;border-radius:12px;margin-top:6px;display:block}
+.c4-bubble-meta{font-size:10px;opacity:.7;margin-top:5px}
+.c4-composer{border-top:1px solid var(--line);background:#151821;padding:12px;position:relative}
+
 </style>
 </head>
 
@@ -366,34 +396,45 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
         </div>
 
         <div class="chat-layout">
-          <div class="chat-list">
-            <div class="chat-list-head">
-              <b>Chats activos</b>
-              <div class="small">Mensajes de usuarios desde landing</div>
+          <!-- Rail de conversaciones (base Gentelella v4, MIT) -->
+          <aside class="c4-rail">
+            <div class="c4-search">
+              <span>🔍</span>
+              <input type="text" id="chatBuscar" placeholder="Buscar conversación…" oninput="renderChatList()">
             </div>
-            <div id="chatList"></div>
-          </div>
-
-          <div class="chat-panel">
-            <div class="chat-head">
-              <div>
-                <b id="chatTitulo">Seleccioná un chat</b>
-                <div id="chatSubtitulo" class="small">Sin conversación abierta</div>
-              </div>
-              <div id="chatAccionesRapidas" class="hidden" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-                <input id="chatCargarMonto" type="number" min="1" placeholder="Monto" style="width:90px;margin:0;padding:6px 10px;font-size:12px">
-                <button class="mini-btn green" onclick="chatAccionCargar()" title="Cargar saldo al usuario del chat">⚡ Cargar</button>
-                <button class="mini-btn red" onclick="chatAccionRetirar()" title="Retirar saldo al usuario del chat">🏧 Retirar</button>
-                <button class="mini-btn yellow" onclick="chatAccionResetClave()" title="Resetear clave a 12345a">🔑 Reset</button>
-              </div>
-              <span id="chatEstado" class="badge badge-muted">-</span>
+            <div class="c4-tabs">
+              <button class="c4-tab active" id="chatTabTodos" onclick="chatSetTab('todos')">Todos</button>
+              <button class="c4-tab" id="chatTabNoLeidos" onclick="chatSetTab('no_leidos')">Sin leer</button>
             </div>
+            <div id="chatList" class="c4-conversations"></div>
+          </aside>
 
-            <div id="chatBody" class="chat-body">
+          <!-- Conversación activa -->
+          <section class="c4-thread">
+            <header class="c4-thread-head">
+              <div class="c4-peer">
+                <div class="c4-av" id="chatPeerAv" style="background:#3d5afe">··</div>
+                <div style="min-width:0">
+                  <div class="name" id="chatTitulo">Seleccioná un chat</div>
+                  <div class="presence" id="chatSubtitulo">Sin conversación abierta</div>
+                </div>
+              </div>
+              <div class="c4-thread-actions">
+                <div id="chatAccionesRapidas" class="hidden" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+                  <input id="chatCargarMonto" type="number" min="1" placeholder="Monto" style="width:90px;margin:0;padding:6px 10px;font-size:12px">
+                  <button class="mini-btn green" onclick="chatAccionCargar()" title="Cargar saldo al usuario del chat">⚡ Cargar</button>
+                  <button class="mini-btn red" onclick="chatAccionRetirar()" title="Retirar saldo al usuario del chat">🏧 Retirar</button>
+                  <button class="mini-btn yellow" onclick="chatAccionResetClave()" title="Resetear clave a 12345a">🔑 Reset</button>
+                </div>
+                <span id="chatEstado" class="badge badge-muted">-</span>
+              </div>
+            </header>
+
+            <div id="chatBody" class="chat-body c4-messages">
               <div class="alert-box">Seleccioná un chat de la izquierda para responder.</div>
             </div>
 
-            <div class="chat-compose">
+            <div class="c4-composer">
               <div id="chatPreview" class="chat-preview">
                 <div style="display:flex;align-items:center;gap:10px">
                   <img id="chatPreviewImg" src="" alt="Imagen">
@@ -413,7 +454,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
               <input id="chatFile" type="file" accept="image/*" style="display:none" onchange="tomarImagenChatFile()">
               <div class="small" style="text-align:center;margin-top:8px">Ctrl + V admite texto e imagen del portapapeles.</div>
             </div>
-          </div>
+          </section>
         </div>
       </section>
 
@@ -676,9 +717,81 @@ table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px s
 <script>
 const API_URL = "https://script.google.com/macros/s/AKfycbwvZGRAOxBLNIQ52mlED6ZlsOkpAd2PicOvmlZFBTKptXR5lnC_n87w-awDvowmktI8/exec";
 
-const SUPABASE_URL = "https://gxedxuctwlkjllmayxaa.supabase.co";
-const SUPABASE_KEY = "sb_publishable_UlAN1ifdqpTj9pDIwFU0vg_S7AIU5Sg";
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// ── Backend activo = proyecto de la encargada (Portal/Admi en deploy) ──────
+// ROLLBACK (volver al Supabase propio si el de ella se cae / faltan RPCs):
+//   const SUPABASE_URL = "https://gxedxuctwlkjllmayxaa.supabase.co";
+//   const SUPABASE_KEY = "sb_publishable_UlAN1ifdqpTj9pDIwFU0vg_S7AIU5Sg";
+const SUPABASE_URL = "https://pjvvyvfcwjoocjqvdror.supabase.co";
+const SUPABASE_KEY = "sb_publishable_NYqRoKptTgcL90VAVF2kqA_Gl06mEUF";
+
+// Secreto de datos del panel. El backend nuevo cierra por RLS la ESCRITURA de
+// billeteras y exige este secreto en las RPC SECURITY DEFINER (y como header).
+// Configurable por oficina vía localStorage; default = el del deploy de ella.
+window.PANEL_DATA_SECRET = localStorage.getItem("nodo_panel_data_secret") || "nodo-panel-data-2026";
+window.PUSH_API_URL = localStorage.getItem("nodo_push_api_url") || "https://portal-bet300-a4xj.vercel.app/api/send-push";
+window.PUSH_SECRET  = localStorage.getItem("nodo_push_secret")  || "nodo-bet300-push-2026";
+
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  global: { headers: { "x-panel-secret": window.PANEL_DATA_SECRET } }
+});
+
+// ============================================================================
+// CAPA DE DATOS (DB) — ÚNICO punto de contacto con el backend.
+// Regla: ningún call-site habla directo con supabaseClient. Si mañana cambia
+// el backend, un nombre de tabla o una RPC, se toca SOLO este objeto.
+//   • Lectura y escritura permitida  → DB.from(tabla)  (proxy a .from(), sin cambios)
+//   • Escritura de 'billeteras'       → RPC con secreto (la RLS bloquea el .from() directo)
+// ============================================================================
+const DB = {
+  // Acceso genérico: devuelve el query-builder de Supabase tal cual.
+  from(tabla){ return DB.from(tabla); },
+  // RPC genérica (por si una futura llamada la necesita sin secreto).
+  rpc(fn, params){ return supabaseClient.rpc(fn, params || {}); },
+
+  // ── Billeteras: ESCRITURA blindada por RLS → RPC SECURITY DEFINER ─────────
+  // Update por id con patch parcial (mismos campos que el .update() de antes).
+  billeteraUpdate(id, patch){
+    return supabaseClient.rpc("panel_billetera_update", {
+      p_secret: window.PANEL_DATA_SECRET, p_id: Number(id), p_patch: patch
+    });
+  },
+  // Alta de billetera (un registro por llamada).
+  billeteraInsert(patch){
+    return supabaseClient.rpc("panel_billetera_insert", {
+      p_secret: window.PANEL_DATA_SECRET, p_patch: patch
+    });
+  },
+  // Marcar billetera para la landing: limpia la selección de la oficina y marca
+  // la elegida, de forma atómica en el server (reemplaza el doble UPDATE de antes).
+  billeteraSeleccionarLanding(id, pcCodigo){
+    return supabaseClient.rpc("nodo_seleccionar_billetera_portal", {
+      p_secret: window.PANEL_DATA_SECRET, p_id: Number(id), p_pc_codigo: pcCodigo
+    });
+  },
+
+  // ── Chat: en el backend nuevo lo sirve la RPC (la RLS bloquea el .from directo) ──
+  // Conversaciones/sesiones de la oficina.
+  chatSesiones(pcCodigo){
+    return supabaseClient.rpc("panel_core_get_chat_sesiones_json", { p_pc_codigo: pcCodigo });
+  },
+  // Mensajes de una conversación.
+  chatMensajes(chatId, pcCodigo){
+    return supabaseClient.rpc("panel_core_get_chat_mensajes_json", { p_chat_id: chatId, p_pc_codigo: pcCodigo });
+  },
+  // Enviar respuesta del operador (el RPC core toma solo texto).
+  chatEnviar(chatId, mensaje, emisor){
+    return supabaseClient.rpc("panel_core_enviar_chat_json", { p_chat_id: chatId, p_mensaje: mensaje, p_emisor: emisor });
+  },
+  // Normaliza la respuesta de las RPC (string JSON | array | {rows} | {data.rows} | {data[]}).
+  rows(data){
+    try{ if(typeof data === "string") data = JSON.parse(data); }catch(_e){}
+    if(Array.isArray(data)) return data;
+    if(data && Array.isArray(data.rows)) return data.rows;
+    if(data && data.data && Array.isArray(data.data.rows)) return data.data.rows;
+    if(data && data.data && Array.isArray(data.data)) return data.data;
+    return [];
+  }
+};
 
 let operador=null, pcOperativa=null;
 let solicitudes=[], billeteras=[], chats=[], chatMensajes=[];
@@ -686,6 +799,7 @@ let retiros24hCSV = []; // {alias, fecha, monto} — retiros detectados en últi
 let timersIniciados=false;
 let lastPendientesIds=new Set(), lastChatUnread=0;
 let chatActualId="", chatImagenBase64="", chatImagenNombre="";
+let chatFiltroTab="todos"; // chat v4: "todos" | "no_leidos"
 
 window.addEventListener("load",()=>{
   // Siempre mostramos el login para capturar la clave (= clave Chunior).
@@ -882,7 +996,7 @@ async function crearUsuarioPanel(){
   if(!usuario_nuevo||!nombre||!telefono){setBox("jugCrearMsg",`<div class="err-box">Completá usuario, nombre y teléfono.</div>`);return}
 
   // 1. Crear en Supabase
-  const {error}=await supabaseClient.from("usuarios").insert({usuario:usuario_nuevo,nombre,telefono,pc_codigo:pc,clave});
+  const {error}=await DB.from("usuarios").insert({usuario:usuario_nuevo,nombre,telefono,pc_codigo:pc,clave});
   if(error){
     setBox("jugCrearMsg",`<div class="err-box">${error.code==="23505"?"Ese usuario ya existe en el panel.":error.message}</div>`);
     return;
@@ -1005,7 +1119,7 @@ async function importarOperacionesCSV(){
     const batch = allAliases.slice(i,i+BATCH).map(function(a){
       return { usuario:a, nombre:a, verificado:true, pc_codigo:pc };
     });
-    const { error } = await supabaseClient.from("usuarios")
+    const { error } = await DB.from("usuarios")
       .upsert(batch, { onConflict:"usuario", ignoreDuplicates:false });
     if(error){ err+=batch.length; console.error("ops csv batch error:", error.message); }
     else ok+=batch.length;
@@ -1026,7 +1140,7 @@ async function importarOperacionesCSV(){
     const desde = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
     let existentes = [];
     try {
-      const { data: ex } = await supabaseClient
+      const { data: ex } = await DB
         .from('historial_ops')
         .select('usuario, monto, created_at')
         .eq('pc_codigo', pc)
@@ -1038,7 +1152,7 @@ async function importarOperacionesCSV(){
     // También deduplicar contra LANDING ya importados (para no duplicar entre imports sucesivos)
     let landingPrevios = [];
     try {
-      const { data: lp } = await supabaseClient
+      const { data: lp } = await DB
         .from('historial_ops')
         .select('usuario, monto, created_at')
         .eq('pc_codigo', pc)
@@ -1188,7 +1302,7 @@ async function importarCSV(){
 
   for(let i=0;i<registros.length;i+=BATCH){
     const batch=registros.slice(i,i+BATCH);
-    const {error}=await supabaseClient.from("usuarios").upsert(batch,{onConflict:"usuario"});
+    const {error}=await DB.from("usuarios").upsert(batch,{onConflict:"usuario"});
     if(error){
       console.error("Batch error:", error.message || error.details || JSON.stringify(error));
       err+=batch.length;
@@ -1230,7 +1344,7 @@ function abrirEditarUsuario(u){
       clave:                val("eU_clave")||null,
       updated_at:           new Date().toISOString()
     };
-    const {error} = await supabaseClient.from("usuarios").update(cambios).eq("id", u.id);
+    const {error} = await DB.from("usuarios").update(cambios).eq("id", u.id);
     if(error){ alert(error.message||"Error"); return; }
     cerrarModal();
     toast("Usuario actualizado","green");
@@ -1245,7 +1359,7 @@ function copiarDatosUsuario(u){
 
 async function resetearClaveUsuario(id, nombreUsuario){
   if(!confirm(`¿Resetear clave de "${nombreUsuario}" a 12345a?`)) return;
-  const {error}=await supabaseClient.from("usuarios").update({clave:"12345a"}).eq("id",id);
+  const {error}=await DB.from("usuarios").update({clave:"12345a"}).eq("id",id);
   if(!error) toast(`Clave de ${nombreUsuario} reseteada a 12345a`,"green");
 }
 
@@ -1258,7 +1372,7 @@ async function cargarJugadores(){
   let from = 0;
   let dataAll = [];
   while(true){
-    const {data, error} = await supabaseClient
+    const {data, error} = await DB
       .from("usuarios")
       .select("*")
       .eq("pc_codigo", pcOperativa)
@@ -1420,7 +1534,7 @@ async function verificarRetiro24h(usuario) {
 
   // 1. Buscar en solicitudes (retiros cerrados desde el panel de solicitudes o chat)
   try {
-    const { data: dataSol } = await supabaseClient
+    const { data: dataSol } = await DB
       .from("solicitudes")
       .select("id, created_at, monto")
       .eq("usuario", usuario)
@@ -1435,7 +1549,7 @@ async function verificarRetiro24h(usuario) {
 
   // 2. Buscar en historial_ops (retiros del form manual, chat rápido)
   try {
-    const { data: dataH } = await supabaseClient
+    const { data: dataH } = await DB
       .from("historial_ops")
       .select("id, created_at, monto, billetera_nombre")
       .eq("usuario", usuario)
@@ -1614,7 +1728,7 @@ function mapSolicitudSupabase(s){
 }
 
 async function cargarSolicitudesSupabase(){
-  const { data, error } = await supabaseClient
+  const { data, error } = await DB
     .from("solicitudes")
     .select("*")
     .eq("pc_codigo", pcOperativa)
@@ -1632,7 +1746,7 @@ async function cargarSolicitudesSupabase(){
 }
 
 async function actualizarSolicitudSupabase(id, cambios){
-  const { data, error } = await supabaseClient
+  const { data, error } = await DB
     .from("solicitudes")
     .update(cambios)
     .eq("id", id)
@@ -1710,7 +1824,7 @@ function normalizarPcCodigo(textPuesto){
 async function _asegurarOficina(pcCodigo, nombre, chuniorPtId){
   if(!pcCodigo) return { pc_codigo:'', nombre:'', esNueva:false };
   try {
-    const { data: existing } = await supabaseClient
+    const { data: existing } = await DB
       .from('oficinas')
       .select('*')
       .eq('pc_codigo', pcCodigo)
@@ -1718,14 +1832,14 @@ async function _asegurarOficina(pcCodigo, nombre, chuniorPtId){
     if(existing && existing.length){
       // Actualizar el pt_id (puede cambiar entre sesiones) y nombre legible
       try {
-        await supabaseClient.from('oficinas')
+        await DB.from('oficinas')
           .update({ chunior_pt_id: String(chuniorPtId||''), nombre, updated_at: new Date().toISOString(), activa: true })
           .eq('pc_codigo', pcCodigo);
       } catch(_){}
       return { pc_codigo:pcCodigo, nombre, chunior_pt_id:String(chuniorPtId||''), esNueva:false };
     }
     // No existe → crear
-    await supabaseClient.from('oficinas').insert({
+    await DB.from('oficinas').insert({
       pc_codigo: pcCodigo,
       nombre,
       chunior_pt_id: String(chuniorPtId||''),
@@ -1973,51 +2087,123 @@ async function cargarSolicitudes(silencioso=false){
   verificarSolicitudes(silencioso);
 }
 async function cargarBilleteras(render=true){
-  const {data,error}=await supabaseClient
-    .from("billeteras")
-    .select("*")
-    .eq("pc_codigo",pcOperativa)
-    .order("nombre_visible",{ascending:true});
+  // Recreado del NODO de la encargada: en el backend nuevo las billeteras se leen por
+  // RPC (panel_nodo_list_billeteras) con CÓDIGOS CANDIDATOS de oficina, porque quedaron
+  // keyadas bajo P1 / XGENERALENUSO / XPLATA y no bajo el pcOperativa crudo.
+  let rows = [];
+  let errorFinal = null;
 
-  if(error){console.error("Error billeteras:",error);return}
+  function _walletRowsFromRpcData(data){
+    try{ if(typeof data === 'string') data = JSON.parse(data); }catch(_e){}
+    if(Array.isArray(data)) return data;
+    if(data && Array.isArray(data.rows)) return data.rows;
+    if(data && data.data && Array.isArray(data.data.rows)) return data.data.rows;
+    return [];
+  }
+  function _candidateCodes(){
+    let out = [];
+    const push = v => { v=String(v||'').trim(); if(v && !out.includes(v)) out.push(v); };
+    push(pcOperativa);
+    push(window.__nodoOficinaDetectada);
+    push(window.__nodoPuestoDetectado);
+    try{ push(localStorage.getItem('nodo_oficina_id')); }catch(_e){}
+    try{ push(localStorage.getItem('nodo_puesto_chunior')); }catch(_e){}
+    // OFICINAS HARDCODEADAS (centralizar luego): compat histórica de esta oficina.
+    push('XGENERALENUSO');
+    push('XPLATA');
+    push('P1');
+    return out;
+  }
 
-  billeteras=(data||[]).map(b=>({
-    ID_BILLETERA:b.id,
-    NOMBRE_VISIBLE:b.nombre_visible,
-    TIPO:b.tipo||"",
-    PC:b.pc_codigo,
-    ACTIVA:b.activa?"SI":"NO",
-    SELECCIONADA_MANUAL:b.seleccionada_manual?"SI":"NO",
-    SALDO:Number(b.saldo||0),
-    CBU_ALIAS:b.cbu_alias||"",
-    CBU_CVU:b.cbu_cvu||"",
-    BANCO:b.banco||"",
-    TITULAR:b.titular||"",
-    CHUNIOR_UID:b.chunior_uid||""
-  }));
+  // 1) RPC oficial. Puede devolver {rows:[...]} o string JSON.
+  const candidates = _candidateCodes();
+  for(const code of candidates){
+    if(rows.length) break;
+    try{
+      const r = await DB.rpc('panel_nodo_list_billeteras', { p_pc_codigo: code, p_landing_pc_codigo: code });
+      if(!r.error) rows = _walletRowsFromRpcData(r.data);
+      else errorFinal = r.error;
+    }catch(e){ errorFinal = e; }
+  }
+  // 2) Fallback directo por pc_codigo/oficina_id.
+  if(!rows.length){
+    try{
+      const r = await DB.from('billeteras').select('*')
+        .or('pc_codigo.eq.'+(pcOperativa||'')+',pc_codigo.eq.P1,oficina_id.eq.XPLATA,oficina_id.eq.XGENERALENUSO')
+        .order('seleccionada_manual',{ascending:false})
+        .order('nombre_visible',{ascending:true});
+      if(!r.error) rows = r.data || [];
+      else errorFinal = r.error;
+    }catch(e){ errorFinal = e; }
+  }
+  // 3) Fallback por UID detectados en Chunior.
+  if(!rows.length){
+    let uids = [];
+    try{ uids = JSON.parse(localStorage.getItem('nodo_chunior_wallet_uids') || '[]'); }catch(_e){ uids=[]; }
+    if(Array.isArray(window.__nodoChuniorWalletUids) && window.__nodoChuniorWalletUids.length) uids = window.__nodoChuniorWalletUids;
+    uids = Array.from(new Set((uids||[]).map(String).filter(Boolean)));
+    if(uids.length){
+      const rUid = await DB.from('billeteras').select('*').in('chunior_uid', uids)
+        .order('seleccionada_manual',{ascending:false}).order('nombre_visible',{ascending:true});
+      if(!rUid.error) rows = rUid.data || [];
+      else errorFinal = rUid.error;
+    }
+  }
+  if(!rows.length && errorFinal){ console.error('Error billeteras:', errorFinal); }
+
+  const saldoByUid = window.__nodoChuniorWalletSaldoByUid || {};
+  let nombreByUid = window.__nodoChuniorWalletNombreByUid || {};
+  try{ if(!Object.keys(nombreByUid||{}).length){ nombreByUid = JSON.parse(localStorage.getItem('nodo_chunior_wallet_nombres') || '{}'); } }catch(_e){ nombreByUid = {}; }
+
+  billeteras=(rows||[])
+    .filter(function(b){
+      const activa = (b.activa === true || String(b.activa).toLowerCase()==='true' || String(b.activa).toUpperCase()==='SI');
+      const estado = normalizar(b.estado||'ACTIVA');
+      return activa && estado !== 'FUSIONADA';
+    })
+    .map(b=>{
+      const uid = b.chunior_uid || '';
+      const saldo = (uid && Object.prototype.hasOwnProperty.call(saldoByUid, String(uid))) ? Number(saldoByUid[String(uid)]||0) : Number(b.saldo||0);
+      return {
+        ID_BILLETERA:b.id,
+        NOMBRE_VISIBLE:b.nombre_visible,
+        NOMBRE_CHUNIOR:(uid && nombreByUid[String(uid)]) ? nombreByUid[String(uid)] : (b.nombre_chunior || b.nombre_visible),
+        TIPO:b.tipo || b.banco || (uid ? 'Chunior' : ''),
+        BANCO:b.banco || '',
+        PC:b.pc_codigo,
+        OFICINA_ID:b.oficina_id || '',
+        ACTIVA:(b.activa===true || String(b.activa).toLowerCase()==='true')?'SI':'NO',
+        SELECCIONADA_MANUAL:(b.seleccionada_manual===true || String(b.seleccionada_manual).toLowerCase()==='true')?'SI':'NO',
+        SALDO:saldo,
+        CBU_ALIAS:b.cbu_alias || b.alias || b.cbu || '',
+        CBU_CVU:b.cbu_cvu || '',
+        ALIAS:b.alias || '',
+        CBU:b.cbu || '',
+        TITULAR:b.titular||'',
+        CHUNIOR_UID:uid,
+        ESTADO:b.estado||''
+      };
+    });
+  // Dedup por CHUNIOR_UID (misma wallet repetida por multi-oficina / sync).
+  (function(){ const seen=new Set(); const out=[]; for(const b of billeteras){ const k=String(b.CHUNIOR_UID||'').trim(); if(k){ if(seen.has(k)) continue; seen.add(k); } out.push(b); } billeteras=out; })();
 
   if(render)renderBilleteras();
   renderInicio();
 }
 async function cargarChats(silencioso=false){
-  const {data,error}=await supabaseClient
-    .from("chats")
-    .select("*")
-    .eq("pc_codigo",pcOperativa)
-    .order("fecha_ultimo",{ascending:false});
-
+  const {data,error}=await DB.chatSesiones(pcOperativa);
   if(error){return}
 
-  chats=(data||[]).map(c=>({
-    ID_CHAT:c.id,
-    USUARIO:c.usuario,
-    NOMBRE_COMPLETO:c.nombre_completo||"",
-    TELEFONO:c.telefono||"",
-    SOLICITUD_ID:c.solicitud_id||"",
-    SIN_LEER:c.sin_leer||0,
-    ULTIMO_MENSAJE:c.ultimo_mensaje||"",
-    FECHA_ULTIMO:c.fecha_ultimo||c.created_at,
-    FECHA:c.fecha_ultimo||c.created_at
+  chats=DB.rows(data).map(c=>({
+    ID_CHAT:c.chat_id||c.id||c.ID_CHAT||"",
+    USUARIO:c.usuario||c.USUARIO||"Usuario",
+    NOMBRE_COMPLETO:c.nombre_completo||c.NOMBRE_COMPLETO||"",
+    TELEFONO:c.telefono||c.TELEFONO||"",
+    SOLICITUD_ID:c.solicitud_id||c.SOLICITUD_ID||"",
+    SIN_LEER:Number(c.sin_leer||c.SIN_LEER||0),
+    ULTIMO_MENSAJE:c.ultimo_mensaje||c.mensaje||"",
+    FECHA_ULTIMO:c.fecha_ultimo||c.updated_at||c.created_at||"",
+    FECHA:c.fecha_ultimo||c.updated_at||c.created_at||""
   }));
 
   renderChatList();
@@ -2434,7 +2620,7 @@ async function ejecutarOperacionManual(){
             // Actualizar el historial con el chunior_movimiento_id real
             if(filaHist && filaHist.id){
               try {
-                await supabaseClient.from('historial_ops')
+                await DB.from('historial_ops')
                   .update({ chunior_movimiento_id: rChu.movimientoId })
                   .eq('id', filaHist.id);
                 if(typeof cargarHistorial === 'function') await cargarHistorial();
@@ -2588,7 +2774,7 @@ async function consultarRetirosUsuarioRealtime(){
     // Ventana de 24hs exactas — la política de retiro es 1 cada 24hs
     const desde = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     // No filtramos por pc_codigo: queremos detectar si el usuario retiró desde OTRA oficina
-    const { data } = await supabaseClient
+    const { data } = await DB
       .from("historial_ops")
       .select("created_at, monto, billetera_nombre, estado, origen, chunior_movimiento_id, pc_codigo")
       .eq("usuario", usuario)
@@ -2666,7 +2852,7 @@ async function mostrarBlacklist24h(){
   try {
     const desde = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     // Sin filtrar por pc_codigo: queremos ver retiros de TODAS las oficinas para detectar reincidencia cruzada
-    let { data, error } = await supabaseClient
+    let { data, error } = await DB
       .from('historial_ops')
       .select('id, usuario, monto, billetera_nombre, estado, origen, created_at, pc_codigo, notas')
       .eq('tipo', 'RETIRO')
@@ -2774,9 +2960,9 @@ async function excluirRetiroBlacklistModal(historialId, btn){
   if(btn){ btn.disabled = true; btn.textContent = '...'; }
   try {
     // Traer notas actuales (el modal no las tiene en memoria de forma confiable)
-    const { data: row } = await supabaseClient.from('historial_ops').select('notas').eq('id', historialId).single();
+    const { data: row } = await DB.from('historial_ops').select('notas').eq('id', historialId).single();
     const notas = (String(row?.notas||'').trim() + ' [BL_EXCLUIDO]').trim();
-    const { error } = await supabaseClient.from('historial_ops').update({ notas }).eq('id', historialId);
+    const { error } = await DB.from('historial_ops').update({ notas }).eq('id', historialId);
     if(error) throw error;
     // reflejar en _historialData si está cargado
     const h = (_historialData||[]).find(function(x){ return String(x.id)===String(historialId); });
@@ -2899,7 +3085,7 @@ async function _generarAlternativasAlias(base, cantidad){
   // Filtrar los que YA existen en nuestra base local (cualquier oficina, indistinto)
   const unicos = [...new Set(candidatos)];
   try {
-    const { data } = await supabaseClient
+    const { data } = await DB
       .from('usuarios')
       .select('usuario')
       .in('usuario', unicos);
@@ -2954,7 +3140,7 @@ async function registrarEnHistorial(op){
   let intento = { ...insertRow };
   for(let i = 0; i <= _HISTORIAL_COLS_OPCIONALES.length; i++){
     try {
-      const { data, error } = await supabaseClient.from("historial_ops").insert(intento).select().single();
+      const { data, error } = await DB.from("historial_ops").insert(intento).select().single();
       if(!error) return data;
       const msg = (error.message || '') + ' ' + (error.details || '');
       const colMencionada = _HISTORIAL_COLS_OPCIONALES.find(c => msg.includes(c) && (c in intento));
@@ -2971,6 +3157,18 @@ async function registrarEnHistorial(op){
   return null;
 }
 
+// OFICINAS HARDCODEADAS (centralizar luego): grupos de alias por oficina para matchear
+// cómo quedó keyada la data en el backend. Recreado del NODO de la encargada.
+function pcAliasesHist(){
+  const v = String((typeof pcOperativa!=='undefined' ? pcOperativa : '') || '').trim().toUpperCase();
+  const grupos = {
+    "P1":["P1","PC1","XGENERALENUSO","XGENERAL","GENERAL","OFI_1"],
+    "P2":["P2","PC2"], "P3":["P3","PC3"],
+    "P4":["P4","PC4","SANCHEZ","SANCHEZPLATA"], "P5":["P5","PC5"]
+  };
+  for(const k in grupos){ if(grupos[k].includes(v)) return grupos[k]; }
+  return v ? [v] : ["P1"];
+}
 async function cargarHistorial(){
   _historialCargado = true;
   const el = document.getElementById("historialTable");
@@ -2981,10 +3179,10 @@ async function cargarHistorial(){
   // Excluimos origen='LANDING' porque son retiros importados de CSV (para el
   // chequeo de 24hs) y no son operaciones reales que hizo el operador. Las
   // solicitudes de landing actuales viven en su propio apartado.
-  const { data, error } = await supabaseClient
+  const { data, error } = await DB
     .from("historial_ops")
     .select("*")
-    .eq("pc_codigo", pcOperativa)
+    .in("pc_codigo", pcAliasesHist())
     .neq("origen", "LANDING")
     .order("created_at", { ascending: false })
     .limit(200);
@@ -3117,7 +3315,7 @@ async function verInfoMovimiento(historialId){
   const _sb = document.getElementById('modalSaveBtn'); if(_sb) _sb.style.display = 'none';
   const body = document.getElementById('modalBody');
   try {
-    const { data: h, error } = await supabaseClient
+    const { data: h, error } = await DB
       .from('historial_ops').select('*').eq('id', historialId).single();
     if(error) throw error;
     if(!h){ if(body) body.innerHTML = '<div class="err-box" style="padding:12px">No se encontró el movimiento.</div>'; return; }
@@ -3175,7 +3373,7 @@ async function verInfoMovimiento(historialId){
 //     ve el número y decide si la carga ya está reflejada o falta.
 async function reintentarOperacionFallida(historialId){
   if(!window.ctrlElectron){ alert("La automatización solo funciona en la app de escritorio."); return; }
-  const { data: row, error } = await supabaseClient
+  const { data: row, error } = await DB
     .from('historial_ops').select('*').eq('id', historialId).single();
   if(error || !row){ toast('No se encontró la fila del historial.', 'red'); return; }
   const { usuario, tipo, monto, billetera_id, billetera_nombre, chunior_movimiento_id, saldo_pre, saldo_post, created_at } = row;
@@ -3314,7 +3512,7 @@ async function reintentarOperacionFallida(historialId){
     const chuOk = !!movChu || !necesitaChunior;
     const nuevoEstado = (drexOk && chuOk) ? 'OK' : 'ERROR';
     try {
-      await supabaseClient.from('historial_ops').update({
+      await DB.from('historial_ops').update({
         estado: nuevoEstado,
         chunior_movimiento_id: movChu,
         notas: 'Reintento manual ['+new Date().toLocaleTimeString('es-AR',{timeZone:'America/Argentina/Buenos_Aires',hour:'2-digit',minute:'2-digit'})+']'
@@ -3362,7 +3560,7 @@ async function deshacerOperacion(id, usuario, tipoOriginal, monto, bilId){
     }
 
     const chuOk = !!movChu || !usaChunior;
-    await supabaseClient.from("historial_ops").update({estado:"REVERTIDA"}).eq("id", id);
+    await DB.from("historial_ops").update({estado:"REVERTIDA"}).eq("id", id);
     await registrarEnHistorial({usuario, tipo:tipoReversion, monto:montoNum,
       billetera_id:bil?bil.ID_BILLETERA:null, billetera_nombre:bil?bil.NOMBRE_VISIBLE:null,
       origen:'MANUAL', estado:(ok&&chuOk)?'OK':'ERROR',
@@ -3617,7 +3815,7 @@ async function excluirRetiroBlacklist(historialId){
   if(/\[BL_EXCLUIDO\]/.test(String(h.notas||''))){ toast("Ya estaba excluido.", "blue"); return; }
   const nuevasNotas = (String(h.notas||'').trim() + ' [BL_EXCLUIDO]').trim();
   try {
-    const { error } = await supabaseClient.from("historial_ops").update({ notas: nuevasNotas }).eq("id", h.id);
+    const { error } = await DB.from("historial_ops").update({ notas: nuevasNotas }).eq("id", h.id);
     if(error) throw error;
     h.notas = nuevasNotas;
     toast("🚫 Retiro excluido de la blacklist.", "green");
@@ -3629,7 +3827,7 @@ async function reincluirRetiroBlacklist(historialId){
   if(!h){ toast("No se encontró el retiro.", "red"); return; }
   const nuevasNotas = String(h.notas||'').replace(/\s*\[BL_EXCLUIDO\]/g,'').trim();
   try {
-    const { error } = await supabaseClient.from("historial_ops").update({ notas: nuevasNotas }).eq("id", h.id);
+    const { error } = await DB.from("historial_ops").update({ notas: nuevasNotas }).eq("id", h.id);
     if(error) throw error;
     h.notas = nuevasNotas;
     toast("↩ Retiro vuelve a contar en la blacklist.", "blue");
@@ -3775,7 +3973,7 @@ async function procesarColaCambioBilletera(filas, bilNueva){
       if(r && r.ok){
         ok++;
         try {
-          await supabaseClient.from("historial_ops")
+          await DB.from("historial_ops")
             .update({ billetera_id: bilNueva.ID_BILLETERA, billetera_nombre: bilNueva.NOMBRE_VISIBLE })
             .eq("id", h.id);
         } catch(eUpd){ console.warn("update historial_ops lote:", eUpd); }
@@ -3885,7 +4083,7 @@ async function ajustarSaldoBilletera(id, delta){
   const b = billeteras.find(x=>x.ID_BILLETERA===id);
   const saldoActual = b ? Number(b.SALDO||0) : 0;
   const nuevoSaldo  = Math.max(0, saldoActual + delta);
-  await supabaseClient.from("billeteras").update({saldo: nuevoSaldo}).eq("id", id);
+  await DB.billeteraUpdate(id, {saldo: nuevoSaldo});
   if(b) b.SALDO = nuevoSaldo;
 }
 
@@ -3940,14 +4138,14 @@ function abrirEditarBilletera(id){
     <label>Saldo actual (ajuste manual)</label>
     <input id="ebSaldo" type="number" value="${b.SALDO||0}">
   `,async()=>{
-    const {error}=await supabaseClient.from("billeteras").update({
+    const {error}=await DB.billeteraUpdate(id, {
       nombre_visible:val("ebNombre"),
       titular:val("ebTitular")||val("ebNombre"),
       cbu_cvu:val("ebCbu")||null,
       cbu_alias:val("ebAlias")||null,
       banco:val("ebBanco")||null,
       saldo:Number(val("ebSaldo")||0)
-    }).eq("id",id);
+    });
     if(error){alert(error.message);return}
     cerrarModal();
     toast("Billetera actualizada","green");
@@ -3972,7 +4170,7 @@ function abrirNuevaBilletera(){
   `,async()=>{
     const nombre=val("nbNombre");
     if(!nombre){alert("El nombre es obligatorio.");return}
-    const {error}=await supabaseClient.from("billeteras").insert({
+    const {error}=await DB.billeteraInsert({
       nombre_visible:nombre,
       titular:val("nbTitular")||nombre,
       cbu_cvu:val("nbCbu")||null,
@@ -4161,32 +4359,49 @@ function abrirRechazarSolicitud(id){
 }
 
 async function seleccionarBilletera(id){
-  await supabaseClient.from("billeteras").update({seleccionada_manual:false}).eq("pc_codigo",pcOperativa);
-  const {error}=await supabaseClient.from("billeteras").update({seleccionada_manual:true}).eq("id",id);
+  // Limpia la selección de la oficina y marca la elegida (atómico en el server).
+  const {error}=await DB.billeteraSeleccionarLanding(id, pcOperativa);
   if(error){alert(error.message||"Error");return}
   toast("Billetera puesta en landing","green");
   await cargarBilleteras();
 }
 async function cambiarEstadoBilletera(id,estado){
-  const {error}=await supabaseClient.from("billeteras").update({activa:estado==="SI"}).eq("id",id);
+  const {error}=await DB.billeteraUpdate(id, {activa:estado==="SI"});
   if(error){alert(error.message||"Error");return}
   await cargarBilleteras();
 }
 
+// Inicial y color estable del avatar (chat v4) a partir del nombre/usuario.
+function _chatInicial(s){ s=String(s||"?").trim(); return (s[0]||"?").toUpperCase(); }
+function _chatColor(s){ s=String(s||""); let h=0; for(let i=0;i<s.length;i++){h=(h*31+s.charCodeAt(i))%360;} return `hsl(${h},45%,42%)`; }
+function chatSetTab(t){
+  chatFiltroTab=t;
+  document.getElementById("chatTabTodos")?.classList.toggle("active",t==="todos");
+  document.getElementById("chatTabNoLeidos")?.classList.toggle("active",t==="no_leidos");
+  renderChatList();
+}
 function renderChatList(){
-  if(!chats.length){setBox("chatList",`<div class="alert-box" style="margin:12px">No hay chats activos.</div>`);return}
+  const q=(document.getElementById("chatBuscar")?.value||"").toLowerCase().trim();
+  let lista=chats.slice();
+  if(chatFiltroTab==="no_leidos") lista=lista.filter(c=>Number(c.SIN_LEER||0)>0);
+  if(q) lista=lista.filter(c=>((c.USUARIO||"")+" "+(c.NOMBRE_COMPLETO||"")+" "+(c.TELEFONO||"")).toLowerCase().includes(q));
+  if(!lista.length){setBox("chatList",`<div class="alert-box" style="margin:12px">No hay chats${chatFiltroTab==="no_leidos"?" sin leer":""}.</div>`);return}
   let html="";
-  chats.forEach(c=>{
+  lista.forEach(c=>{
     const id=c.ID_CHAT||c.idChat||"";
     const unread=Number(c.SIN_LEER||0);
-    html+=`<div class="chat-item ${id===chatActualId?"active":""}" onclick="abrirChat('${id}')">
-      <div class="chat-item-title">
-        <span>${c.USUARIO||"Usuario landing"}</span>
-        ${unread?`<span class="chat-unread">${unread}</span>`:""}
+    const nom=c.USUARIO||"Usuario landing";
+    html+=`<button class="c4-conversation ${String(id)===String(chatActualId)?"active":""}" onclick="abrirChat('${id}')">
+      <div class="c4-av" style="background:${_chatColor(nom)}">${escapeHtml(_chatInicial(nom))}</div>
+      <div style="min-width:0">
+        <div class="c4-conv-name">${escapeHtml(nom)}</div>
+        <div class="c4-conv-last">${escapeHtml(c.ULTIMO_MENSAJE||c.NOMBRE_COMPLETO||"Sin mensajes")}</div>
       </div>
-      <div class="small">${c.NOMBRE_COMPLETO||""} · ${formatFecha(c.FECHA_ULTIMO||c.FECHA||"")}</div>
-      <div class="small">${escapeHtml(c.ULTIMO_MENSAJE||"")}</div>
-    </div>`;
+      <div class="c4-conv-right">
+        <span class="c4-conv-time">${formatFecha(c.FECHA_ULTIMO||c.FECHA||"")}</span>
+        ${unread?`<span class="c4-unread">${unread}</span>`:""}
+      </div>
+    </button>`;
   });
   setBox("chatList",html);
 }
@@ -4199,36 +4414,19 @@ async function abrirChat(id){
 async function cargarChatActual(silencioso=false){
   if(!chatActualId)return;
 
-  const {data,error}=await supabaseClient
-    .from("mensajes_chat")
-    .select("*")
-    .eq("chat_id",chatActualId)
-    .order("created_at",{ascending:true});
-
+  const {data,error}=await DB.chatMensajes(chatActualId, pcOperativa);
   if(error)return;
 
-  chatMensajes=(data||[]).map(m=>({
+  chatMensajes=DB.rows(data).map(m=>({
     MENSAJE:m.mensaje||"",
     IMAGEN_URL:m.imagen_url||"",
-    TIPO_EMISOR:m.tipo_emisor,
+    TIPO_EMISOR:m.tipo_emisor||"",
     EMISOR:m.emisor||"",
-    FECHA:m.created_at
+    FECHA:m.created_at||m.fecha||""
   }));
 
   renderChatMensajes();
-
-  await supabaseClient
-    .from("mensajes_chat")
-    .update({leido:true})
-    .eq("chat_id",chatActualId)
-    .eq("tipo_emisor","USUARIO")
-    .eq("leido",false);
-
-  await supabaseClient
-    .from("chats")
-    .update({sin_leer:0})
-    .eq("id",chatActualId);
-
+  // El estado de leído lo maneja el backend (la RLS bloquea el update directo).
   cargarChats(true);
 }
 
@@ -4243,20 +4441,20 @@ function normalizarImagenUrl(url){
 
 function renderChatMensajes(){
   const chat=chats.find(c=>String(c.ID_CHAT)===String(chatActualId))||{};
-  setBox("chatTitulo",chat.USUARIO||"Chat landing");
-  setBox("chatSubtitulo",`${chat.NOMBRE_COMPLETO||""} ${chat.TELEFONO? "· "+chat.TELEFONO:""}`);
-  setBox("chatEstado",chat.SOLICITUD_ID?`Solicitud: ${chat.SOLICITUD_ID}`:"Sin solicitud");
+  const nom=chat.USUARIO||"Chat landing";
+  setBox("chatTitulo",escapeHtml(nom));
+  setBox("chatSubtitulo",`${escapeHtml(chat.NOMBRE_COMPLETO||"")} ${chat.TELEFONO? "· "+escapeHtml(String(chat.TELEFONO)):""}`);
+  setBox("chatEstado",chat.SOLICITUD_ID?`Solicitud: ${escapeHtml(String(chat.SOLICITUD_ID))}`:"Sin solicitud");
+  const av=document.getElementById("chatPeerAv");
+  if(av){ av.textContent=_chatInicial(nom); av.style.background=_chatColor(nom); }
   if(!chatMensajes.length){setBox("chatBody",`<div class="alert-box">Sin mensajes todavía.</div>`);return}
   let html="";
   chatMensajes.forEach(m=>{
-    const tipo=normalizar(m.TIPO_EMISOR);
-    const esUser=tipo==="USUARIO";
-    html+=`<div class="chat-msg ${esUser?"user":"op"}">
-      <div class="chat-bubble">
-        ${escapeHtml(m.MENSAJE||"")}
-        ${m.IMAGEN_URL?`<img src="${normalizarImagenUrl(m.IMAGEN_URL)}" alt="Imagen">`:""}
-      </div>
-      <div class="chat-meta">${esUser?"Usuario":"Operador"} · ${formatFecha(m.FECHA)}</div>
+    const esUser=normalizar(m.TIPO_EMISOR)==="USUARIO";
+    html+=`<div class="c4-bubble ${esUser?"theirs":"mine"}">
+      ${escapeHtml(m.MENSAJE||"")}
+      ${m.IMAGEN_URL?`<img src="${normalizarImagenUrl(m.IMAGEN_URL)}" alt="Imagen">`:""}
+      <div class="c4-bubble-meta">${esUser?"Usuario":"Operador"} · ${formatFecha(m.FECHA)}</div>
     </div>`;
   });
   const box=document.getElementById("chatBody");
@@ -4271,28 +4469,18 @@ async function enviarChat(){
 
   const mensaje=val("chatInput").trim();
   if(!mensaje && !chatImagenBase64)return;
+  // El RPC core del chat solo manda TEXTO. La imagen del operador todavía no está
+  // conectada al backend nuevo (la del usuario sí se ve al recibir).
+  if(!mensaje && chatImagenBase64){
+    alert("Por ahora el operador solo puede responder con TEXTO en el chat del portal (el envío de imagen del operador no está conectado al backend nuevo).");
+    return;
+  }
 
-  const {error}=await supabaseClient
-    .from("mensajes_chat")
-    .insert({
-      chat_id:chatActualId,
-      mensaje:mensaje||"",
-      imagen_url:chatImagenBase64||null,
-      tipo_emisor:"OPERADOR",
-      emisor:operador.nombre,
-      pc_codigo:pcOperativa,
-      leido:true
-    });
-
-  if(error){alert(error.message||"Error al enviar mensaje");return}
-
-  await supabaseClient
-    .from("chats")
-    .update({
-      ultimo_mensaje:mensaje||"[imagen]",
-      fecha_ultimo:new Date().toISOString()
-    })
-    .eq("id",chatActualId);
+  const emisor=(operador && (operador.nombre||operador.usuario)) || "Operador";
+  const r=await DB.chatEnviar(chatActualId, mensaje, emisor);
+  if(r.error){alert(r.error.message||"Error al enviar mensaje");return}
+  let d=r.data; try{ if(typeof d==="string") d=JSON.parse(d); }catch(_e){}
+  if(d && d.ok===false){alert(d.error||d.mensaje||"Error al enviar mensaje");return}
 
   document.getElementById("chatInput").value="";
   quitarImagenChat();
@@ -4844,7 +5032,7 @@ async function _resolverAliasParaCasino(usuario){
   const norm = normalizarUsuarioCasino(usuario);
   if(norm === usuario) return usuario; // sin caracteres raros, nada que decidir
   try {
-    const { data } = await supabaseClient
+    const { data } = await DB
       .from('usuarios')
       .select('usuario')
       .eq('usuario', usuario)
@@ -4882,7 +5070,7 @@ async function callDrex(method, ...args){
 async function _autoregistrarUsuarioSiFalta(aliasCasino){
   if(!aliasCasino) return;
   try {
-    const { data, error } = await supabaseClient
+    const { data, error } = await DB
       .from('usuarios')
       .select('id, pc_codigo, usuario')
       .eq('usuario', aliasCasino)
@@ -4900,7 +5088,7 @@ async function _autoregistrarUsuarioSiFalta(aliasCasino){
       return;
     }
     // No existe en ninguna oficina → crear en la actual
-    const ins = await supabaseClient.from('usuarios').insert({
+    const ins = await DB.from('usuarios').insert({
       usuario:   aliasCasino,
       nombre:    aliasCasino,
       pc_codigo: pcOperativa,
@@ -5247,7 +5435,7 @@ async function testRetirar(){
     autoResBox("autoRetirarRes", true, `✅ ${r.message || "Retiro realizado."}`);
     
     // Registrar el retiro en Supabase para que quede en el historial y se valide en 24hs
-    await supabaseClient.from("solicitudes").insert({
+    await DB.from("solicitudes").insert({
       tipo: "RETIRO",
       usuario: usuario,
       monto: monto,
@@ -5266,55 +5454,16 @@ async function testRetirar(){
 async function notificarUsuarioEnChat(usuarioNombre, mensaje){
   if(!usuarioNombre || !mensaje) return;
 
-  // 1° busca un chat existente para ese usuario en esta PC
-  let chatId = null;
+  // Busca un chat YA existente para ese usuario (las sesiones vienen por RPC).
   const chatLocal = chats.find(c=>normalizar(c.USUARIO)===normalizar(usuarioNombre));
-  if(chatLocal) chatId = chatLocal.ID_CHAT;
+  const chatId = chatLocal ? chatLocal.ID_CHAT : null;
 
-  if(!chatId){
-    const {data} = await supabaseClient.from("chats")
-      .select("id")
-      .eq("usuario", usuarioNombre)
-      .eq("pc_codigo", pcOperativa)
-      .order("created_at",{ascending:false})
-      .limit(1);
-    if(data && data.length) chatId = data[0].id;
-  }
-
-  // 2° si no existe, crea uno (incluyendo datos del usuario si están)
-  if(!chatId){
-    const {data: usrData} = await supabaseClient.from("usuarios")
-      .select("nombre, telefono")
-      .eq("usuario", usuarioNombre).maybeSingle();
-
-    const {data: nuevo} = await supabaseClient.from("chats").insert({
-      usuario: usuarioNombre,
-      nombre_completo: usrData?.nombre || "",
-      telefono: usrData?.telefono || "",
-      pc_codigo: pcOperativa,
-      sin_leer: 1
-    }).select().single();
-    chatId = nuevo?.id;
-  }
-
+  // El RPC core escribe sobre un chat existente. Si el usuario todavía no abrió
+  // chat desde el portal, la sesión la crea el portal, no el panel → no notificamos.
   if(!chatId) return;
 
-  // 3° envía el mensaje como OPERADOR/Sistema
-  await supabaseClient.from("mensajes_chat").insert({
-    chat_id: chatId,
-    mensaje,
-    tipo_emisor: "OPERADOR",
-    emisor: "Sistema",
-    pc_codigo: pcOperativa,
-    leido: false
-  });
-
-  // 4° actualiza el último mensaje del chat e incrementa sin_leer
-  await supabaseClient.from("chats").update({
-    ultimo_mensaje: mensaje,
-    fecha_ultimo: new Date().toISOString(),
-    sin_leer: (chatLocal?.SIN_LEER||0) + 1
-  }).eq("id", chatId);
+  const r = await DB.chatEnviar(chatId, mensaje, "Sistema");
+  if(r && r.error) console.warn("notificarUsuarioEnChat:", r.error.message||r.error);
 }
 
 async function ejecutarAutoClave(id){
@@ -5413,7 +5562,7 @@ async function retirarSaldoRapido(usuario, monto){
   if(r && r.ok === false){ toast("Error: " + (r.message||"falló"), "red"); return; }
 
   // Registrar en solicitudes para validar política de 24hs
-  await supabaseClient.from("solicitudes").insert({
+  await DB.from("solicitudes").insert({
     tipo: "RETIRO",
     usuario: usuario,
     monto: monto,
@@ -5737,7 +5886,7 @@ function cerrarSesion(){
 // ── Panel de verificaciones ───────────────────────────────────────────────────
 async function cargarVerificaciones(){
   const hoy = inicioDiaArgentina(); // medianoche AR, no del SO local
-  const { data } = await supabaseClient
+  const { data } = await DB
     .from("verificaciones")
     .select("*")
     .eq("pc_codigo", pcOperativa)
@@ -5802,12 +5951,12 @@ async function cargarVerificaciones(){
 }
 
 async function cancelarVerificacionPanel(id){
-  await supabaseClient.from("verificaciones").update({ estado:"ERROR", updated_at:new Date().toISOString() }).eq("id",id);
+  await DB.from("verificaciones").update({ estado:"ERROR", updated_at:new Date().toISOString() }).eq("id",id);
   await cargarVerificaciones();
 }
 
 async function reintentarVerificacion(id, usuario){
-  await supabaseClient.from("verificaciones").update({ estado:"PENDIENTE", updated_at:new Date().toISOString() }).eq("id",id);
+  await DB.from("verificaciones").update({ estado:"PENDIENTE", updated_at:new Date().toISOString() }).eq("id",id);
   toast(`Reenviado a cola: ${usuario}`, "blue");
   await cargarVerificaciones();
 }
@@ -6144,7 +6293,7 @@ async function sincronizarBilleterasChunior(silencioso){
   for(const w of walletsChunior){
     const local = matchByUid[w.uid];
     if(local && Math.abs(Number(local.SALDO||0) - w.saldo) > 0.01){
-      await supabaseClient.from('billeteras').update({ saldo: w.saldo }).eq('id', local.ID_BILLETERA);
+      await DB.billeteraUpdate(local.ID_BILLETERA, { saldo: w.saldo });
       actualizadas++;
     }
   }
@@ -6634,7 +6783,7 @@ function cambiarBilleteraMovimiento(movId, historialId, currentBilId){
           // Actualizar la fila en historial_ops
           if(historialId){
             try {
-              await supabaseClient.from("historial_ops")
+              await DB.from("historial_ops")
                 .update({ billetera_id: nuevoBilId, billetera_nombre: bilNueva.NOMBRE_VISIBLE })
                 .eq("id", historialId);
             } catch(eUpd){ console.warn("update historial_ops:", eUpd); }
@@ -6657,8 +6806,10 @@ function cambiarBilleteraMovimiento(movId, historialId, currentBilId){
 }
 
 async function _crearBilleterasNuevasChunior(nuevas){
-  const inserts = nuevas.map(function(w){
-    return {
+  // La RPC blindada inserta de a un registro → recorremos las nuevas.
+  let creadas = 0;
+  for(const w of nuevas){
+    const { error } = await DB.billeteraInsert({
       nombre_visible: w.nombre,
       chunior_uid: String(w.uid),
       saldo: w.saldo,
@@ -6667,14 +6818,14 @@ async function _crearBilleterasNuevasChunior(nuevas){
       cbu_alias: '',
       titular: '',
       tipo: ''
-    };
-  });
-  const { error } = await supabaseClient.from('billeteras').insert(inserts);
-  if(error){
-    toast('Error al crear billeteras: '+error.message, 'red');
-    return;
+    });
+    if(error){
+      toast('Error al crear billeteras: '+error.message, 'red');
+      return;
+    }
+    creadas++;
   }
-  toast('🆕 '+nuevas.length+' billetera(s) agregada(s). Completá CBU, titular y alias en Administrar billeteras.', 'blue');
+  toast('🆕 '+creadas+' billetera(s) agregada(s). Completá CBU, titular y alias en Administrar billeteras.', 'blue');
   // Mostrar también una notificación más visible
   const alertas = document.getElementById('alertas');
   if(alertas){
@@ -6692,7 +6843,7 @@ let macrosList = [];
 
 async function cargarMacros(){
   try {
-    const { data } = await supabaseClient.from('macros')
+    const { data } = await DB.from('macros')
       .select('*')
       .or('pc_codigo.is.null,pc_codigo.eq.' + (pcOperativa || ''))
       .order('orden', { ascending: true });
@@ -6787,7 +6938,7 @@ function editarMacroModal(id){
     const titulo = (document.getElementById('editMacroTitulo')?.value||'').trim();
     const texto  = (document.getElementById('editMacroTexto')?.value||'').trim();
     if(!titulo||!texto){ toast('Completá título y texto','red'); return; }
-    const { error } = await supabaseClient.from('macros').update({titulo,texto}).eq('id',id);
+    const { error } = await DB.from('macros').update({titulo,texto}).eq('id',id);
     if(error){ toast('Error al guardar: '+error.message,'red'); return; }
     cerrarModal();
     await cargarMacros();
@@ -6800,7 +6951,7 @@ async function crearMacro(){
   const texto  = (document.getElementById('nuevoMacroTexto')?.value||'').trim();
   if(!titulo||!texto){ toast('Completá título y texto','red'); return; }
   const maxOrden = macrosList.reduce(function(acc,m){ return Math.max(acc,m.orden||0); }, 0);
-  const { error } = await supabaseClient.from('macros').insert({titulo, texto, orden: maxOrden+1});
+  const { error } = await DB.from('macros').insert({titulo, texto, orden: maxOrden+1});
   if(error){ toast('Error al crear: '+error.message,'red'); return; }
   cerrarModal();
   await cargarMacros();
@@ -6809,7 +6960,7 @@ async function crearMacro(){
 
 async function borrarMacro(id){
   if(!confirm('¿Borrar esta macro?')) return;
-  const { error } = await supabaseClient.from('macros').delete().eq('id',id);
+  const { error } = await DB.from('macros').delete().eq('id',id);
   if(error){ toast('Error: '+error.message,'red'); return; }
   cerrarModal();
   await cargarMacros();
@@ -6831,7 +6982,7 @@ let _verifActivo = false;
 
 async function procesarColaVerificacion(){
   if(!window.ctrlElectron || _verifActivo) return;
-  const {data} = await supabaseClient
+  const {data} = await DB
     .from("verificaciones")
     .select("*")
     .eq("pc_codigo", pcOperativa)
@@ -6848,20 +6999,20 @@ async function procesarColaVerificacion(){
     const aliasParaCasino = await _resolverAliasParaCasino(v.usuario);
     const result = await window.ctrlElectron.verifyUser(aliasParaCasino);
     const nuevoEstado = result.exists ? "VERIFICADO" : "NO_EXISTE";
-    await supabaseClient.from("verificaciones").update({
+    await DB.from("verificaciones").update({
       estado: nuevoEstado,
       nombre_casino: result.user || null,
       updated_at: new Date().toISOString()
     }).eq("id", v.id);
     if(result.exists){
       // Marcar como verificado en usuarios también
-      await supabaseClient.from("usuarios").update({verificado:true}).eq("usuario", v.usuario);
+      await DB.from("usuarios").update({verificado:true}).eq("usuario", v.usuario);
       toast(`✅ Verificado: ${v.usuario}`, "green");
     } else {
       toast(`❌ No existe: ${v.usuario}`, "red");
     }
   } catch(e) {
-    await supabaseClient.from("verificaciones").update({
+    await DB.from("verificaciones").update({
       estado: "ERROR",
       updated_at: new Date().toISOString()
     }).eq("id", v.id);
@@ -6881,7 +7032,7 @@ if(window.ctrlElectron){
   setInterval(procesarColaVerificacion, 30000);
   // Actualiza badge de pendientes cada 10s
   setInterval(async ()=>{
-    const { count } = await supabaseClient.from("verificaciones")
+    const { count } = await DB.from("verificaciones")
       .select("id", { count:"exact", head:true })
       .eq("pc_codigo", pcOperativa).eq("estado","PENDIENTE");
     const badge = document.getElementById("badgeVerif");
